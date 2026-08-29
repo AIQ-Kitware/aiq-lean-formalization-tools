@@ -1,0 +1,16 @@
+rules:
+  - id: blanket-exposure
+    description: "Prevent new modules from opening every declaration body."
+    paths: ["MyLibrary/**/*.lean"]
+    pattern: '^@\[expose\]\s+public\s+section\b'
+    maximum: 0
+    count: files
+    strip_comments: true
+
+  - id: per-declaration-exposure
+    description: "Keep explicit body exposure at or below the reviewed baseline."
+    paths: ["MyLibrary/**/*.lean"]
+    pattern: '^@\[expose\]\s*$'
+    maximum: 12
+    count: matches
+    strip_comments: true

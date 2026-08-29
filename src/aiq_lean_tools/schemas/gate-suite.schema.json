@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "aiq-lean gate suite policy",
+  "type": "object",
+  "properties": {
+    "pattern": {"type": "string"},
+    "unavailable_exit_code": {"type": "integer"},
+    "slow": {"type": "array", "items": {"type": "string"}},
+    "check_is_stronger": {"type": "object", "additionalProperties": {"type": "string"}},
+    "advisory": {"type": "object", "additionalProperties": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

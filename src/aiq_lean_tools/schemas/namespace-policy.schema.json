@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lean namespace placement policy",
+  "type": "object",
+  "required": ["rules"],
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "modules", "allow"],
+        "properties": {
+          "id": {"type": "string"},
+          "modules": {"type": ["string", "array"]},
+          "allow": {"type": ["string", "array"]},
+          "message": {"type": "string"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__LEANQ_TITLE__</title>
+<style>
+:root{
+  --bg:#f3f5f8;--panel:#ffffff;--panel2:#f8fafc;--text:#18212b;--muted:#687586;
+  --border:#d9e0e8;--shadow:0 9px 30px #1c273312;--accent:#2563eb;
+  --left:#8a4baf;--shared:#197c70;--right:#c86b1d;--overlay:#c03972;
+  --left-soft:#f4ebfa;--shared-soft:#e8f6f3;--right-soft:#fff2e7;--overlay-soft:#fdebf3;
+  --danger:#b42318;--radius:12px;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0f151c;--panel:#17202a;--panel2:#111922;--text:#edf2f7;--muted:#9ba9b7;
+  --border:#344250;--shadow:0 9px 30px #0007;--accent:#75a7ff;
+  --left:#d4a0f0;--shared:#66d4c3;--right:#ffac68;--overlay:#f38bb4;
+  --left-soft:#281d31;--shared-soft:#142c2a;--right-soft:#312217;--overlay-soft:#311d27;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text)}
+button,select,input{font:inherit;color:inherit}
+button,select,input[type=search]{border:1px solid var(--border);background:var(--panel);border-radius:8px;min-height:32px}
+button{padding:5px 9px;cursor:pointer}button:hover{border-color:var(--accent)}button:disabled{opacity:.4;cursor:not-allowed}
+select,input[type=search]{padding:5px 8px}
+#app{height:100%;display:grid;grid-template-rows:auto auto 1fr}
+.header{display:flex;gap:18px;align-items:flex-start;padding:12px 15px 5px}
+.header h1{font-size:1.18rem;margin:0}.header p{font-size:.75rem;color:var(--muted);margin:3px 0 0;max-width:880px}
+.header .meta{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.badge{border:1px solid var(--border);border-radius:999px;background:var(--panel);padding:3px 7px;font-size:.68rem;white-space:nowrap}
+.toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 15px 9px;border-bottom:1px solid var(--border)}
+.toolbar label{display:inline-flex;gap:5px;align-items:center;font-size:.72rem;color:var(--muted)}
+.toolbar .sep{height:24px;width:1px;background:var(--border);margin:0 2px}
+#search{width:min(360px,30vw)}
+.workspace{min-height:0;display:grid;grid-template-columns:330px 1fr 340px;gap:10px;padding:10px 12px 12px}
+.panel{min-height:0;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.sidebar{overflow:auto;padding:11px 12px}.sidebar h2{font-size:.93rem;margin:2px 0 8px}.sidebar h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);margin:16px 0 7px}
+.compare-row{display:grid;grid-template-columns:1fr;gap:5px;margin-bottom:9px}.compare-row label{font-size:.68rem;color:var(--muted)}.compare-row select{width:100%;margin-top:2px}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:5px}.legend .item{font-size:.7rem;display:flex;align-items:center;gap:5px}.swatch{width:10px;height:10px;border-radius:3px;display:inline-block}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px}.metric{padding:7px;border:1px solid var(--border);border-radius:9px;background:var(--panel2)}.metric b{display:block;font-size:1.05rem}.metric span{font-size:.64rem;color:var(--muted)}
+.claim-family{border:1px solid var(--border);border-radius:9px;margin-bottom:7px;overflow:hidden}.claim-family .head{display:flex;align-items:center;gap:6px;padding:6px 7px;background:var(--panel2);font-size:.72rem;font-weight:650}.claim-family .head button{margin-left:auto;min-height:22px;padding:1px 5px;font-size:.63rem}.claim-list{padding:4px 5px;max-height:220px;overflow:auto}.claim-list label{display:flex;gap:6px;align-items:flex-start;padding:3px 2px;font-size:.69rem;line-height:1.25}.claim-list input{margin-top:2px}.claim-list small{display:block;color:var(--muted);font-size:.61rem}
+.canvas-wrap{position:relative;overflow:hidden;background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 92%,var(--bg)),var(--panel2))}
+#graph{width:100%;height:100%;display:block;touch-action:none;cursor:grab}#graph.dragging{cursor:grabbing}
+.canvas-hud{position:absolute;left:10px;bottom:9px;display:flex;gap:6px;align-items:center;pointer-events:none}.canvas-hud .pill{background:color-mix(in srgb,var(--panel) 90%,transparent);border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:.66rem;color:var(--muted);backdrop-filter:blur(6px)}
+#minimap{position:absolute;right:10px;bottom:10px;width:180px;height:112px;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow)}
+.tooltip{position:absolute;display:none;z-index:20;max-width:460px;padding:6px 8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);font-size:.68rem;pointer-events:none}.tooltip b{display:block;margin-bottom:2px}.tooltip small{color:var(--muted)}
+.selection-title{font-weight:700;font-size:.83rem;word-break:break-word}.selection-sub{font-size:.65rem;color:var(--muted);word-break:break-word;margin-top:2px}.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 9px;font-size:.69rem;margin:8px 0}.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-word}.actions{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0}.actions button{font-size:.68rem;min-height:27px;padding:3px 7px}
+.list{display:flex;flex-direction:column;gap:4px}.list button{text-align:left;font-size:.67rem;min-height:0;padding:5px 6px;line-height:1.25}.list button small{display:block;color:var(--muted);font-size:.6rem;margin-top:1px}.empty{font-size:.72rem;color:var(--muted);line-height:1.45}.help{font-size:.68rem;color:var(--muted);line-height:1.45}.help kbd{font:inherit;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--panel2)}
+.premium-note{font-size:.66rem;line-height:1.4;color:var(--muted);padding:6px 7px;border-left:3px solid var(--left);background:var(--left-soft);border-radius:4px}
+.topmodules{display:flex;flex-direction:column;gap:4px}.topmodules button{display:flex;gap:6px;align-items:center;font-size:.67rem;text-align:left;min-height:0;padding:5px 6px}.topmodules button span:last-child{margin-left:auto;color:var(--muted)}
+.search-pop{display:none;position:absolute;z-index:50;top:75px;left:360px;width:min(620px,60vw);max-height:420px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:4px}.search-pop button{display:block;width:100%;text-align:left;border:0;border-radius:6px;font-size:.7rem;padding:6px}.search-pop button small{display:block;color:var(--muted)}
+@media(max-width:1150px){.workspace{grid-template-columns:285px 1fr 300px}}
+@media(max-width:850px){.workspace{grid-template-columns:1fr}.sidebar.right{display:none}.sidebar.left{position:absolute;z-index:30;left:12px;top:112px;bottom:12px;width:300px;display:none}.sidebar.left.mobile-open{display:block}.toolbar .desktop-only{display:none}#search{width:190px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div><h1>__LEANQ_TITLE__</h1><p>Compare exact theorem dependency closures. The center lane is shared foundation; the upper and lower lanes show what each headline family needs beyond that common core.</p></div>
+    <div class="meta" id="header-meta"></div>
+  </div>
+  <div class="toolbar">
+    <button id="toggle-left">Comparison</button>
+    <label>Grouping <select id="group-level"><option value="1">Package</option><option value="2" selected>Package / area</option><option value="3">Module depth 3</option><option value="4">Module depth 4</option><option value="99">Every module</option><option value="0">Declarations</option></select></label>
+    <button id="less-detail" title="Collapse the whole drawing one level">− Detail</button><button id="more-detail" title="Expand the whole drawing one level">+ Detail</button><button id="collapse-local" title="Close all branches opened by double-click or the inspector">Collapse local</button>
+    <label><input type="checkbox" id="hide-internal" checked> Contract proof plumbing</label><label><input type="checkbox" id="show-boundary"> Show Mathlib boundary</label>
+    <span class="sep"></span>
+    <button id="fit">Fit</button><button id="zin">+</button><button id="zout">−</button><button id="reset-pan">Center</button>
+    <span class="sep desktop-only"></span>
+    <input id="search" type="search" placeholder="Find a declaration or module…">
+    <button id="clear-focus" disabled>Clear focus</button>
+    <span class="badge" id="visible-count"></span>
+  </div>
+  <div class="workspace">
+    <aside class="panel sidebar left" id="left-sidebar">
+      <h2>Proof comparison</h2>
+      <div class="compare-row"><label>Upper lane — reference formalization<select id="left-family"></select></label></div>
+      <div class="compare-row"><label>Lower lane — downstream/application result<select id="right-family"></select></label></div>
+      <div class="compare-row"><label>Highlight lineage<select id="overlay-family"><option value="">None</option></select></label></div>
+      <div class="legend">
+        <div class="item"><span class="swatch" style="background:var(--left)"></span><span id="legend-left">Left only</span></div>
+        <div class="item"><span class="swatch" style="background:var(--shared)"></span>Shared</div>
+        <div class="item"><span class="swatch" style="background:var(--right)"></span><span id="legend-right">Right only</span></div>
+        <div class="item"><span class="swatch" style="background:var(--overlay)"></span>Highlighted lineage</div>
+      </div>
+      <h3>Comparison closure summary</h3><div class="metrics" id="metrics"></div>
+      <h3>Reference headlines</h3><div id="left-claims"></div>
+      <h3>Application headlines</h3><div id="right-claims"></div>
+      <h3>Generality premium</h3>
+      <div class="premium-note" id="premium-note"></div>
+      <div class="topmodules" id="premium-modules" style="margin-top:6px"></div>
+    </aside>
+    <section class="panel canvas-wrap" id="canvas-panel">
+      <canvas id="graph"></canvas><canvas id="minimap"></canvas><div class="tooltip" id="tooltip"></div>
+      <div class="canvas-hud"><span class="pill">Wheel: zoom at cursor</span><span class="pill">Drag: pan</span><span class="pill">Double-click ⊞: expand</span><span class="pill">Click: inspect</span></div>
+    </section>
+    <aside class="panel sidebar right">
+      <h2>Inspector</h2><div id="details" class="empty">Click a node or cluster. Expandable clusters show a visible ⊞ control in the graph and explicit actions here.</div>
+      <h3>Consumption frontier</h3><div class="empty" style="margin-bottom:6px">Upstream declarations that cross a package boundary inside the application closure.</div><div class="list" id="frontier-list"></div>
+      <h3>Comparison interpretation</h3>
+      <div class="help"><b>Shared</b> is the exact intersection of the two selected dependency closures. <b>Generality premium</b> is the reference closure minus the application closure; it means “not needed by these selected application headlines,” not “unused or unnecessary everywhere.”<br><br>The highlighted lineage marks dependencies of the selected overlay family, making its position relative to the two compared closures explicit.</div>
+      <h3>Controls</h3><div class="help"><kbd>F</kbd> fit · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>Esc</kbd> clear selection · click a cluster’s visible ⊞ control or double-click the cluster to open one level. Use <b>Grouping</b> for global contraction.</div><h3>Open branches</h3><div class="list" id="open-branches"></div>
+    </aside>
+  </div>
+</div>
+<div id="search-pop" class="search-pop"></div>
+<script id="leanq-data" type="application/json">__LEANQ_DATA__</script>
+<script>
+(()=>{"use strict";
+const DATA=JSON.parse(document.getElementById("leanq-data").textContent);
+const CFG=DATA.architecturePublisher||{};
+const allNodes=DATA.nodes||[], allEdges=DATA.edges||[];
+const byId=new Map(allNodes.map(n=>[n.id,n]));
+const incoming=new Map(allNodes.map(n=>[n.id,[]])), outgoing=new Map(allNodes.map(n=>[n.id,[]]));
+for(const e of allEdges){if(incoming.has(e.target)&&outgoing.has(e.source)){incoming.get(e.target).push(e.source);outgoing.get(e.source).push(e.target)}}
+const analysis=DATA.headlineAnalysis||{}, claims=analysis.claims||[];
+const families=[...new Set(claims.map(c=>c.family).filter(Boolean))];
+const $=id=>document.getElementById(id);
+const canvas=$("graph"), ctx=canvas.getContext("2d"), mini=$("minimap"), mctx=mini.getContext("2d");
+const tooltip=$("tooltip"), panel=$("canvas-panel");
+const COLORS={left:getCss("--left"),shared:getCss("--shared"),right:getCss("--right"),overlay:getCss("--overlay"),text:getCss("--text"),muted:getCss("--muted"),border:getCss("--border"),panel:getCss("--panel"),panel2:getCss("--panel2"),leftSoft:getCss("--left-soft"),sharedSoft:getCss("--shared-soft"),rightSoft:getCss("--right-soft")};
+function getCss(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim()}
+function esc(s){return String(s??"").replace(/[&<>"\']/g,c=>c==="&"?"&amp;":c==="<"?"&lt;":c===">"?"&gt;":c==="\""?"&quot;":"&#39;")}
+function short(s){return String(s||"").split(".").pop()}
+function fmt(n){return Number(n||0).toLocaleString()}
+function walk(starts,adj){const seen=new Set(starts.filter(x=>byId.has(x))),q=[...seen];for(let i=0;i<q.length;i++)for(const x of adj.get(q[i])||[])if(!seen.has(x)){seen.add(x);q.push(x)}return seen}
+function claimLeaves(c){const a=(c.leafDeclarations||c.canonicalDeclarations||[]).filter(x=>byId.has(x));return a.length?a:(c.canonicalDeclarations||[]).filter(x=>byId.has(x))}
+function theoremClaims(f){const rows=claims.filter(c=>c.family===f);const th=rows.filter(c=>/theorem/.test(c.sourceKind||""));return th.length?th:rows}
+function defaultFamily(preferred,fallbackIndex=0){if(preferred&&families.includes(preferred))return preferred;return families[fallbackIndex]||families[0]||""}
+function defaultOverlay(preferred){if(preferred&&families.includes(preferred))return preferred;return families[2]||""}
+let state={
+  leftFamily:defaultFamily(CFG.leftFamily,0),rightFamily:defaultFamily(CFG.rightFamily,1),
+  overlayFamily:defaultOverlay(CFG.overlayFamily),
+  leftClaims:new Set(),rightClaims:new Set(),groupLevel:2,expanded:new Set(),revealed:new Set(),hideInternal:true,
+  selected:null,focus:null,showBoundary:false,transform:{x:0,y:0,s:1},drag:null,hover:null,firstLayout:true
+};
+function initClaimSets(){state.leftClaims=new Set(theoremClaims(state.leftFamily).map(c=>c.nodeId));state.rightClaims=new Set(theoremClaims(state.rightFamily).map(c=>c.nodeId))}
+initClaimSets();
+function seedsFor(family,set){const out=[];for(const c of claims)if(c.family===family&&set.has(c.nodeId))for(const d of claimLeaves(c))if(!out.includes(d))out.push(d);return out}
+function allSeedsFor(family){const out=[];for(const c of theoremClaims(family))for(const d of claimLeaves(c))if(!out.includes(d))out.push(d);return out}
+let derived={};
+function refreshDerived(){
+  const leftSeeds=seedsFor(state.leftFamily,state.leftClaims),rightSeeds=seedsFor(state.rightFamily,state.rightClaims);
+  const leftRaw=walk(leftSeeds,incoming),rightRaw=walk(rightSeeds,incoming),overlayRaw=state.overlayFamily?walk(allSeedsFor(state.overlayFamily),incoming):new Set();
+  const keep=id=>state.showBoundary||((byId.get(id)?.library||"")!=="Mathlib");
+  const left=new Set([...leftRaw].filter(keep)),right=new Set([...rightRaw].filter(keep)),overlay=new Set([...overlayRaw].filter(keep));
+  const union=new Set([...left,...right]),shared=new Set([...left].filter(x=>right.has(x))),leftOnly=new Set([...left].filter(x=>!right.has(x))),rightOnly=new Set([...right].filter(x=>!left.has(x)));
+  const cohort=new Map();for(const x of shared)cohort.set(x,"shared");for(const x of leftOnly)cohort.set(x,"left");for(const x of rightOnly)cohort.set(x,"right");
+  const frontier=[];
+  const leftLibs=new Set(leftSeeds.map(x=>byId.get(x)?.library).filter(Boolean));
+  const overlayLibs=new Set(allSeedsFor(state.overlayFamily).map(x=>byId.get(x)?.library).filter(Boolean));
+  const upstreamLibs=new Set([...leftLibs,...overlayLibs]);
+  for(const id of right){const n=byId.get(id);if(!n||!upstreamLibs.has(n.library))continue;let crosses=0;const targets=[];for(const t of outgoing.get(id)||[]){const tn=byId.get(t);if(right.has(t)&&tn&&tn.library!==n.library){crosses++;targets.push(tn.library)}}if(crosses)frontier.push({id,crosses,targets:[...new Set(targets)]})}
+  frontier.sort((a,b)=>b.crosses-a.crosses||a.id.localeCompare(b.id));
+  derived={leftSeeds,rightSeeds,leftRaw,rightRaw,left,right,overlay,union,shared,leftOnly,rightOnly,cohort,frontier};
+}
+
+/* Internal proof-plumbing contraction mirrors the ordinary explorer: private
+   constants and compiler-generated equation lemmas are skipped, but public
+   endpoints are reconnected so dependency paths remain visible. */
+const GENERATED_SUFFIX=/\.(?:eq_\d+|eq_def|_eq_\d+)$/;
+function isInternalNode(n){return !!(n.internal||n.isPrivate||n.private)||GENERATED_SUFFIX.test(n.id||"")||String(n.kind||"").toLowerCase()==="proof"}
+const internalIds=new Set(allNodes.filter(isInternalNode).map(n=>n.id));
+let contractedCache=null;
+function contractedEdges(){
+  if(contractedCache)return contractedCache;
+  const memo=new Map(),active=new Set();
+  function nearest(id){
+    const hit=memo.get(id);if(hit)return hit;if(active.has(id))return new Map();active.add(id);const out=new Map();
+    for(const v of outgoing.get(id)||[]){
+      if(!internalIds.has(v)){const c=out.get(v);if(c===undefined||c>1)out.set(v,1)}
+      else for(const [w,c] of nearest(v)){const seen=out.get(w);if(seen===undefined||seen>c+1)out.set(w,c+1)}
+    }
+    active.delete(id);memo.set(id,out);return out;
+  }
+  const emap=new Map();
+  function add(a,b,via){if(a===b)return;const k=a+"\0"+b,row=emap.get(k);if(row){if(via<row.collapsedNodeCount)row.collapsedNodeCount=via;return}emap.set(k,{source:a,target:b,collapsedNodeCount:via})}
+  for(const n of allNodes){if(internalIds.has(n.id))continue;for(const v of outgoing.get(n.id)||[]){if(!internalIds.has(v))add(n.id,v,0);else for(const [w,c] of nearest(v))add(n.id,w,c)}}
+  contractedCache=[...emap.values()];return contractedCache;
+}
+function pathSegments(n){const lib=n.library||"Other",mod=String(n.module||lib);let parts=mod.split(".");if(parts[0]===lib)parts=parts.slice(1);return [lib,...parts]}
+function cumulative(parts){const out=[];for(let i=0;i<parts.length;i++)out.push(parts.slice(0,i+1).join("/"));return out}
+function clusterKeyFor(n){if(state.groupLevel===0||state.revealed.has(n.id))return null;const keys=cumulative(pathSegments(n));if(state.groupLevel===99){const last=keys[keys.length-1];return state.expanded.has(last)?null:last}for(let i=0;i<keys.length;i++){const autoOpen=i+1<state.groupLevel;if(!autoOpen&&!state.expanded.has(keys[i]))return keys[i]}return null}
+function cohortOf(id){return derived.cohort.get(id)}
+function buildProjection(){
+  const members=new Map(),map=new Map();
+  for(const id of derived.union){if(state.focus&&!state.focus.has(id))continue;const n=byId.get(id);if(!n)continue;if(state.hideInternal&&internalIds.has(id)&&!derived.leftSeeds.includes(id)&&!derived.rightSeeds.includes(id))continue;const cohort=cohortOf(id);if(!cohort)continue;const key=clusterKeyFor(n);const pid=key===null?id:`cluster:${cohort}:${key}`;map.set(id,pid);if(!members.has(pid))members.set(pid,[]);members.get(pid).push(n)}
+  const pnodes=[];
+  for(const [id,rows] of members){const cluster=id.startsWith("cluster:");const cohort=cohortOf(rows[0].id);if(!cluster&&rows.length===1){const n=rows[0];pnodes.push({...n,pid:id,cluster:false,members:[id],cohort,overlay:derived.overlay.has(id),headline:derived.leftSeeds.includes(id)||derived.rightSeeds.includes(id),depth:n.dependencyDepth||0});continue}
+    const key=id.split(":").slice(2).join(":"),depth=Math.max(...rows.map(n=>n.dependencyDepth||0));pnodes.push({pid:id,id,cluster:true,key,name:key.split("/").pop(),members:rows.map(n=>n.id),cohort,overlayCount:rows.filter(n=>derived.overlay.has(n.id)).length,headlineCount:rows.filter(n=>derived.leftSeeds.includes(n.id)||derived.rightSeeds.includes(n.id)).length,depth,library:rows[0].library,moduleCount:new Set(rows.map(n=>n.module)).size,declarationCount:rows.length});
+  }
+  const emap=new Map(),edges=state.hideInternal?contractedEdges():allEdges;
+  for(const e of edges){if(!derived.union.has(e.source)||!derived.union.has(e.target))continue;if(state.focus&&(!state.focus.has(e.source)||!state.focus.has(e.target)))continue;const a=map.get(e.source),b=map.get(e.target);if(!a||!b||a===b)continue;const k=a+"\0"+b;let row=emap.get(k);if(!row){row={source:a,target:b,count:0,collapsed:0};emap.set(k,row)}row.count++;row.collapsed=Math.max(row.collapsed,e.collapsedNodeCount||0)}
+  return {nodes:pnodes,edges:[...emap.values()],map};
+}
+let projection={nodes:[],edges:[]},positions=new Map(),bounds={x:0,y:0,w:100,h:100};
+const NODE_W=238,NODE_H=58,XSPAN=190,YGAP=78,LANE_PAD=130;
+function layout(){
+  projection=buildProjection();positions=new Map();
+  const lanes={left:[],shared:[],right:[]};for(const n of projection.nodes)lanes[n.cohort].push(n);
+  const allDepths=projection.nodes.map(n=>n.depth||0);const minD=Math.min(...allDepths,0),maxD=Math.max(...allDepths,1),range=Math.max(1,maxD-minD),bins=10;
+  function binOf(n){return Math.round(((n.depth-minD)/range)*bins)}
+  let yCursor=80;const laneInfo={};
+  for(const lane of ["left","shared","right"]){const rows=lanes[lane],byBin=new Map();for(const n of rows){const b=binOf(n);if(!byBin.has(b))byBin.set(b,[]);byBin.get(b).push(n)}for(const arr of byBin.values())arr.sort((a,b)=>labelOf(a).localeCompare(labelOf(b)));
+    const maxStack=Math.max(1,...[...byBin.values()].map(a=>a.length));const h=Math.max(250,maxStack*YGAP+90);const center=yCursor+h/2;laneInfo[lane]={y:yCursor,h,center,count:rows.length};
+    for(const [bin,arr] of byBin){const start=center-((arr.length-1)*YGAP)/2;arr.forEach((n,i)=>positions.set(n.pid,{x:180+bin*XSPAN,y:start+i*YGAP,w:NODE_W,h:NODE_H}))}yCursor+=h+LANE_PAD;
+  }
+  const worldW=180+bins*XSPAN+360,worldH=yCursor-LANE_PAD+80;bounds={x:0,y:0,w:worldW,h:worldH,lanes:laneInfo};
+  if(state.firstLayout){fit();state.firstLayout=false}else draw();
+  updateUi();
+}
+function labelOf(n){return n.cluster?(n.key||n.name):n.id}
+function laneTitle(lane){if(lane==="left")return `${state.leftFamily} only — generality premium`;if(lane==="shared")return "Shared foundational core";return `${state.rightFamily} only — application-specific path`}
+function laneColor(lane){return COLORS[lane]}
+function laneSoft(lane){return lane==="left"?COLORS.leftSoft:lane==="shared"?COLORS.sharedSoft:COLORS.rightSoft}
+
+function resize(){const r=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));ctx.setTransform(dpr,0,0,dpr,0,0);const mr=mini.getBoundingClientRect();mini.width=Math.floor(mr.width*dpr);mini.height=Math.floor(mr.height*dpr);mctx.setTransform(dpr,0,0,dpr,0,0);draw()}
+function worldToScreen(p){return{x:p.x*state.transform.s+state.transform.x,y:p.y*state.transform.s+state.transform.y}}
+function screenToWorld(x,y){return{x:(x-state.transform.x)/state.transform.s,y:(y-state.transform.y)/state.transform.s}}
+function fit(){const r=canvas.getBoundingClientRect(),pad=46;const s=Math.min((r.width-pad*2)/bounds.w,(r.height-pad*2)/bounds.h);state.transform.s=Math.max(.06,Math.min(1.25,s));state.transform.x=(r.width-bounds.w*state.transform.s)/2;state.transform.y=(r.height-bounds.h*state.transform.s)/2;draw()}
+function center(){const r=canvas.getBoundingClientRect();state.transform.x=(r.width-bounds.w*state.transform.s)/2;state.transform.y=(r.height-bounds.h*state.transform.s)/2;draw()}
+function zoomAt(factor,sx,sy){const before=screenToWorld(sx,sy);state.transform.s=Math.max(.035,Math.min(3.5,state.transform.s*factor));state.transform.x=sx-before.x*state.transform.s;state.transform.y=sy-before.y*state.transform.s;draw()}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.roundRect(x,y,w,h,r)}
+function draw(){
+  const r=canvas.getBoundingClientRect();ctx.clearRect(0,0,r.width,r.height);ctx.save();ctx.translate(state.transform.x,state.transform.y);ctx.scale(state.transform.s,state.transform.s);
+  if(bounds.lanes)for(const lane of ["left","shared","right"]){const info=bounds.lanes[lane];ctx.fillStyle=laneSoft(lane);ctx.globalAlpha=.54;roundRect(ctx,22,info.y,bounds.w-44,info.h,18);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=laneColor(lane);ctx.font="700 19px system-ui";ctx.fillText(laneTitle(lane),46,info.y+31);ctx.font="12px system-ui";ctx.fillStyle=COLORS.muted;ctx.fillText(`${fmt(info.count)} visible groups / declarations`,46,info.y+51)}
+  ctx.lineWidth=1.15;for(const e of projection.edges){const a=positions.get(e.source),b=positions.get(e.target);if(!a||!b)continue;const ax=a.x+a.w/2,ay=a.y,bx=b.x-b.w/2,by=b.y;ctx.beginPath();ctx.moveTo(ax,ay);const dx=Math.max(45,(bx-ax)*.45);ctx.bezierCurveTo(ax+dx,ay,bx-dx,by,bx,by);const ca=projection.nodes.find(n=>n.pid===e.source)?.cohort,cb=projection.nodes.find(n=>n.pid===e.target)?.cohort;ctx.strokeStyle=ca===cb?laneColor(ca):COLORS.muted;ctx.globalAlpha=.16+Math.min(.28,Math.log2(1+e.count)*.07);ctx.lineWidth=1+Math.min(4,Math.log2(1+e.count)*.6);if(e.collapsed){ctx.setLineDash([6,5])}else ctx.setLineDash([]);ctx.stroke();ctx.globalAlpha=1}
+  ctx.setLineDash([]);for(const n of projection.nodes)drawNode(n,positions.get(n.pid));ctx.restore();drawMinimap();
+  $("visible-count").textContent=`${fmt(projection.nodes.length)} shown · ${Math.round(state.transform.s*100)}%`;
+}
+function drawNode(n,p){if(!p)return;const selected=state.selected===n.pid,hover=state.hover===n.pid,overlay=n.cluster?n.overlayCount>0:n.overlay;ctx.save();ctx.translate(p.x-p.w/2,p.y-p.h/2);ctx.fillStyle=COLORS.panel;ctx.strokeStyle=selected?COLORS.accent:laneColor(n.cohort);ctx.lineWidth=selected?3.2:(overlay?2.6:1.7);roundRect(ctx,0,0,p.w,p.h,10);ctx.fill();ctx.stroke();if(overlay){ctx.strokeStyle=COLORS.overlay;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(4,8);ctx.lineTo(4,p.h-8);ctx.stroke()}
+  if(hover&&!selected){ctx.strokeStyle=COLORS.accent;ctx.lineWidth=1.3;roundRect(ctx,-2,-2,p.w+4,p.h+4,12);ctx.stroke()}
+  const title=n.cluster?(n.key||n.name):short(n.id),sub=n.cluster?`${fmt(n.declarationCount)} declarations · ${fmt(n.moduleCount)} modules`:`${n.library||""} · ${n.kind||"declaration"}`;
+  ctx.fillStyle=COLORS.text;ctx.font="650 12px system-ui";wrapCanvas(title,12,20,p.w-50,15,2);ctx.fillStyle=COLORS.muted;ctx.font="10px system-ui";ctx.fillText(sub,12,p.h-10);
+  if(n.headline||n.headlineCount){ctx.fillStyle=laneColor(n.cohort);ctx.font="700 13px system-ui";ctx.fillText("★",p.w-40,18)}
+  if(n.cluster){ctx.fillStyle=laneSoft(n.cohort);ctx.strokeStyle=laneColor(n.cohort);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.w-18,p.h/2,11,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=laneColor(n.cohort);ctx.font="700 14px system-ui";ctx.textAlign="center";ctx.fillText("+",p.w-18,p.h/2+5);ctx.textAlign="left"}
+  ctx.restore()}
+function wrapCanvas(text,x,y,maxW,lineH,maxLines){const parts=String(text).replaceAll("/"," / ").split(/\s+/);let line="",lines=[];for(const w of parts){const test=line?line+" "+w:w;if(ctx.measureText(test).width>maxW&&line){lines.push(line);line=w}else line=test}if(line)lines.push(line);if(lines.length>maxLines){lines=lines.slice(0,maxLines);while(ctx.measureText(lines[maxLines-1]+"…").width>maxW&&lines[maxLines-1].length>4)lines[maxLines-1]=lines[maxLines-1].slice(0,-1);lines[maxLines-1]+="…"}lines.forEach((l,i)=>ctx.fillText(l,x,y+i*lineH))}
+function drawMinimap(){const r=mini.getBoundingClientRect();mctx.clearRect(0,0,r.width,r.height);const sx=r.width/bounds.w,sy=r.height/bounds.h,s=Math.min(sx,sy),ox=(r.width-bounds.w*s)/2,oy=(r.height-bounds.h*s)/2;mctx.globalAlpha=.75;for(const n of projection.nodes){const p=positions.get(n.pid);if(!p)continue;mctx.fillStyle=laneColor(n.cohort);mctx.fillRect(ox+(p.x-3)*s,oy+(p.y-2)*s,Math.max(2,6*s),Math.max(2,4*s))}mctx.globalAlpha=1;const cr=canvas.getBoundingClientRect();const tl=screenToWorld(0,0),br=screenToWorld(cr.width,cr.height);mctx.strokeStyle=COLORS.accent;mctx.lineWidth=1.4;mctx.strokeRect(ox+tl.x*s,oy+tl.y*s,(br.x-tl.x)*s,(br.y-tl.y)*s)}
+function hitTest(sx,sy){const w=screenToWorld(sx,sy);let best=null;for(const n of projection.nodes){const p=positions.get(n.pid);if(p&&Math.abs(w.x-p.x)<=p.w/2&&Math.abs(w.y-p.y)<=p.h/2){best=n;break}}return best}
+function hitExpandHandle(sx,sy,n){if(!n?.cluster)return false;const w=screenToWorld(sx,sy),p=positions.get(n.pid);if(!p)return false;const cx=p.x+p.w/2-18,cy=p.y;return Math.hypot(w.x-cx,w.y-cy)<=15}
+function selectNode(n){state.selected=n?n.pid:null;renderDetails(n);draw()}
+function expandNode(n){if(!n||!n.cluster)return;state.expanded.add(n.key);state.selected=null;layout()}
+function focusIds(ids){state.focus=new Set(ids);$("clear-focus").disabled=false;state.firstLayout=true;layout()}
+function focusModule(prefix){const ids=[...derived.union].filter(id=>String(byId.get(id)?.module||"").startsWith(prefix));focusIds(ids)}
+function focusDependencyCone(n){if(!n)return;const starts=n.cluster?n.members:[n.id];focusIds(walk(starts,incoming))}
+function renderDetails(n){const d=$("details");if(!n){d.className="empty";d.innerHTML="Click a node or cluster. Expandable clusters show a visible ⊞ control in the graph and explicit actions here.";return}d.className="";const overlay=n.cluster?n.overlayCount>0:n.overlay;const memberCount=n.cluster?n.declarationCount:1;d.innerHTML=`<div class="selection-title">${esc(labelOf(n))}</div><div class="selection-sub">${esc(n.cluster?"Expandable cluster":(n.module||""))}</div><dl class="kv"><dt>Cohort</dt><dd>${esc(laneTitle(n.cohort))}</dd><dt>Declarations</dt><dd>${fmt(memberCount)}</dd><dt>Dependency depth</dt><dd>${fmt(n.depth)}</dd><dt>Highlighted lineage</dt><dd>${overlay?"yes":"no"}</dd>${n.cluster?`<dt>Modules</dt><dd>${fmt(n.moduleCount)}</dd>`:`<dt>Library</dt><dd>${esc(n.library||"")}</dd><dt>Kind</dt><dd>${esc(n.kind||"")}</dd>`}</dl><div class="actions">${n.cluster?'<button id="act-expand">Expand one level</button>':''}<button id="act-cone">Dependency cone</button>${!n.cluster?'<button id="act-reveal">Keep visible</button>':''}</div>${n.cluster?'<div class="help">Double-click the cluster in the graph or use <b>Expand one level</b>. Global <b>Grouping</b> controls contract the entire drawing without losing your comparison selection.</div>':''}`;if(n.cluster)$("act-expand").onclick=()=>expandNode(n);$("act-cone").onclick=()=>focusDependencyCone(n);if(!n.cluster)$("act-reveal").onclick=()=>{state.revealed.add(n.id);layout()}}
+
+function populateFamilySelect(el,includeNone=false){const old=el.value;el.innerHTML=includeNone?'<option value="">None</option>':'';for(const f of families){const o=document.createElement("option");o.value=f;o.textContent=f;el.appendChild(o)}if(old&&families.includes(old))el.value=old}
+function renderClaims(target,family,set,side){const rows=claims.filter(c=>c.family===family),box=$(target);if(!rows.length){box.innerHTML='<div class="empty">No loaded headline claims.</div>';return}box.innerHTML='<div class="claim-family"><div class="head"><span>'+esc(family)+'</span><button data-action="all">all</button><button data-action="none">none</button></div><div class="claim-list">'+rows.map(c=>`<label><input type="checkbox" data-claim="${esc(c.nodeId)}" ${set.has(c.nodeId)?"checked":""}><span>${esc(c.title)}<small>${esc(c.id)} · ${(c.leafDeclarations||c.canonicalDeclarations||[]).length} realization${(c.leafDeclarations||c.canonicalDeclarations||[]).length===1?"":"s"}</small></span></label>`).join("")+'</div></div>';box.querySelectorAll('input[data-claim]').forEach(inp=>inp.onchange=()=>{if(inp.checked)set.add(inp.dataset.claim);else set.delete(inp.dataset.claim);comparisonChanged(false)});box.querySelector('[data-action=all]').onclick=()=>{for(const c of rows)set.add(c.nodeId);comparisonChanged(false)};box.querySelector('[data-action=none]').onclick=()=>{set.clear();comparisonChanged(false)}}
+function moduleCounts(ids){const m=new Map();for(const id of ids){const n=byId.get(id);if(!n)continue;const key=n.module||n.library||"Other";m.set(key,(m.get(key)||0)+1)}return [...m].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))}
+function updateUi(){
+  $("legend-left").textContent=`${state.leftFamily} only`;$("legend-right").textContent=`${state.rightFamily} only`;
+  const metrics=[['Reference closure',derived.left.size],['Application closure',derived.right.size],['Shared',derived.shared.size],['Generality premium',derived.leftOnly.size],['Application-specific',derived.rightOnly.size],['Highlighted lineage',derived.overlay.size]];
+  $("metrics").innerHTML=metrics.map(([k,v])=>`<div class="metric"><b>${fmt(v)}</b><span>${esc(k)}</span></div>`).join("");
+  $("premium-note").innerHTML=`Exact set difference: <b>${esc(state.leftFamily)} closure − ${esc(state.rightFamily)} closure</b>. It measures infrastructure not required by the selected application headlines; it does not claim that infrastructure is unnecessary elsewhere.`;
+  $("premium-modules").innerHTML=moduleCounts(derived.leftOnly).slice(0,9).map(([m,c])=>`<button data-module="${esc(m)}"><span>${esc(m)}</span><span>${fmt(c)}</span></button>`).join("")||'<div class="empty">No reference-only dependencies for this selection.</div>';
+  $("premium-modules").querySelectorAll('button[data-module]').forEach(b=>b.onclick=()=>focusModule(b.dataset.module));
+  const f=$("frontier-list");f.innerHTML=derived.frontier.slice(0,16).map(row=>{const n=byId.get(row.id);return `<button data-id="${esc(row.id)}">${esc(short(row.id))}<small>${esc(n?.library||"")} → ${esc(row.targets.join(", "))} · ${row.crosses} crossing edge${row.crosses===1?"":"s"}</small></button>`}).join("")||'<div class="empty">No upstream package-boundary exports are reached by this application selection.</div>';
+  f.querySelectorAll('button[data-id]').forEach(b=>b.onclick=()=>revealAndSelect(b.dataset.id));
+  renderClaims("left-claims",state.leftFamily,state.leftClaims,"left");renderClaims("right-claims",state.rightFamily,state.rightClaims,"right");
+  const hiddenBoundary=!state.showBoundary?new Set([...derived.leftRaw,...derived.rightRaw].filter(id=>(byId.get(id)?.library||"")==="Mathlib")).size:0;
+  $("header-meta").innerHTML=`<span class="badge">${fmt(allNodes.length)} indexed declarations</span><span class="badge">${fmt(allEdges.length)} direct edges</span><span class="badge">${families.length} paper families</span>${hiddenBoundary?`<span class="badge">${fmt(hiddenBoundary)} Mathlib boundary hidden</span>`:""}`;
+  const ob=$("open-branches");if(ob){const rows=[...state.expanded].sort();ob.innerHTML=rows.length?rows.map(k=>`<button data-close="${esc(k)}">− ${esc(k.replaceAll("/"," / "))}<small>Close this branch and every nested local expansion</small></button>`).join(""):'<div class="empty">No locally expanded branches.</div>';ob.querySelectorAll('button[data-close]').forEach(b=>b.onclick=()=>{const k=b.dataset.close;for(const x of [...state.expanded])if(x===k||x.startsWith(k+"/"))state.expanded.delete(x);layout()})}
+}
+function comparisonChanged(resetClaims=true){if(resetClaims)initClaimSets();state.expanded.clear();state.revealed.clear();state.focus=null;$("clear-focus").disabled=true;state.selected=null;renderDetails(null);state.firstLayout=true;refreshDerived();layout()}
+function revealAndSelect(id){if(!byId.has(id))return;state.revealed.add(id);if(!derived.union.has(id)){const c=claims.find(c=>(c.canonicalDeclarations||[]).includes(id));if(c){if(c.family===state.leftFamily)state.leftClaims.add(c.nodeId);if(c.family===state.rightFamily)state.rightClaims.add(c.nodeId);refreshDerived()}}layout();const n=projection.nodes.find(n=>n.pid===id);if(n){selectNode(n);const p=positions.get(id);const r=canvas.getBoundingClientRect();state.transform.x=r.width/2-p.x*state.transform.s;state.transform.y=r.height/2-p.y*state.transform.s;draw()}}
+
+function setup(){
+  populateFamilySelect($("left-family"));populateFamilySelect($("right-family"));populateFamilySelect($("overlay-family"),true);$("left-family").value=state.leftFamily;$("right-family").value=state.rightFamily;$("overlay-family").value=state.overlayFamily;
+  $("left-family").onchange=e=>{state.leftFamily=e.target.value;comparisonChanged(true)};$("right-family").onchange=e=>{state.rightFamily=e.target.value;comparisonChanged(true)};$("overlay-family").onchange=e=>{state.overlayFamily=e.target.value;refreshDerived();layout()};
+  $("group-level").onchange=e=>{state.groupLevel=Number(e.target.value);state.expanded.clear();state.revealed.clear();layout()};
+  $("hide-internal").onchange=e=>{state.hideInternal=e.target.checked;layout()};$("show-boundary").onchange=e=>{state.showBoundary=e.target.checked;refreshDerived();state.firstLayout=true;layout()};
+  $("fit").onclick=fit;$("zin").onclick=()=>{const r=canvas.getBoundingClientRect();zoomAt(1.25,r.width/2,r.height/2)};$("zout").onclick=()=>{const r=canvas.getBoundingClientRect();zoomAt(.8,r.width/2,r.height/2)};$("reset-pan").onclick=center;
+  $("more-detail").onclick=()=>stepDetail(1);$("less-detail").onclick=()=>stepDetail(-1);$("collapse-local").onclick=()=>{state.expanded.clear();layout()};
+  $("clear-focus").onclick=()=>{state.focus=null;$("clear-focus").disabled=true;state.firstLayout=true;layout()};
+  $("toggle-left").onclick=()=>$("left-sidebar").classList.toggle("mobile-open");
+  canvas.addEventListener("wheel",e=>{e.preventDefault();const r=canvas.getBoundingClientRect();zoomAt(Math.exp(-e.deltaY*.0015),e.clientX-r.left,e.clientY-r.top)},{passive:false});
+  canvas.addEventListener("pointerdown",e=>{canvas.setPointerCapture(e.pointerId);state.drag={x:e.clientX,y:e.clientY,tx:state.transform.x,ty:state.transform.y};canvas.classList.add("dragging")});
+  canvas.addEventListener("pointermove",e=>{const r=canvas.getBoundingClientRect();if(state.drag){state.transform.x=state.drag.tx+(e.clientX-state.drag.x);state.transform.y=state.drag.ty+(e.clientY-state.drag.y);draw();return}const n=hitTest(e.clientX-r.left,e.clientY-r.top);state.hover=n?.pid||null;if(n){tooltip.style.display="block";tooltip.style.left=(e.clientX-r.left+12)+"px";tooltip.style.top=(e.clientY-r.top+12)+"px";tooltip.innerHTML=`<b>${esc(labelOf(n))}</b><small>${n.cluster?`${fmt(n.declarationCount)} declarations · double-click to expand`:`${esc(n.module||"")} · click to inspect`}</small>`}else tooltip.style.display="none";draw()});
+  canvas.addEventListener("pointerup",e=>{const moved=state.drag&&Math.hypot(e.clientX-state.drag.x,e.clientY-state.drag.y)>5;state.drag=null;canvas.classList.remove("dragging");if(!moved){const r=canvas.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top,n=hitTest(sx,sy);if(n&&hitExpandHandle(sx,sy,n))expandNode(n);else selectNode(n)}});
+  canvas.addEventListener("dblclick",e=>{const r=canvas.getBoundingClientRect(),n=hitTest(e.clientX-r.left,e.clientY-r.top);if(n?.cluster)expandNode(n)});
+  canvas.addEventListener("mouseleave",()=>{state.hover=null;tooltip.style.display="none";draw()});
+  window.addEventListener("resize",resize);
+  window.addEventListener("keydown",e=>{if(e.target.matches('input,select'))return;if(e.key==="f"||e.key==="F")fit();else if(e.key==="+"){const r=canvas.getBoundingClientRect();zoomAt(1.22,r.width/2,r.height/2)}else if(e.key==="-"){const r=canvas.getBoundingClientRect();zoomAt(.82,r.width/2,r.height/2)}else if(e.key==="Escape")selectNode(null)});
+  setupSearch();refreshDerived();resize();layout();
+}
+function stepDetail(delta){const levels=[1,2,3,4,99,0],i=levels.indexOf(state.groupLevel),j=Math.max(0,Math.min(levels.length-1,i+delta));state.groupLevel=levels[j];$("group-level").value=String(state.groupLevel);state.expanded.clear();state.revealed.clear();layout()}
+function setupSearch(){const input=$("search"),pop=$("search-pop");input.addEventListener("input",()=>{const q=input.value.trim().toLowerCase();if(q.length<2){pop.style.display="none";return}const hits=[];for(const n of allNodes){const hay=(n.id+" "+(n.module||"")+" "+(n.library||"")).toLowerCase();if(hay.includes(q))hits.push(n);if(hits.length>=30)break}pop.innerHTML=hits.map(n=>`<button data-id="${esc(n.id)}">${esc(n.id)}<small>${esc(n.module||"")} · ${esc(n.library||"")}</small></button>`).join("")||'<div class="empty" style="padding:8px">No matches</div>';const r=input.getBoundingClientRect();pop.style.left=r.left+"px";pop.style.top=(r.bottom+5)+"px";pop.style.display="block";pop.querySelectorAll('button[data-id]').forEach(b=>b.onclick=()=>{input.value="";pop.style.display="none";revealAndSelect(b.dataset.id)})});document.addEventListener("click",e=>{if(e.target!==input&&!pop.contains(e.target))pop.style.display="none"})}
+setup();
+})();
+</script>
+</body>
+</html>

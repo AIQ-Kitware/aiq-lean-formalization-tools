@@ -1,0 +1,18 @@
+required_files:
+  - MyLibrary/Core.lean
+  - MyLibrary/MainTheorem.lean
+
+required_declarations:
+  MyLibrary/Core.lean:
+    - MyLibrary.core_lemma
+  MyLibrary/MainTheorem.lean:
+    - MyLibrary.main_theorem
+
+forbid:
+  include:
+    - MyLibrary/**/*.lean
+    - MyLibrary/*.lean
+  admissions: true
+  axioms: true
+  patterns:
+    - '\bTODO_GROUNDING\b'

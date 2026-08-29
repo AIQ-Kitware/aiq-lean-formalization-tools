@@ -1,0 +1,6 @@
+version: 1
+rules:
+  - id: foundation-namespaces
+    modules: ["Foundation", "Foundation.*"]
+    allow: ["Foundation", "Foundation.*", "ContinuousLinearMap", "Submodule"]
+    message: "foundation declarations must live in the package namespace or an explicitly reviewed upstream namespace"

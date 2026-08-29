@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "review_kind": "source_semantic_review",
+  "paper": {"citation": "Example paper, 2026"},
+  "purpose": "Clause-by-clause comparison of source claims with Lean statements.",
+  "relation_definitions": {
+    "exact": "The Lean clause expresses the source clause at the reviewed scope.",
+    "strengthened": "The Lean clause is stronger than the source clause.",
+    "adapted": "The Lean clause records a documented source repair or modeling adaptation."
+  },
+  "rows": [
+    {
+      "id": "theorem-1",
+      "source_anchor": "Theorem 1",
+      "source_kind": "theorem",
+      "title": "Example headline theorem",
+      "importance": "headline",
+      "verdict": "exact",
+      "literal_source_covered": true,
+      "source_claim": "Printed claim in normalized prose.",
+      "lean_declarations": ["ExamplePaper.theorem_one"],
+      "clauses": [
+        {
+          "source_clause": "Population eigengap is positive.",
+          "lean_clause": "0 < gap",
+          "relation": "exact",
+          "note": "Same strict positivity assumption."
+        }
+      ],
+      "review": "The source and Lean interfaces align clause by clause.",
+      "notes": "",
+      "gap_refs": [],
+      "next_action": ""
+    }
+  ]
+}

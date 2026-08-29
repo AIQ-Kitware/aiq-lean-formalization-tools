@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lean import policy",
+  "type": "object",
+  "required": ["groups", "rules"],
+  "properties": {
+    "groups": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string"},
+          {"type": "array", "items": {"type": "string"}}
+        ]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from"],
+        "properties": {
+          "id": {"type": "string"},
+          "from": {"type": ["string", "array"]},
+          "allow": {"type": ["string", "array"]},
+          "deny": {"type": ["string", "array"]},
+          "transitive": {"type": "boolean"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "exceptions": {"type": "object"}
+  }
+}

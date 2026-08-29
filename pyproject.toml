@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiq-lean-formalization-tools"
+version = "0.1.0"
+description = "Reusable Lean formalization census, semantic-alignment, graph, audit, and reporting tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{name = "Jon Crall"}]
+dependencies = ["PyYAML>=6.0"]
+keywords = ["lean4", "formalization", "theorem-proving", "semantic-alignment", "audit"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+profile = ["line_profiler>=4.1"]
+
+[project.scripts]
+aiq-lean = "aiq_lean_tools.cli:main"
+leanq = "leanq.cli:main"
+lake-build-report = "aiq_lean_tools.lake_report:main"
+lean-warning-fix = "aiq_lean_tools.warning_fixer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aiq_lean_tools = ["assets/*.html", "schemas/*.json", "py.typed"]
+leanq = ["assets/*.html", "lean/*.lean"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"

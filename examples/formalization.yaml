@@ -1,0 +1,18 @@
+version: "v0.4"
+project:
+  name: "Example formalization"
+  description: "A source-faithful Lean formalization with maintained source ledgers."
+  authors: ["Example Author"]
+  license: "Apache-2.0"
+
+sources:
+  - title: "Example source paper"
+    authors: ["A. Author", "B. Author"]
+    type: "article"
+    relationship: "formalizes"
+    author_endorsement: "not-contacted"
+
+status:
+  scope: "Describe what is and is not formalized without collapsing implementation, proof, and source-fidelity status."
+  sorry_count: 0
+  axioms: []

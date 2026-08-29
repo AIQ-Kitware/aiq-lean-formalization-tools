@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lean source semantic review",
+  "type": "object",
+  "required": ["schema_version", "rows"],
+  "properties": {
+    "schema_version": {"type": ["integer", "string"]},
+    "review_kind": {"type": "string"},
+    "paper": {"type": "object"},
+    "relation_definitions": {"type": "object"},
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "lean_declarations": {"type": "array", "items": {"type": "string"}},
+          "clauses": {"type": "array", "items": {"type": "object"}}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,16 @@
+version: 1
+groups:
+  mathlib: ["Mathlib", "Mathlib.*"]
+  foundation: ["Foundation", "Foundation.*"]
+  paper: ["Paper", "Paper.*"]
+  experimental: ["Paper.Experimental", "Paper.Experimental.*"]
+rules:
+  - id: foundation-firewall
+    from: [foundation]
+    allow: [mathlib, foundation]
+    message: "foundation modules may depend only on Mathlib and the foundation layer"
+  - id: production-no-experimental
+    from: [paper]
+    deny: [experimental]
+    transitive: true
+exceptions: {}

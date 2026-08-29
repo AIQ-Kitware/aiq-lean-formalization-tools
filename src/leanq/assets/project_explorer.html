@@ -1,0 +1,1444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__LEANQ_TITLE__</title>
+<style>
+:root{
+  --bg:#f5f7fa;--panel:#fff;--text:#17212b;--muted:#637181;--border:#d6dde6;--edge:#8b98a7;
+  --accent:#174ea6;--shared:#8b3fb0;--headline:#d23b2d;--support:#b97800;
+  --shadow:0 5px 18px #1f293312;
+  font-family:Inter,ui-sans-serif,system-ui,sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#10161d;--panel:#19222c;--text:#eef3f8;--muted:#a8b4c0;--border:#384655;--edge:#667789;
+  --accent:#8ab4f8;--shared:#d99cff;--headline:#ff8b7e;--support:#ffc45c;--shadow:0 5px 18px #0005;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit;color:inherit;border:1px solid var(--border);background:var(--panel);border-radius:7px;min-height:30px}
+button{padding:4px 9px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+#app{height:100%;display:grid;grid-template-rows:auto auto 1fr}
+.top{padding:9px 14px 3px;display:flex;gap:16px;align-items:start}
+.top h1{font-size:1.18rem;margin:0}
+.top p{font-size:.76rem;color:var(--muted);margin:3px 0 0}
+.badges{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;justify-content:end}
+.badge{font-size:.71rem;padding:3px 7px;border:1px solid var(--border);border-radius:99px;background:var(--panel)}
+.toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:5px 14px 8px}
+.toolbar label{font-size:.75rem;color:var(--muted);display:inline-flex;gap:5px;align-items:center}
+.toolbar .sep{width:1px;height:22px;background:var(--border)}
+select,input{padding:4px 6px}
+#search{width:min(340px,30vw)}
+.search-wrap{position:relative}
+.results{display:none;position:absolute;z-index:20;left:0;top:34px;width:540px;max-width:80vw;max-height:350px;overflow:auto;background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:8px}
+.results button{width:100%;text-align:left;border:0;border-radius:0;padding:6px 9px}
+.results small{display:block;color:var(--muted);font-size:.7rem}
+.workspace{display:grid;grid-template-columns:1fr 360px;gap:10px;padding:0 14px 12px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);min-height:0}
+.canvas{position:relative;overflow:hidden}
+.side{overflow:auto;padding:10px 12px}
+.side h2{font-size:.95rem;margin:2px 0 6px}
+.side h3{font-size:.8rem;margin:14px 0 5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.empty{color:var(--muted);font-size:.8rem}
+svg{width:100%;height:100%;display:block;touch-action:none}
+svg .edge{stroke:var(--edge);stroke-width:1;opacity:.32;fill:none}
+svg .edge.hot{stroke:var(--accent);stroke-width:2.4;opacity:1}
+svg .node{cursor:pointer}
+svg .node rect{rx:7;stroke:color-mix(in srgb,var(--text) 33%,transparent);stroke-width:1}
+svg .node text{font-size:10px;fill:#15202b;pointer-events:none}
+svg .node text.small{font-size:8px;fill:#4b5a6b}
+svg .node.cluster rect{stroke-dasharray:4 3}
+svg .node.headline rect{stroke:var(--headline);stroke-width:3}
+svg .edge.via{stroke-dasharray:4 3}
+svg .node.supporting rect{stroke:var(--support);stroke-width:2}
+svg .node.shared rect{stroke:var(--shared);stroke-width:2}
+svg .node.selected rect{stroke:var(--accent);stroke-width:3.4}
+svg .node.faded{opacity:.22}
+svg .node text.star{font-size:13px;fill:#b8241a}
+svg .node text.chevron{font-size:11px;fill:#5b6b7d}
+svg .node.cluster text.chevron{fill:#174ea6;font-weight:700}
+svg text.band{font-size:11px;font-weight:650;fill:#5b6b7d}
+svg text.band.empty{font-weight:400;fill:#9aa8b6;font-style:italic}
+@media(prefers-color-scheme:dark){svg text.band{fill:#a8b4c0}svg .node text.chevron{fill:#33414f}}
+.claim{margin-bottom:4px}
+.realizations{margin:1px 0 4px 22px;border-left:2px solid var(--border);padding-left:7px}
+.realizations label{font-size:.7rem;padding:1px 3px;word-break:break-all}
+.realizations small{display:block;color:var(--muted);font-size:.64rem;word-break:normal}
+.realizations b{color:var(--accent);font-weight:650}
+.packages{width:280px;padding:7px 9px}
+.packages label{display:flex;gap:7px;align-items:center;font-size:.76rem;padding:3px 2px;cursor:pointer}
+.packages input{min-height:0}
+.packages small{color:var(--muted);margin-left:auto}
+.packages .row{display:flex;gap:5px;margin-bottom:5px}
+.packages .row button{font-size:.7rem;min-height:22px;padding:1px 6px}
+.note{position:absolute;left:10px;bottom:8px;font-size:.7rem;color:var(--muted);background:color-mix(in srgb,var(--panel) 84%,transparent);padding:3px 7px;border-radius:6px}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.76rem;margin:6px 0}
+.meta dt{color:var(--muted)}
+.meta dd{margin:0;word-break:break-word}
+.title{font-weight:650;font-size:.92rem;word-break:break-word}
+.sub{font-size:.72rem;color:var(--muted);word-break:break-word;margin-top:2px}
+.cmd{margin-top:7px}
+.cmd .why{color:var(--muted);font-size:.67rem;margin:5px 0 2px}
+.cmd code{display:block;white-space:pre-wrap;word-break:break-all;padding:5px 7px;border-radius:6px;
+  border:1px solid var(--border);background:color-mix(in srgb,var(--accent) 6%,var(--panel));
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.7rem;line-height:1.35}
+.cmd button{margin-top:5px;font-size:.7rem;min-height:24px;padding:2px 8px}
+.actions{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+.actions button{font-size:.74rem;min-height:26px}
+.path{font-size:.72rem;padding-left:18px;margin:5px 0;max-height:220px;overflow:auto}
+.path li{word-break:break-word;margin-bottom:1px}
+.family-title{font-size:.72rem;font-weight:650;margin:9px 0 3px;display:flex;align-items:center;gap:6px}
+.family-title button{font-size:.66rem;min-height:20px;padding:1px 5px}
+.family-head{cursor:pointer;user-select:none;border-radius:6px;padding:2px 4px}
+.family-head:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.family-head .caret{display:inline-block;width:9px;font-size:.6rem;color:var(--muted)}
+.family-head .name{flex:1}
+.family-head .tally{font-weight:400;color:var(--muted);font-size:.66rem;white-space:nowrap}
+.family-head.on .tally{color:var(--headline)}
+.headline-selection label{display:flex;gap:7px;align-items:start;font-size:.76rem;padding:3px 4px;border-radius:6px;cursor:pointer}
+.headline-selection label:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.headline-selection input{min-height:0;margin-top:3px}
+.headline-selection small{display:block;color:var(--muted);font-size:.68rem}
+.subset-actions{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:4px}
+.headline-list button{display:block;width:100%;text-align:left;margin-bottom:3px;font-size:.75rem;padding:4px 7px}
+.headline-list button span{display:block;color:var(--muted);font-size:.67rem;word-break:break-word}
+.headline-list button.inactive{opacity:.45}
+.compare{font-size:.76rem;line-height:1.45}
+@media(max-width:950px){.workspace{grid-template-columns:1fr 300px}}
+@media(max-width:700px){.workspace{grid-template-columns:1fr}.side{display:none}.top p{display:none}.badges{display:none}#search{width:55vw}}
+</style>
+</head>
+<body><div id="app">
+<div class="top">
+  <div><h1>Whole formalization dependency explorer</h1>
+  <p>Complete compiler-derived graph; visible nodes are a local, interactive projection. Edges point from dependency to consumer.</p></div>
+  <div class="badges" id="badges"></div>
+</div>
+<div class="toolbar">
+  <label>Layout <select id="layout">
+    <option value="library">Library bands</option>
+    <option value="depth">Dependency depth</option>
+  </select></label>
+  <label>Group <select id="depth">
+    <option value="1">Library</option>
+    <option value="2">Library / top module</option>
+    <option value="3">Module depth 3</option>
+    <option value="4">Module depth 4</option>
+    <option value="99">Every module</option>
+    <option value="0">Declarations</option>
+  </select></label>
+  <label title="Hide every declaration that is not a dependency of a selected headline theorem">
+    <input type="checkbox" id="restrict" checked> Ancestors of selection only</label>
+  <label title="Keep only declarations reached by at least two selected headline theorems">
+    <input type="checkbox" id="sharedonly"> Shared foundations only</label>
+  <label title="Fold private helpers, proof terms and generated equation lemmas out of the drawing. Each chain through them is reconnected, so no dependency path is lost; the edge records how many were folded away.">
+    <input type="checkbox" id="hideinternal" checked> Collapse internal helpers</label>
+  <div class="search-wrap"><button id="packages-toggle">Packages</button>
+    <div id="packages" class="results packages"></div></div>
+  <span class="sep"></span>
+  <div class="search-wrap"><input id="search" type="search" placeholder="Search declaration, module, library, census title..."><div id="results" class="results"></div></div>
+  <span class="sep"></span>
+  <button id="unhide">Unhide all</button>
+  <button id="clearfocus">Clear focus</button>
+  <button id="reset">Reset view</button>
+  <button id="fit">Fit</button><button id="zin">+</button><button id="zout">-</button>
+  <span class="sep"></span>
+  <label>Export <select id="export-scope">
+    <option value="visible">Visible projection</option>
+    <option value="selection">Selected headline closure</option>
+    <option value="cone">Selected node dependency cone</option>
+    <option value="complete">Complete graph</option>
+  </select></label>
+  <label title="Output format of the Graphviz command shown after a DOT export">as <select id="export-format">
+    <option value="svg">SVG</option>
+    <option value="png">PNG</option>
+    <option value="pdf">PDF</option>
+  </select></label>
+  <label title="Graphviz layout engine. Auto picks one from the size of the export."><select id="export-engine">
+    <option value="auto">auto engine</option>
+    <option value="dot">dot</option>
+    <option value="neato">neato</option>
+    <option value="fdp">fdp</option>
+    <option value="sfdp">sfdp</option>
+    <option value="circo">circo</option>
+    <option value="twopi">twopi</option>
+  </select></label>
+  <button id="export-dot">DOT</button><button id="export-json">JSON</button>
+  <span class="badge" id="visible"></span>
+</div>
+<div class="workspace">
+  <section class="panel canvas">
+    <svg id="graph"><defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6z" fill="context-stroke"/></marker></defs><g id="viewport"></g></svg>
+    <div class="note">Double-click a cluster to open only its immediate children. Double-click a declaration to pull in one dependency level. Shift-click a second node to compare two.</div>
+  </section>
+  <aside class="panel side">
+    <h3>Headline subset</h3>
+    <div class="subset-actions"><button id="subset-default">Paper default</button><button id="subset-all">All</button><button id="subset-none">None</button></div>
+    <div id="headline-selection" class="headline-selection"></div>
+    <h3>Selection</h3>
+    <div id="details" class="empty"></div>
+    <h3>Headline landmarks</h3>
+    <div id="headline-list" class="headline-list"></div>
+  </aside>
+</div>
+</div>
+<script id="leanq-data" type="application/json">__LEANQ_DATA__</script>
+<script>
+(()=>{"use strict";
+const DATA = JSON.parse(document.getElementById("leanq-data").textContent);
+const NS = "http://www.w3.org/2000/svg";
+const allNodes = DATA.nodes || [], allEdges = DATA.edges || [];
+const byId = new Map(allNodes.map(n => [n.id, n]));
+
+/* ---------------------------------------------------------------- adjacency */
+const incoming = new Map(), outgoing = new Map();       // dependencies of / consumers of
+for (const n of allNodes) { incoming.set(n.id, []); outgoing.set(n.id, []); }
+for (const e of allEdges) {
+  const out = outgoing.get(e.source), inc = incoming.get(e.target);
+  if (out && inc) { out.push(e.target); inc.push(e.source); }
+}
+
+/* ---------------------------------------------- internal-helper contraction */
+/* Private constants, proof terms and generated equation lemmas carry no
+   conceptual content, but a public theorem's route to its foundations usually
+   runs straight through them.  Hiding them would cut those routes, so they are
+   *contracted* instead: every public consumer is reconnected to the public
+   dependencies it reaches through a chain of them, and the resulting edge
+   records how many were folded away.  Reachability itself is always computed on
+   the full graph, so ancestor closures, coverage counts and shortest paths do
+   not depend on this setting -- only what is drawn does. */
+const GENERATED_SUFFIX = /\.(?:eq_\d+|eq_def|_eq_\d+)$/;
+function isInternalNode(n){return n.internal === true || GENERATED_SUFFIX.test(n.id)}
+const internalIds = new Set(allNodes.filter(isInternalNode).map(n => n.id));
+function collapsingInternal(){return internalBox.checked && internalIds.size > 0}
+
+let contractedCache = null;
+function contractedGraph() {
+  if (contractedCache) return contractedCache;
+  /* Nearest public consumers of an internal node, with how many internal nodes
+     the shortest route crosses.  A cycle among internal nodes contributes
+     nothing on the back edge, which is the only place this under-reports. */
+  const memo = new Map(), active = new Set();
+  function nearest(id) {
+    const hit = memo.get(id);
+    if (hit) return hit;
+    if (active.has(id)) return new Map();
+    active.add(id);
+    const out = new Map();
+    for (const v of outgoing.get(id) || []) {
+      if (!internalIds.has(v)) { const c = out.get(v); if (c === undefined || c > 1) out.set(v, 1); }
+      else for (const [w, c] of nearest(v)) {
+        const seen = out.get(w);
+        if (seen === undefined || seen > c + 1) out.set(w, c + 1);
+      }
+    }
+    active.delete(id);
+    memo.set(id, out);
+    return out;
+  }
+  const emap = new Map(), inc = new Map(), out = new Map();
+  const add = (a, b, via) => {
+    if (a === b) return;
+    const k = a + " " + b, row = emap.get(k);
+    if (row) { if (via < row.collapsedNodeCount) row.collapsedNodeCount = via; return; }
+    emap.set(k, {source: a, target: b, collapsedNodeCount: via});
+    if (!inc.has(b)) inc.set(b, []);
+    if (!out.has(a)) out.set(a, []);
+    inc.get(b).push(a);
+    out.get(a).push(b);
+  };
+  for (const n of allNodes) {
+    if (internalIds.has(n.id)) continue;
+    for (const v of outgoing.get(n.id) || []) {
+      if (!internalIds.has(v)) add(n.id, v, 0);
+      else for (const [w, c] of nearest(v)) add(n.id, w, c);
+    }
+  }
+  contractedCache = {edges: [...emap.values()], incoming: inc, outgoing: out};
+  return contractedCache;
+}
+/* Adjacency for the things the user *sees*: opening one dependency level must
+   land on drawn nodes, not on helpers the projection is about to fold away. */
+function depAdj(){return collapsingInternal() ? contractedGraph().incoming : incoming}
+function consAdj(){return collapsingInternal() ? contractedGraph().outgoing : outgoing}
+
+/* ------------------------------------------------- hierarchical cluster keys */
+/* Every declaration sits at Library / module segment / module segment / ... .
+   A projection collapses it at the shallowest prefix that is not expanded, so
+   opening one cluster reveals only its immediate children.                    */
+for (const n of allNodes) {
+  const lib = n.library || "Other";
+  let parts = (n.module || "").split(".").filter(Boolean);
+  if (parts.length && parts[0] === lib) parts = parts.slice(1);
+  const path = [lib, ...parts], keys = [];
+  for (let i = 0; i < path.length; i++) keys.push(path.slice(0, i + 1).join("/"));
+  n._keys = keys;
+}
+/* A second cluster path rooted at the paper foundation, so a cluster in that
+   mode never spans two foundations and the band of a collapsed cluster is
+   well defined. */
+for (const n of allNodes) {
+  const root = n.foundation || "(no paper foundation)";
+  n._fkeys = [root, ...n._keys.map(k => root + "/" + k)];
+}
+
+/* -------------------------------------------------------------- census data */
+const analysis = DATA.headlineAnalysis || {};
+const claims = analysis.claims || [];
+const headlines = analysis.headlines || [];
+const headlineByDecl = new Map(headlines.map(h => [h.declaration, h]));
+
+function defaultClaimIds() {
+  const declared = analysis.defaultClaimSelection;
+  if (Array.isArray(declared) && declared.length) return new Set(declared);
+  const theorems = claims.filter(c => /theorem/.test(c.sourceKind || "")).map(c => c.nodeId);
+  return new Set(theorems.length ? theorems : claims.map(c => c.nodeId));
+}
+/* Realizations of a claim that no other realization of the same claim consumes.
+   Selecting these alone still covers the claim's whole dependency closure.   */
+function claimLeaves(c) {
+  const rows = (c.leafDeclarations || c.canonicalDeclarations || []).filter(x => byId.has(x));
+  return rows.length ? rows : (c.canonicalDeclarations || []).filter(x => byId.has(x));
+}
+function claimRealizations(c) {
+  return (c.canonicalDeclarations || []).filter(x => byId.has(x));
+}
+/* Selection is per *declaration*, so one leaf of a multi-realization claim can
+   be chosen on its own; the claim checkbox is a group control over them.     */
+function paperDefaultSeeds() {
+  const wanted = defaultClaimIds(), seeds = new Set();
+  for (const c of claims) if (wanted.has(c.nodeId)) for (const d of claimLeaves(c)) seeds.add(d);
+  return seeds;
+}
+
+/* -------------------------------------------------------------------- state */
+let selectedSeeds = paperDefaultSeeds();
+/* Which paper sections of the subset panel are open.  The panel is rebuilt on
+   every selection change, so the open set has to outlive the render. */
+let openFamilies = new Set();
+let expanded = new Set();      // cluster keys the user opened
+let revealed = new Set();      // declarations forced to render as real nodes
+let collapsed = new Set();     // declarations forced back into their module
+let hiddenNodes = new Set();
+let selected = [], highlighted = new Set(), focusRegion = null;
+let transform = {x: 0, y: 0, s: 1}, dragging = null;
+let layoutPos = new Map(), currentProjection = {nodes: [], edges: []};
+let unreachedLibraries = [];
+/* Packages the viewer is allowed to draw.  The Mathlib boundary, when the
+   payload carries one, starts hidden: it is the reason the option exists but
+   almost never what you want on screen. */
+let enabledLibraries = new Set();
+
+const $ = id => document.getElementById(id);
+const svg = $("graph"), viewport = $("viewport"), details = $("details");
+const depthSelect = $("depth"), restrictBox = $("restrict"), sharedBox = $("sharedonly");
+const internalBox = $("hideinternal");
+const layoutSelect = $("layout");
+
+/* --------------------------------------------------------------- utilities */
+const stateColors = new Map();
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function color(s){if(!stateColors.has(s))stateColors.set(s,`hsl(${hash(s)%360} 52% 76%)`);return stateColors.get(s)}
+function short(s){return String(s).split(".").pop()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function walk(starts, adj, levels = Infinity) {
+  const seen = new Set(starts), q = [...starts].map(x => [x, 0]);
+  for (let i = 0; i < q.length; i++) {
+    const [n, d] = q[i];
+    if (d >= levels) continue;
+    for (const x of adj.get(n) || []) if (!seen.has(x)) { seen.add(x); q.push([x, d + 1]); }
+  }
+  return seen;
+}
+function distances(start, adj) {
+  const d = new Map([[start, 0]]), q = [start];
+  for (let i = 0; i < q.length; i++)
+    for (const x of adj.get(q[i]) || []) if (!d.has(x)) { d.set(x, d.get(q[i]) + 1); q.push(x); }
+  return d;
+}
+
+/* ---------------------------------------- selected-headline derived closures */
+let cache = {key: null, decls: new Set(), coverage: new Map(), ancestors: new Set()};
+function selectionKey(){return [...selectedSeeds].sort().join("|")}
+function refreshSelectionCache() {
+  const key = selectionKey();
+  if (cache.key === key) return;
+  const decls = new Set([...selectedSeeds].filter(name => byId.has(name)));
+  const coverage = new Map(), ancestors = new Set();
+  for (const seed of decls) {
+    for (const id of walk([seed], incoming)) {
+      coverage.set(id, (coverage.get(id) || 0) + 1);
+      ancestors.add(id);
+    }
+  }
+  cache = {key, decls, coverage, ancestors};
+}
+function activeHeadlineDeclarations(){refreshSelectionCache();return cache.decls}
+function ancestorUniverse(){refreshSelectionCache();return cache.ancestors}
+function coverageCount(id){refreshSelectionCache();return cache.coverage.get(id) || 0}
+function isSelectedHeadline(n){return activeHeadlineDeclarations().has(n.id)}
+function selectedClaimIds() {
+  const ids = new Set();
+  for (const c of claims) if (claimRealizations(c).some(d => selectedSeeds.has(d))) ids.add(c.nodeId);
+  return ids;
+}
+function isSelectedSupporting(n) {
+  if (isSelectedHeadline(n)) return false;
+  const active = selectedClaimIds();
+  return (n.supportingClaims || []).some(c => active.has(c.nodeId));
+}
+
+/* --------------------------------------------------------------- projection */
+function universe() {
+  /* With the restriction on, the scope is exactly the ancestor closure of the
+     selected headlines: selecting nothing therefore renders nothing.        */
+  let base = null;
+  if (restrictBox.checked) base = ancestorUniverse();
+  if (focusRegion) base = base ? new Set([...focusRegion].filter(x => base.has(x))) : focusRegion;
+  return base;
+}
+/* A prefix is open when the global grouping depth already covers it or the user
+   opened it explicitly.  Opening one cluster therefore never re-groups another
+   branch, which is what made expansion look like it collapsed the view.      */
+function clusterKeyFor(n, limit, byFoundation) {
+  const keys = byFoundation ? n._fkeys : n._keys;
+  if (collapsed.has(n.id)) return keys[keys.length - 1];
+  if (revealed.has(n.id) || isSelectedHeadline(n)) return null;
+  for (let i = 0; i < keys.length; i++) {
+    const autoOpen = limit === 0 || i + 1 < limit;
+    if (!autoOpen && !expanded.has(keys[i])) return keys[i];
+  }
+  return null;
+}
+function project() {
+  const allowed = universe();
+  const foundationMode = layoutSelect.value === "foundation";
+  const limit = Number(depthSelect.value) + (foundationMode ? 1 : 0);
+  const sharedOnly = sharedBox.checked && activeHeadlineDeclarations().size > 0;
+  const foldInternal = collapsingInternal();
+  const group = new Map(), members = new Map();
+  let foldedCount = 0;
+  for (const n of allNodes) {
+    if (hiddenNodes.has(n.id)) continue;
+    if (foldInternal && internalIds.has(n.id) && !isSelectedHeadline(n)) { foldedCount++; continue; }
+    if (!enabledLibraries.has(n.library || "Other")) continue;
+    if (allowed && !allowed.has(n.id)) continue;
+    if (sharedOnly && coverageCount(n.id) < 2 && !isSelectedHeadline(n)) continue;
+    const key = clusterKeyFor(n, limit, foundationMode);
+    const id = key === null ? n.id : "cluster:" + key;
+    group.set(n.id, id);
+    if (!members.has(id)) members.set(id, []);
+    members.get(id).push(n);
+  }
+  const pnodes = [];
+  for (const [id, rows] of members) {
+    if (rows.length === 1 && id === rows[0].id) {
+      const row = rows[0];
+      pnodes.push({...row, cluster: false, members: [id],
+        selectedHeadline: isSelectedHeadline(row),
+        selectedSupporting: isSelectedSupporting(row),
+        selectedCoverageCount: coverageCount(row.id),
+        projectedInCount: 0, projectedOutCount: 0, hiddenEdgeCount: 0});
+      continue;
+    }
+    const key = id.slice("cluster:".length), parts = key.split("/");
+    pnodes.push({
+      id, cluster: true, fullKey: key, name: parts[parts.length - 1],
+      clusterKind: parts.length === 1 ? "library" : "module",
+      members: rows.map(n => n.id),
+      hiddenDeclarationCount: rows.length, hiddenEdgeCount: 0,
+      projectedInCount: 0, projectedOutCount: 0,
+      maximumDependencyDepth: Math.max(0, ...rows.map(n => n.dependencyDepth || 0)),
+      headlineCoverageCount: Math.max(0, ...rows.map(n => coverageCount(n.id))),
+      headlineCount: rows.filter(isSelectedHeadline).length,
+      childCount: new Set(rows.map(
+        n => (foundationMode ? n._fkeys : n._keys)[parts.length] || n.id)).size,
+      moduleCount: new Set(rows.map(n => n.module)).size,
+      library: foundationMode ? (rows[0].library || "Other") : parts[0],
+      foundation: foundationMode ? parts[0] : undefined,
+    });
+  }
+  const byProjectedId = new Map(pnodes.map(n => [n.id, n])), emap = new Map();
+  for (const e of (foldInternal ? contractedGraph().edges : allEdges)) {
+    const a = group.get(e.source), b = group.get(e.target);
+    if (!a || !b) continue;
+    if (a === b) { const n = byProjectedId.get(a); if (n) n.hiddenEdgeCount++; continue; }
+    const k = a + " " + b;
+    let row = emap.get(k);
+    if (!row) {
+      row = {source: a, target: b, edgeCount: 0, witness: [e.source, e.target], collapsedNodeCount: 0};
+      emap.set(k, row);
+    }
+    row.edgeCount++;
+    if (e.collapsedNodeCount > row.collapsedNodeCount) row.collapsedNodeCount = e.collapsedNodeCount;
+  }
+  for (const e of emap.values()) {
+    byProjectedId.get(e.source).projectedOutCount++;
+    byProjectedId.get(e.target).projectedInCount++;
+  }
+  /* A declaration is expandable while any of its in-scope direct dependencies
+     is still folded inside a cluster; a cluster is always expandable. */
+  for (const n of pnodes) {
+    if (n.cluster) { n.expandable = true; n.foldedDependencyCount = n.hiddenDeclarationCount; continue; }
+    let folded = 0;
+    for (const d of depAdj().get(n.id) || []) {
+      const g = group.get(d);
+      if (g && g !== d) folded++;
+    }
+    n.foldedDependencyCount = folded;
+    n.expandable = folded > 0;
+  }
+  currentProjection = {nodes: pnodes, edges: [...emap.values()], foldedInternalCount: foldedCount};
+  return currentProjection;
+}
+
+/* ------------------------------------------------------------------- layout */
+/* Cluster keys are Library/segment/segment; the qualified Lean module name is
+   the same path with dots, because the duplicated library segment was stripped. */
+function qualifiedKey(key){return String(key).split("/").join(".")}
+function significantLabel(n){return n.cluster ? qualifiedKey(n.fullKey) : n.id}
+/* Wrap a qualified name on its dots, then hard-break any oversized segment. */
+function wrap(t, width = 34, maxLines = 3) {
+  const parts = String(t).split(".");
+  const lines = [];
+  let current = "";
+  for (let i = 0; i < parts.length; i++) {
+    const piece = parts[i] + (i < parts.length - 1 ? "." : "");
+    if (!current) {
+      current = piece;
+    } else if ((current + piece).length <= width) {
+      current += piece;
+    } else {
+      lines.push(current);
+      current = piece;
+    }
+    while (current.length > width) { lines.push(current.slice(0, width)); current = current.slice(width); }
+  }
+  if (current) lines.push(current);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = lines[maxLines - 1].slice(0, width - 1) + "…";
+  }
+  return lines;
+}
+/* Package column order.
+
+   The library-level dependency graph is a DAG, so any topological order is
+   defensible; an alphabetical tiebreak can interleave independent lineages.
+
+   This is a depth-first Kahn traversal: a package becomes available once every
+   prerequisite is placed, and among available packages the traversal continues
+   down the heaviest outgoing chain first. That keeps dependency lineages
+   contiguous instead of scheduling by rank alone. Only the dominant direction
+   of a package pair becomes an edge, as a defensive fallback against a cycle. */
+const libraryGraph = (() => {
+  const libs = [...new Set(allNodes.map(n => n.library || "Other"))].sort();
+  const weight = new Map();
+  for (const e of allEdges) {
+    const a = byId.get(e.source)?.library || "Other", b = byId.get(e.target)?.library || "Other";
+    if (a === b) continue;
+    const k = a + "\u0000" + b;
+    weight.set(k, (weight.get(k) || 0) + 1);
+  }
+  const out = new Map(libs.map(l => [l, []]));
+  const indeg = new Map(libs.map(l => [l, 0]));
+  for (const [k, count] of weight) {
+    const [a, b] = k.split("\u0000");
+    if (!out.has(a) || !out.has(b)) continue;
+    if (count < (weight.get(b + "\u0000" + a) || 0)) continue;
+    if (out.get(a).some(row => row.lib === b)) continue;
+    out.get(a).push({lib: b, count});
+    indeg.set(b, indeg.get(b) + 1);
+  }
+  /* ascending weight, so the heaviest successor ends up on top of the stack */
+  for (const rows of out.values())
+    rows.sort((x, y) => x.count - y.count || y.lib.localeCompare(x.lib));
+  const rank = new Map(libs.map(l => [l, 0]));
+  const pending = new Map(indeg);
+  const stack = libs.filter(l => pending.get(l) === 0).sort((a, b) => b.localeCompare(a));
+  const order = [], placed = new Set();
+  while (stack.length) {
+    const a = stack.pop();
+    if (placed.has(a)) continue;
+    placed.add(a);
+    order.push(a);
+    for (const {lib: b} of out.get(a)) {
+      rank.set(b, Math.max(rank.get(b), rank.get(a) + 1));
+      pending.set(b, pending.get(b) - 1);
+      if (pending.get(b) === 0) stack.push(b);
+    }
+  }
+  for (const l of libs) if (!placed.has(l)) order.push(l);
+  return {rank, order};
+})();
+const libraryRank = libraryGraph.rank;
+const libraryOrder = libraryGraph.order;
+
+/* Named mathematical foundations may cut across packages when results are
+   promoted or reused. Banding by foundation therefore shows mathematical role
+   independently of which package currently hosts a declaration. */
+const FOUNDATION_LABELS = (DATA.foundations || {}).labels || {};
+const NO_FOUNDATION = "(no paper foundation)";
+function foundationOf(n){return n.foundation || NO_FOUNDATION}
+function foundationLabel(f){return f === NO_FOUNDATION ? f : (FOUNDATION_LABELS[f] || f)}
+const foundationOrder = (() => {
+  const keys = [...new Set(allNodes.map(foundationOf))].sort();
+  const weight = new Map();
+  for (const e of allEdges) {
+    const a = byId.get(e.source), b = byId.get(e.target);
+    if (!a || !b) continue;
+    const fa = foundationOf(a), fb = foundationOf(b);
+    if (fa === fb) continue;
+    const k = fa + "\u0000" + fb;
+    weight.set(k, (weight.get(k) || 0) + 1);
+  }
+  const out = new Map(keys.map(k => [k, []])), indeg = new Map(keys.map(k => [k, 0]));
+  for (const [k, count] of weight) {
+    const [a, b] = k.split("\u0000");
+    if (!out.has(a) || !out.has(b) || out.get(a).some(r => r.key === b)) continue;
+    if (count < (weight.get(b + "\u0000" + a) || 0)) continue;
+    out.get(a).push({key: b, count});
+    indeg.set(b, indeg.get(b) + 1);
+  }
+  for (const rows of out.values())
+    rows.sort((x, y) => x.count - y.count || y.key.localeCompare(x.key));
+  const pending = new Map(indeg);
+  const stack = keys.filter(k => pending.get(k) === 0).sort((a, b) => b.localeCompare(a));
+  const order = [], placed = new Set();
+  while (stack.length) {
+    const a = stack.pop();
+    if (placed.has(a)) continue;
+    placed.add(a);
+    order.push(a);
+    for (const {key: b} of out.get(a)) {
+      pending.set(b, pending.get(b) - 1);
+      if (pending.get(b) === 0) stack.push(b);
+    }
+  }
+  for (const k of keys) if (!placed.has(k)) order.push(k);
+  return order;
+})();
+const BOUNDARY = (DATA.boundary || {}).library || "Mathlib";
+
+function topology(P) {
+  const ins = new Map(P.nodes.map(n => [n.id, 0])), outs = new Map(P.nodes.map(n => [n.id, []]));
+  for (const e of P.edges) { ins.set(e.target, (ins.get(e.target) || 0) + 1); outs.get(e.source)?.push(e.target); }
+  const q = [...ins].filter(x => x[1] === 0).map(x => x[0]).sort(), d = new Map(P.nodes.map(n => [n.id, 0]));
+  for (let i = 0; i < q.length; i++) {
+    const a = q[i];
+    for (const b of outs.get(a) || []) {
+      d.set(b, Math.max(d.get(b) || 0, (d.get(a) || 0) + 1));
+      ins.set(b, ins.get(b) - 1);
+      if (ins.get(b) === 0) q.push(b);
+    }
+  }
+  const ranks = [...new Set(d.values())].sort((a, b) => a - b), ri = new Map(ranks.map((x, i) => [x, i]));
+  return new Map([...d].map(([k, v]) => [k, ri.get(v)]));
+}
+function el(tag, attrs = {}) {
+  const x = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) x.setAttribute(k, v);
+  return x;
+}
+
+function render() {
+  const P = project(), depth = topology(P), columns = new Map();
+  /* Library bands keep each package in one column and pin every selected
+     headline theorem to one extremal column, so the edges into them are the
+     picture.  The depth layout keeps the older topological columns.         */
+  /* Only libraries this selection actually reaches get a column; an unreached
+     package would otherwise hold an empty band open across the whole canvas. */
+  const mode = layoutSelect.value;
+  const bandLayout = mode === "library" || mode === "foundation";
+  const keyOf = mode === "foundation" ? foundationOf : (n => n.library || "Other");
+  const universeOrder = mode === "foundation" ? foundationOrder : libraryOrder;
+  const reached = new Set();
+  for (const n of P.nodes) if (!n.selectedHeadline) reached.add(keyOf(n));
+  const activeBands = universeOrder.filter(k => reached.has(k));
+  unreachedLibraries = mode === "foundation" ? [] : libraryOrder.filter(
+    lib => enabledLibraries.has(lib) && !reached.has(lib));
+  const bandColumn = new Map(activeBands.map((k, i) => [k, i]));
+  const headlineBand = activeBands.length;
+  const bandOf = n => bandLayout
+    ? (n.selectedHeadline ? headlineBand : (bandColumn.get(keyOf(n)) ?? 0))
+    : (depth.get(n.id) || 0);
+  if (bandLayout) for (let d = 0; d <= headlineBand; d++) columns.set(d, []);
+  for (const n of P.nodes) {
+    const d = bandOf(n);
+    if (!columns.has(d)) columns.set(d, []);
+    columns.get(d).push(n);
+  }
+  for (const rows of columns.values())
+    rows.sort((a, b) => (a.library || "").localeCompare(b.library || "")
+      || (depth.get(a.id) || 0) - (depth.get(b.id) || 0)
+      || significantLabel(a).localeCompare(significantLabel(b)));
+  const W = 272, H = 78, X = 74, Y = 35, xgap = 96, ygap = 18;
+  const columnX = d => X + d * (W + xgap);
+  layoutPos = new Map();
+  let maxRows = 1, maxCol = 0;
+  for (const [d, rows] of columns) {
+    maxCol = Math.max(maxCol, d);
+    maxRows = Math.max(maxRows, rows.length);
+    rows.forEach((n, i) => layoutPos.set(n.id, {x: columnX(d), y: Y + i * (H + ygap), w: W, h: H}));
+  }
+  viewport.replaceChildren();
+  for (const [d, rows] of [...columns].sort((a, b) => a[0] - b[0])) {
+    if (!rows.length) continue;
+    const label = bandLayout
+      ? (d === headlineBand ? "Selected headline theorems"
+         : (mode === "foundation" ? foundationLabel(activeBands[d]) : activeBands[d]))
+      : `depth ${d}`;
+    const head = el("text", {x: columnX(d), y: Y - 12, class: "band"});
+    head.textContent = `${label} · ${rows.length}`;
+    viewport.append(head);
+  }
+  for (const e of P.edges) {
+    const a = layoutPos.get(e.source), b = layoutPos.get(e.target);
+    if (!a || !b) continue;
+    const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, m = (x1 + x2) / 2;
+    /* A dashed edge is one that was routed through folded internal helpers, so
+       the reader can tell an indirect link from a declared dependency. */
+    const via = e.collapsedNodeCount || 0;
+    const path = el("path", {
+      d: `M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}`,
+      class: "edge" + (highlighted.has(e.source) && highlighted.has(e.target) ? " hot" : "")
+        + (via ? " via" : ""),
+      "marker-end": "url(#arrow)"});
+    if (via) {
+      const t = el("title");
+      t.textContent = `through ${via} internal helper${via === 1 ? "" : "s"}`;
+      path.append(t);
+    }
+    viewport.append(path);
+  }
+  for (const n of P.nodes) {
+    const p = layoutPos.get(n.id);
+    const shared = (n.cluster ? n.headlineCoverageCount : n.selectedCoverageCount) >= 2;
+    const classes = ["node", n.cluster ? "cluster" : "", n.selectedHeadline ? "headline" : "",
+      n.selectedSupporting ? "supporting" : "", shared ? "shared" : "",
+      selected.includes(n.id) ? "selected" : "",
+      highlighted.size && !highlighted.has(n.id) ? "faded" : ""].filter(Boolean).join(" ");
+    const g = el("g", {class: classes, transform: `translate(${p.x},${p.y})`});
+    g.append(el("rect", {width: W, height: H, fill: color(n.library || "Other")}));
+    const marker = el("text", {x: 7, y: 17, class: n.selectedHeadline ? "star" : "chevron"});
+    marker.textContent = n.selectedHeadline ? "★" : n.expandable ? "▸" : "•";
+    g.append(marker);
+    const claimTitle = n.cluster ? null : n.headlineClaims?.[0]?.claimTitle;
+    wrap(significantLabel(n)).forEach((s, i) => {
+      const t = el("text", {x: 22, y: 17 + i * 12});
+      t.textContent = s;
+      g.append(t);
+    });
+    const sub = el("text", {x: 9, y: 61, class: "small"});
+    sub.textContent = n.cluster
+      ? `${n.hiddenDeclarationCount} declarations · ${n.childCount} children · ${n.hiddenEdgeCount} internal edges`
+      : (claimTitle ? claimTitle.slice(0, 46) : `${n.kind || "declaration"} · depth ${n.dependencyDepth}`);
+    g.append(sub);
+    const sub2 = el("text", {x: 9, y: 71, class: "small"});
+    sub2.textContent = n.cluster
+      ? `shown in ${n.projectedInCount} · out ${n.projectedOutCount} · double-click to open`
+      : `in ${n.directDependencyCount} · out ${n.directConsumerCount} · shown ${n.projectedInCount}/${n.projectedOutCount}` +
+        (n.expandable ? ` · ${n.foldedDependencyCount} folded` : "");
+    g.append(sub2);
+    g.addEventListener("click", ev => { ev.stopPropagation(); choose(n, ev.shiftKey); });
+    g.addEventListener("dblclick", ev => {
+      ev.stopPropagation();
+      if (n.cluster) expandCluster(n); else reveal(n.id, depAdj(), 1);
+    });
+    viewport.append(g);
+  }
+  const width = X * 2 + (maxCol + 1) * (W + xgap), height = Y + maxRows * (H + ygap) + 40;
+  svg.setAttribute("viewBox", `0 0 ${Math.max(width, 600)} ${Math.max(height, 400)}`);
+  const scope = universe();
+  $("visible").textContent =
+    `${P.nodes.length.toLocaleString()} boxes · ` +
+    `${(scope ? scope.size : allNodes.length).toLocaleString()} declarations in scope of ` +
+    `${allNodes.length.toLocaleString()} · ${P.edges.length.toLocaleString()} projected edges`;
+  renderBadges();
+  applyTransform();
+}
+
+/* ------------------------------------------------------------- interactions */
+function expandCluster(n) {
+  /* Open exactly one hierarchy level: this cluster's immediate children.  The
+     global grouping depth is deliberately left alone. */
+  expanded.add(n.fullKey);
+  render();
+  const children = currentProjection.nodes.filter(
+    x => x.cluster && x.fullKey.startsWith(n.fullKey + "/"));
+  if (children.length === 1) showCluster(children[0]); else showDetailsPlaceholder(n, children.length);
+}
+function showDetailsPlaceholder(n, count) {
+  details.className = "";
+  details.innerHTML = `<div class="title">${esc(qualifiedKey(n.fullKey))}</div>` +
+    `<div class="sub">Opened into ${count} immediate ${count === 1 ? "child" : "children"}.</div>`;
+}
+function collapseCluster(key) {
+  for (const k of [...expanded]) if (k === key || k.startsWith(key + "/")) expanded.delete(k);
+  for (const id of [...revealed]) {
+    const n = byId.get(id);
+    if (n && n._keys.some(k => k === key || k.startsWith(key + "/"))) revealed.delete(id);
+  }
+  render();
+}
+function choose(n, pair) {
+  if (!pair) selected = [];
+  if (n.cluster) { selected = [n.id]; showCluster(n); render(); return; }
+  if (!selected.includes(n.id)) selected.push(n.id);
+  if (selected.length > 2) selected.shift();
+  showNode(byId.get(n.id) || n);
+  render();
+  if (selected.length === 2) showComparison();
+}
+function reveal(id, adj, levels) {
+  const allowed = universe();
+  for (const x of walk([id], adj, levels)) if (!allowed || allowed.has(x)) revealed.add(x);
+  render();
+  setTimeout(() => center(id), 0);
+}
+function meta(rows){return`<dl class="meta">${rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd>`).join("")}</dl>`}
+function pathHtml(rows){return rows.length?`<ol class="path">${rows.map(x=>`<li>${esc(x)}</li>`).join("")}</ol>`:""}
+
+function showCluster(n) {
+  details.className = "";
+  details.innerHTML =
+    `<div class="title">${esc(n.fullKey || n.name)}</div>` +
+    `<div class="sub">Collapsed ${esc(n.clusterKind)} subtree</div>` +
+    meta([["Declarations", n.hiddenDeclarationCount], ["Immediate children", n.childCount],
+      ["Internal edges", n.hiddenEdgeCount], ["Incoming projected edges", n.projectedInCount],
+      ["Outgoing projected edges", n.projectedOutCount],
+      ["Maximum dependency depth", n.maximumDependencyDepth],
+      ["Modules / source files", n.moduleCount],
+      ["Selected headline landmarks", n.headlineCount],
+      ["Maximum selected-headline reuse", n.headlineCoverageCount]]) +
+    `<div class="actions">
+       <button data-act="expand">Open immediate children</button>
+       <button data-act="declarations">Open all declarations</button>
+       <button data-act="collapse">Collapse again</button>
+       <button data-act="focus">Focus members</button>
+       <button data-act="hide">Hide cluster</button></div>`;
+  details.querySelector('[data-act="expand"]').onclick = () => expandCluster(n);
+  details.querySelector('[data-act="declarations"]').onclick = () => {
+    for (const id of n.members) { revealed.add(id); collapsed.delete(id); }
+    render();
+  };
+  details.querySelector('[data-act="collapse"]').onclick = () => collapseCluster(n.fullKey);
+  details.querySelector('[data-act="focus"]').onclick = () => { focusRegion = new Set(n.members); render(); };
+  details.querySelector('[data-act="hide"]').onclick = () => {
+    for (const id of n.members) hiddenNodes.add(id);
+    selected = [];
+    render();
+    details.textContent = `Hidden ${n.members.length} declarations. Use Unhide all to restore them.`;
+  };
+}
+
+function metricsFor(n) {
+  const h = headlineByDecl.get(n.id), cone = walk([n.id], incoming);
+  const coneNodes = [...cone].map(id => byId.get(id));
+  return [["Full Lean name", n.id], ["Library", n.library || "Other"],
+    ["Module / source file", n.module || "—"], ["Kind", n.kind || "—"],
+    ["Dependency depth", n.dependencyDepth],
+    ["Direct dependencies (in)", n.directDependencyCount],
+    ["Direct consumers (out)", n.directConsumerCount],
+    ["Transitive dependencies", h?.dependencyCount ?? Math.max(0, cone.size - 1)],
+    ["Libraries in cone", h?.dependencyLibraryCount ?? new Set(coneNodes.map(x => x.library || "Other")).size],
+    ["Modules / source files in cone", h?.dependencyModuleCount ?? new Set(coneNodes.map(x => x.module)).size],
+    ["Selected-headline reuse", coverageCount(n.id)],
+    ["Shared frontier", n.sharedFrontier && coverageCount(n.id) >= 2 ? "yes" : "no"]];
+}
+function showNode(n) {
+  const h = headlineByDecl.get(n.id), claim = n.headlineClaims?.[0];
+  const downstream = walk([n.id], outgoing);
+  const routes = [...activeHeadlineDeclarations()]
+    .filter(a => a !== n.id && downstream.has(a)).slice(0, 8);
+  details.className = "";
+  details.innerHTML =
+    `<div class="title">${n.headline ? "★ " : ""}${esc(claim?.claimTitle || short(n.id))}</div>` +
+    `<div class="sub">${esc(n.id)}</div>` + meta(metricsFor(n)) +
+    `<div class="actions">
+       <button data-a="d1">Dependencies +1</button>
+       <button data-a="d3">Dependencies +3</button>
+       <button data-a="cons">Consumers +1</button>
+       <button data-a="cone">Highlight cone</button>
+       <button data-a="focus">Focus cone</button>
+       <button data-a="module">Collapse into module</button>
+       <button data-a="hide">Hide node</button></div>` +
+    (routes.length
+      ? `<h3>Reveal route up to headline</h3><div class="actions">` +
+        routes.map((a, i) => `<button data-route="${i}">${esc(short(a))}</button>`).join("") + `</div>`
+      : "") +
+    (h ? `<h3>Nearest shared dependency</h3>` +
+      meta([["Declaration", h.nearestSharedDependency || "none"],
+        ["Distance", h.distanceToNearestSharedDependency ?? "—"],
+        ["Exclusive dependencies", h.exclusiveDependencyCount],
+        ["Shared dependencies", h.sharedDependencyCount]]) +
+      pathHtml(h.pathToNearestSharedDependency || []) : "");
+  const act = (a, f) => { const b = details.querySelector(`[data-a="${a}"]`); if (b) b.onclick = f; };
+  act("d1", () => reveal(n.id, depAdj(), 1));
+  act("d3", () => reveal(n.id, depAdj(), 3));
+  act("cons", () => reveal(n.id, consAdj(), 1));
+  act("cone", () => { highlighted = walk([n.id], incoming); render(); });
+  act("focus", () => { focusRegion = walk([n.id], incoming); render(); });
+  act("module", () => { collapsed.add(n.id); revealed.delete(n.id); selected = []; render(); });
+  act("hide", () => { hiddenNodes.add(n.id); selected = []; render(); });
+  routes.forEach((a, i) => {
+    const b = details.querySelector(`[data-route="${i}"]`);
+    if (b) b.onclick = () => showRoute(n.id, a);
+  });
+}
+/* Reveal every declaration on one shortest dependency path up to a headline. */
+function showRoute(from, headline) {
+  const p = shortest(from, headline, outgoing);
+  if (!p) return;
+  for (const x of p) { revealed.add(x); collapsed.delete(x); hiddenNodes.delete(x); }
+  highlighted = new Set(p);
+  render();
+  const box = document.createElement("div");
+  box.innerHTML = `<h3>Route (${p.length - 1} edges)</h3>` + pathHtml(p);
+  details.append(box);
+  setTimeout(() => center(from), 0);
+}
+function shortest(start, goal, adj) {
+  const prev = new Map([[start, null]]), q = [start];
+  for (let i = 0; i < q.length; i++) {
+    const n = q[i];
+    if (n === goal) break;
+    for (const x of adj.get(n) || []) if (!prev.has(x)) { prev.set(x, n); q.push(x); }
+  }
+  if (!prev.has(goal)) return null;
+  const r = [];
+  for (let x = goal; x !== null; x = prev.get(x)) r.push(x);
+  return r.reverse();
+}
+function sharedBetween(a, b) {
+  const da = distances(a, incoming), db = distances(b, incoming);
+  const common = [...da.keys()].filter(x => db.has(x));
+  if (!common.length) return null;
+  common.sort((x, y) => Math.max(da.get(x), db.get(x)) - Math.max(da.get(y), db.get(y))
+    || (da.get(x) + db.get(x)) - (da.get(y) + db.get(y)) || x.localeCompare(y));
+  return {node: common[0], da: da.get(common[0]), db: db.get(common[0]), count: common.length};
+}
+function showComparison() {
+  const [a, b] = selected;
+  if (!byId.get(a) || !byId.get(b)) return;
+  let p = shortest(a, b, outgoing), direction = `${short(a)} → ${short(b)}`;
+  if (!p) { p = shortest(b, a, outgoing); direction = `${short(b)} → ${short(a)}`; }
+  const s = sharedBetween(a, b), box = document.createElement("div");
+  box.innerHTML = `<h3>Two-node analysis</h3><div class="compare"><strong>${esc(short(a))} / ${esc(short(b))}</strong><br>` +
+    (p ? `Shortest dependency path ${esc(direction)}: ${p.length - 1} edges.`
+       : "Neither declaration consumes the other.") + `<br>` +
+    (s ? `Nearest shared dependency: ${esc(s.node)} (${s.da} / ${s.db} edges); ${s.count.toLocaleString()} common dependencies.`
+       : "No indexed shared dependency.") + `</div>` + (p ? pathHtml(p) : "");
+  details.append(box);
+  if (p) { for (const x of p) revealed.add(x); highlighted = new Set(p); }
+  render();
+}
+
+/* ---------------------------------------------------------------- sidebars */
+function renderBadges() {
+  const active = activeHeadlineDeclarations();
+  let shared = 0;
+  for (const n of allNodes) if (coverageCount(n.id) >= 2) shared++;
+  $("badges").innerHTML =
+    `<span class="badge">${allNodes.length.toLocaleString()} declarations</span>` +
+    `<span class="badge">${allEdges.length.toLocaleString()} direct edges</span>` +
+    `<span class="badge">${selectedClaimIds().size} / ${claims.length} claims · ${active.size} selected theorems</span>` +
+    `<span class="badge">${ancestorUniverse().size.toLocaleString()} in selected closure</span>` +
+    `<span class="badge">${shared.toLocaleString()} shared by two or more</span>` +
+    (collapsingInternal()
+      ? `<span class="badge" title="Private helpers, proof terms and generated equation lemmas, folded out of the drawing with their dependency chains reconnected">${internalIds.size.toLocaleString()} internal helpers contracted</span>`
+      : "") +
+    (unreachedLibraries.length
+      ? `<span class="badge" title="These packages have no declaration in the selected closure, so they get no column">not reached: ${esc(unreachedLibraries.join(", "))}</span>`
+      : "");
+}
+function renderSelection() {
+  const box = $("headline-selection");
+  box.replaceChildren();
+  const families = new Map();
+  for (const c of claims) {
+    if (!families.has(c.family)) families.set(c.family, []);
+    families.get(c.family).push(c);
+  }
+  for (const [family, rows] of families) {
+    const open = openFamilies.has(family);
+    const chosenClaims = rows.filter(c => claimRealizations(c).some(d => selectedSeeds.has(d))).length;
+    const head = document.createElement("div");
+    head.className = "family-title family-head" + (chosenClaims ? " on" : "");
+    head.title = open ? "Collapse this paper" : "Expand this paper";
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.textContent = open ? "\u25be" : "\u25b8";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = family;
+    head.append(caret, name);
+    for (const [label, pick] of [["leaves", c => claimLeaves(c)], ["all", c => claimRealizations(c)], ["none", () => []]]) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.onclick = ev => {
+        ev.stopPropagation();
+        for (const c of rows) {
+          for (const d of claimRealizations(c)) selectedSeeds.delete(d);
+          for (const d of pick(c)) selectedSeeds.add(d);
+        }
+        afterSelectionChange();
+      };
+      head.append(b);
+    }
+    const tally = document.createElement("span");
+    tally.className = "tally";
+    tally.textContent = `${chosenClaims}/${rows.length}`;
+    head.append(tally);
+    /* Selecting a paper's claims from its header must not force the reader to
+       scroll past its claim list, so the section's open state is independent. */
+    head.onclick = () => {
+      if (openFamilies.has(family)) openFamilies.delete(family); else openFamilies.add(family);
+      renderSelection();
+    };
+    box.append(head);
+    if (!open) continue;
+    for (const c of rows) {
+      const realizations = claimRealizations(c), leaves = new Set(claimLeaves(c));
+      const chosen = realizations.filter(d => selectedSeeds.has(d));
+      const group = document.createElement("div");
+      group.className = "claim";
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      const span = document.createElement("span");
+      input.type = "checkbox";
+      input.checked = chosen.length > 0;
+      input.indeterminate = chosen.length > 0 && chosen.length < realizations.length;
+      input.onchange = () => {
+        for (const d of realizations) selectedSeeds.delete(d);
+        if (input.checked) for (const d of claimLeaves(c)) selectedSeeds.add(d);
+        afterSelectionChange();
+      };
+      /* Union of the packages this claim's realizations reach, so a claim whose
+         closure never leaves its own library is visible without expanding it. */
+      const reachAll = {};
+      for (const d of realizations)
+        for (const [lib, count] of Object.entries((c.realizationClosureLibraries || {})[d] || {}))
+          reachAll[lib] = Math.max(reachAll[lib] || 0, count);
+      const reachLibs = Object.keys(reachAll).sort((a, b) => reachAll[b] - reachAll[a]);
+      span.innerHTML = `<strong>${esc(c.title)}</strong><small>${esc(c.id)} · ` +
+        `${esc(c.sourceAnchor || c.sourceKind || "census claim")} · ` +
+        `${chosen.length} of ${realizations.length} realization(s) selected</small>` +
+        (reachLibs.length ? `<small>reaches ${esc(reachLibs.join(", "))}</small>` : "");
+      label.append(input, span);
+      group.append(label);
+      /* Each realization is selectable on its own, so a single leaf theorem of a
+         multi-declaration claim can be the whole selection. */
+      const list = document.createElement("div");
+      list.className = "realizations";
+      for (const d of realizations) {
+        const row = document.createElement("label");
+        const box2 = document.createElement("input");
+        const text = document.createElement("span");
+        box2.type = "checkbox";
+        box2.checked = selectedSeeds.has(d);
+        box2.onchange = () => {
+          if (box2.checked) selectedSeeds.add(d); else selectedSeeds.delete(d);
+          afterSelectionChange();
+        };
+        const reach = (c.realizationClosureLibraries || {})[d];
+        const reachText = reach
+          ? Object.entries(reach).map(([lib, count]) => `${lib} ${count}`).join(" · ")
+          : "";
+        text.innerHTML = `${leaves.has(d) ? "<b>leaf</b> " : ""}${esc(d)}` +
+          (reachText ? `<small>reaches ${esc(reachText)}</small>` : "");
+        row.append(box2, text);
+        list.append(row);
+      }
+      if (realizations.length > 1) group.append(list);
+      box.append(group);
+    }
+  }
+}
+function afterSelectionChange() {
+  highlighted = new Set();
+  renderSelection();
+  renderHeadlineList();
+  render();
+}
+function renderHeadlineList() {
+  const list = $("headline-list");
+  list.replaceChildren();
+  let family = "";
+  for (const h of headlines) {
+    const n = byId.get(h.declaration), info = n?.headlineClaims?.[0] || {};
+    const nextFamily = info.headlineFamily || "Other";
+    const title = info.claimTitle || short(h.declaration);
+    const active = selectedSeeds.has(h.declaration);
+    if (nextFamily !== family) {
+      family = nextFamily;
+      const label = document.createElement("div");
+      label.className = "family-title";
+      label.textContent = family;
+      list.append(label);
+    }
+    const b = document.createElement("button");
+    b.className = active ? "" : "inactive";
+    b.innerHTML = `<strong>${active ? "★" : "☆"} ${esc(title)}</strong>` +
+      `<span>${esc(h.declaration)} · ${h.dependencyCount.toLocaleString()} dependencies · ` +
+      `depth ${h.maximumDependencyDepth}</span>`;
+    b.onclick = () => revealAndSelect(h.declaration);
+    list.append(b);
+  }
+}
+function setHeadlineSubset(seeds) { selectedSeeds = seeds; selected = []; afterSelectionChange(); }
+function revealAndSelect(id) {
+  const n = byId.get(id);
+  if (!n) return;
+  if ((n.headlineClaims || []).length) selectedSeeds.add(id);
+  revealed.add(id);
+  hiddenNodes.delete(id);
+  selected = [id];
+  renderSelection();
+  renderHeadlineList();
+  render();
+  showNode(n);
+  setTimeout(() => center(id), 0);
+}
+
+/* ----------------------------------------------------------------- exports */
+function exportData(scope) {
+  const stamp = {schemaVersion: 2, edgeDirection: "dependency-to-consumer", exportScope: scope,
+    selectedHeadlineClaimIds: [...selectedClaimIds()],
+    selectedHeadlineDeclarations: [...activeHeadlineDeclarations()]};
+  const decorate = ids => {
+    const set = ids instanceof Set ? ids : new Set(ids);
+    return {...stamp,
+      nodes: [...set].map(id => byId.get(id)).filter(Boolean).map(n => {
+        const row = {...n, selectedHeadline: isSelectedHeadline(n), selectedCoverageCount: coverageCount(n.id)};
+        delete row._keys;
+        return row;
+      }),
+      edges: allEdges.filter(e => set.has(e.source) && set.has(e.target))};
+  };
+  if (scope === "complete") return decorate(allNodes.map(n => n.id));
+  if (scope === "selection") return decorate(ancestorUniverse());
+  if (scope === "cone") {
+    const root = selected.find(id => byId.has(id));
+    if (!root) { alert("Select a declaration before exporting its dependency cone."); return null; }
+    return {...decorate(walk([root], incoming)), root};
+  }
+  const P = currentProjection;
+  return {...stamp,
+    nodes: P.nodes.map(n => { const row = {...n}; delete row._keys; return row; }),
+    edges: P.edges};
+}
+function dotValue(v){return JSON.stringify(String(v ?? ""))}
+let lastExport = null;
+function exportDot(data, stem = "leanq-graph") {
+  const palette = ["#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462",
+                   "#b3de69","#fccde5","#d9d9d9","#bc80bd","#ccebc5","#ffed6f"];
+  /* The invocation travels with the file, so `head` on the .dot tells you how
+     to render it without going back to the viewer. */
+  const lines = [];
+  lines.push(`// leanq export: ${data.nodes.length} nodes, ${data.edges.length} edges, scope ${data.exportScope}`);
+  for (const [cmd, why] of graphvizCommands(stem, data.nodes.length, exportFormat(), exportEngine()))
+    lines.push(`//   ${cmd}`, `//     ${why}`);
+  lines.push("");
+  lines.push("digraph LeanQ {",
+    "  graph [rankdir=LR, overlap=false, splines=true];",
+    '  node [style=filled, fontname="Helvetica", fontsize=9];',
+    '  edge [color="#7d8da0", arrowsize=0.65];');
+  for (const n of data.nodes) {
+    const cluster = !!n.cluster;
+    const headline = !cluster && (n.selectedHeadline ?? isSelectedHeadline(n));
+    const support = !cluster && !headline && isSelectedSupporting(n);
+    const library = n.library || "Other";
+    const coverage = cluster ? (n.headlineCoverageCount || 0)
+                             : (n.selectedCoverageCount ?? coverageCount(n.id));
+    const attrs = {
+      label: cluster
+        ? `${qualifiedKey(n.fullKey || n.name)}\n${n.hiddenDeclarationCount} declarations`
+        : `${n.id}\nin ${n.directDependencyCount} / out ${n.directConsumerCount}`,
+      shape: cluster ? "folder" : headline ? "doubleoctagon" : support ? "component" : "box",
+      fillcolor: palette[hash(library) % palette.length],
+      color: headline ? "#d23b2d" : support ? "#b97800" : coverage >= 2 ? "#8b3fb0" : "#596979",
+      penwidth: headline ? 3 : (support || coverage >= 2) ? 2 : 1,
+      leanq_library: library,
+      leanq_module: n.module || "",
+      leanq_cluster_key: n.fullKey || "",
+      leanq_kind: n.kind || (cluster ? "cluster" : "declaration"),
+      leanq_headline: headline,
+      leanq_headline_claims: (n.headlineClaims || []).map(c => c.claimId).join(","),
+      leanq_headline_family: (n.headlineClaims || [])[0]?.headlineFamily || "",
+      leanq_coverage: coverage,
+      leanq_depth: n.dependencyDepth ?? n.maximumDependencyDepth ?? "",
+      leanq_is_cluster: cluster,
+      leanq_declaration_count: cluster ? n.hiddenDeclarationCount : 1,
+    };
+    lines.push(`  ${dotValue(n.id)} [${Object.entries(attrs).map(([k, v]) => `${k}=${dotValue(v)}`).join(", ")}];`);
+  }
+  for (const e of data.edges) {
+    const count = e.edgeCount || 1;
+    lines.push(`  ${dotValue(e.source)} -> ${dotValue(e.target)}` +
+      (count > 1 ? ` [label=${dotValue(count)}, weight=${dotValue(count)}]` : "") + ";");
+  }
+  lines.push("}");
+  return lines.join("\n") + "\n";
+}
+/* Graphviz on a dependency DAG.  `dot` is the engine that reads the rankdir=LR
+   this file already sets, and its layering is the whole point of the drawing --
+   but its iterative passes are superlinear, so past a few thousand nodes they
+   need bounding, and past roughly twelve thousand only a force-directed engine
+   finishes at all.  The command is chosen from the size of what was exported so
+   the file can just be run. */
+const DOWNLOAD_DIR = "~/Downloads/";
+/* Per-engine flags, and the size at which that engine stops being a good idea.
+   The thresholds are measured, not guessed: on this project's 2007-node export
+   neato did not finish inside two minutes, while dot took 134s and sfdp is the
+   only engine that stays comfortable past ten thousand nodes. */
+const ENGINES = {
+  dot:   {flags: n => n > 2500 ? ["-Gnslimit=2", "-Gmclimit=2"] : [],
+          note: "hierarchical, left to right -- the layering this graph is drawn for",
+          slowAbove: 12000},
+  neato: {flags: () => ["-Goverlap=prism"],
+          note: "spring model, no layering", slowAbove: 800},
+  fdp:   {flags: () => ["-Goverlap=prism"],
+          note: "force-directed, clusters kept together", slowAbove: 2000},
+  sfdp:  {flags: () => ["-Goverlap=prism", "-Gbeautify=true"],
+          note: "multilevel force-directed, the one that scales", slowAbove: Infinity},
+  circo: {flags: () => ["-Goverlap=prism"], note: "circular", slowAbove: 1500},
+  twopi: {flags: () => ["-Goverlap=prism"], note: "radial, from one root", slowAbove: 1500},
+};
+function autoEngine(nodeCount){return nodeCount <= 12000 ? "dot" : "sfdp"}
+/* A bitmap has a hard ceiling: past roughly 32767 pixels on a side Graphviz
+   warns "graph is too large for cairo-renderer bitmaps" and silently scales the
+   whole drawing down, which turns every label into mush.  Bounding the surface
+   up front is what keeps a PNG readable. */
+function formatFlags(format){return format === "png" ? ["-Gsize='30,30!'", "-Gdpi=150"] : []}
+function graphvizCommands(stem, nodeCount, format = "svg", engine = "auto") {
+  /* Paths are written against the browser's download directory, so the command
+     runs from wherever the shell happens to be rather than only from beside the
+     file. */
+  const f = DOWNLOAD_DIR + stem + ".dot", out = DOWNLOAD_DIR + stem + "." + format;
+  const chosen = engine === "auto" ? autoEngine(nodeCount) : engine;
+  const build = (name, primary) => {
+    const spec = ENGINES[name] || ENGINES.dot;
+    const parts = [name, "-T" + format, ...spec.flags(nodeCount), ...formatFlags(format), f, "-o", out];
+    let why = spec.note;
+    if (primary && engine === "auto") why += ` (chosen for ${nodeCount.toLocaleString()} nodes)`;
+    if (!primary) why = "alternative: " + why;
+    if (nodeCount > spec.slowAbove)
+      why += ` -- WARNING: ${name} is superlinear; at ${nodeCount.toLocaleString()} nodes expect minutes or worse`;
+    if (format === "png")
+      why += ". The size cap keeps the bitmap under Graphviz's 32767px limit";
+    return [parts.join(" "), why];
+  };
+  const rows = [build(chosen, true)];
+  const alt = chosen === "sfdp" ? "dot" : "sfdp";
+  if (nodeCount > 2500 && alt !== chosen) rows.push(build(alt, false));
+  return rows;
+}
+function download(name, text, type) {
+  const a = document.createElement("a"), url = URL.createObjectURL(new Blob([text], {type}));
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function runExport(format) {
+  const scope = $("export-scope").value, data = exportData(scope);
+  if (!data) return;
+  const stem = `leanq-${scope}-${data.nodes.length}-nodes`;
+  if (format === "json") {
+    download(stem + ".json", JSON.stringify(data, null, 2) + "\n", "application/json");
+    return;
+  }
+  download(stem + ".dot", exportDot(data, stem), "text/vnd.graphviz");
+  showExportCommands(stem, data);
+  lastExport = {stem, data};
+}
+/* The same commands the .dot header carries, in a form that can be copied
+   straight into a shell next to the downloaded file. */
+function exportFormat(){return $("export-format").value}
+function exportEngine(){return $("export-engine").value}
+function showExportCommands(stem, data) {
+  const rows = graphvizCommands(stem, data.nodes.length, exportFormat(), exportEngine());
+  details.className = "";
+  details.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "title";
+  head.textContent = `${stem}.dot`;
+  const sub = document.createElement("div");
+  sub.className = "sub";
+  sub.textContent = `${data.nodes.length.toLocaleString()} nodes · ` +
+    `${data.edges.length.toLocaleString()} edges · paths assume ${DOWNLOAD_DIR}, so this runs ` +
+    `from any directory. Change the format or engine above to rewrite the command; ` +
+    `the .dot on disk is unaffected and its header records the command as exported.`;
+  details.append(head, sub);
+  const wrap = document.createElement("div");
+  wrap.className = "cmd";
+  for (const [cmd, why] of rows) {
+    const why_ = document.createElement("div");
+    why_.className = "why";
+    why_.textContent = why;
+    const code = document.createElement("code");
+    code.textContent = cmd;
+    wrap.append(why_, code);
+  }
+  const copy = document.createElement("button");
+  copy.textContent = "Copy command";
+  copy.onclick = () => {
+    const text = rows[0][0];
+    const done = () => { copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy command", 1200); };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => fallback(text, done));
+    else fallback(text, done);
+  };
+  /* Clipboard access needs a secure context, and a file:// page is not one. */
+  const fallback = (text, done) => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch { ta.select(); }
+    ta.remove();
+  };
+  wrap.append(copy);
+  details.append(wrap);
+}
+
+/* ---------------------------------------------------------------- packages */
+function libraryDeclarationCounts() {
+  const counts = new Map();
+  for (const n of allNodes) {
+    const lib = n.library || "Other";
+    counts.set(lib, (counts.get(lib) || 0) + 1);
+  }
+  return counts;
+}
+function renderPackages() {
+  const box = $("packages"), counts = libraryDeclarationCounts();
+  box.replaceChildren();
+  const row = document.createElement("div");
+  row.className = "row";
+  for (const [text, pick] of [["all", () => new Set(libraryOrder)],
+                              ["none", () => new Set()],
+                              ["first-party", () => new Set(libraryOrder.filter(l => l !== BOUNDARY))]]) {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.onclick = () => { enabledLibraries = pick(); renderPackages(); render(); };
+    row.append(b);
+  }
+  box.append(row);
+  for (const lib of libraryOrder) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = enabledLibraries.has(lib);
+    input.onchange = () => {
+      if (input.checked) enabledLibraries.add(lib); else enabledLibraries.delete(lib);
+      renderPackages();
+      render();
+    };
+    const name = document.createElement("span");
+    name.textContent = lib;
+    const count = document.createElement("small");
+    count.textContent = (counts.get(lib) || 0).toLocaleString();
+    label.append(input, name, count);
+    box.append(label);
+  }
+}
+$("packages-toggle").onclick = () => {
+  const box = $("packages");
+  box.style.display = box.style.display === "block" ? "none" : "block";
+};
+
+/* ------------------------------------------------------------------ search */
+const search = $("search"), results = $("results");
+search.oninput = () => {
+  const q = search.value.trim().toLowerCase();
+  if (q.length < 2) { results.style.display = "none"; return; }
+  const hits = allNodes.filter(n =>
+    `${n.id} ${n.module} ${n.library} ${(n.headlineClaims || []).map(c => c.claimTitle + " " + c.claimId).join(" ")}`
+      .toLowerCase().includes(q)).slice(0, 50);
+  results.innerHTML = "";
+  for (const n of hits) {
+    const b = document.createElement("button");
+    b.innerHTML = `${n.headline ? "★ " : ""}${esc(n.id)}<small>${esc(n.library || "")} · ${esc(n.module || "")}</small>`;
+    b.onclick = () => { results.style.display = "none"; search.value = n.id; revealAndSelect(n.id); };
+    results.append(b);
+  }
+  results.style.display = "block";
+};
+
+/* -------------------------------------------------------------------- view */
+function reset() {
+  expanded = new Set(); revealed = new Set(); collapsed = new Set(); hiddenNodes = new Set();
+  selected = []; highlighted = new Set(); focusRegion = null;
+  depthSelect.value = "1";
+  layoutSelect.value = "library";
+  restrictBox.checked = true;
+  sharedBox.checked = false;
+  internalBox.checked = true;
+  enabledLibraries = new Set(libraryOrder.filter(lib => lib !== BOUNDARY));
+  renderPackages();
+  transform = {x: 0, y: 0, s: 1};
+  render();
+  details.textContent = "View reset. Select a cluster or search for any declaration.";
+}
+function applyTransform(){viewport.setAttribute("transform",`translate(${transform.x} ${transform.y}) scale(${transform.s})`)}
+function zoom(f){transform.s=Math.max(.12,Math.min(5,transform.s*f));applyTransform()}
+function center(id) {
+  const p = layoutPos.get(id);
+  if (!p) return;
+  transform = {x: svg.clientWidth / 2 - (p.x + p.w / 2), y: svg.clientHeight / 2 - (p.y + p.h / 2), s: 1};
+  applyTransform();
+}
+depthSelect.onchange = render;
+layoutSelect.onchange = render;
+restrictBox.onchange = render;
+sharedBox.onchange = render;
+internalBox.onchange = render;
+$("subset-default").onclick = () => setHeadlineSubset(paperDefaultSeeds());
+$("subset-all").onclick = () =>
+  setHeadlineSubset(new Set(claims.flatMap(claimRealizations)));
+$("subset-none").onclick = () => setHeadlineSubset(new Set());
+$("reset").onclick = reset;
+$("clearfocus").onclick = () => { focusRegion = null; highlighted = new Set(); render(); };
+$("unhide").onclick = () => { hiddenNodes = new Set(); collapsed = new Set(); render(); };
+$("fit").onclick = () => { transform = {x: 0, y: 0, s: 1}; applyTransform(); };
+$("zin").onclick = () => zoom(1.2);
+$("zout").onclick = () => zoom(.83);
+/* Changing either select after an export just re-reads the command; the .dot on
+   disk is unchanged, and its header still records the command as exported. */
+const refreshExportCommands = () => {
+  if (lastExport) showExportCommands(lastExport.stem, lastExport.data);
+};
+$("export-format").onchange = refreshExportCommands;
+$("export-engine").onchange = refreshExportCommands;
+$("export-dot").onclick = () => runExport("dot");
+$("export-json").onclick = () => runExport("json");
+svg.onwheel = e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.1 : .9); };
+svg.onpointerdown = e => {
+  if (e.target.closest?.(".node")) return;
+  svg.setPointerCapture(e.pointerId);
+  dragging = {x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y};
+};
+svg.onpointermove = e => {
+  if (!dragging) return;
+  transform.x = dragging.tx + e.clientX - dragging.x;
+  transform.y = dragging.ty + e.clientY - dragging.y;
+  applyTransform();
+};
+svg.onpointerup = () => dragging = null;
+
+enabledLibraries = new Set(libraryOrder.filter(lib => lib !== BOUNDARY));
+renderPackages();
+renderSelection();
+renderHeadlineList();
+details.textContent = "Select a cluster or declaration. Double-click a cluster to open its immediate children; shift-click a second declaration to compare them.";
+render();
+})();
+</script></body></html>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root { color-scheme: light dark; --border:#8885; --muted:#777; --panel:#8881; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; }
+header { padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top:0; backdrop-filter: blur(12px); background: color-mix(in srgb, Canvas 90%, transparent); z-index:3; }
+h1 { margin:0 0 8px; font-size:20px; }
+.controls { display:flex; flex-wrap:wrap; gap:8px; }
+input, select { padding:7px 9px; border:1px solid var(--border); border-radius:6px; background:Canvas; color:CanvasText; }
+main { display:grid; grid-template-columns:minmax(620px, 1.6fr) minmax(320px, 1fr); min-height:calc(100vh - 92px); }
+.table-wrap { overflow:auto; border-right:1px solid var(--border); }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:7px 9px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+th { position:sticky; top:0; background:Canvas; z-index:2; }
+tr { cursor:pointer; }
+tr:hover, tr.selected { background:var(--panel); }
+code { font-family: ui-monospace, monospace; }
+.detail { padding:18px 20px; overflow:auto; position:sticky; top:92px; height:calc(100vh - 92px); }
+.detail h2 { margin-top:0; }
+.kv { display:grid; grid-template-columns:130px 1fr; gap:6px 12px; margin-bottom:16px; }
+.kv dt { color:var(--muted); }
+.kv dd { margin:0; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--panel); padding:10px; border-radius:6px; }
+.badge { display:inline-block; padding:1px 6px; border:1px solid var(--border); border-radius:999px; margin-right:4px; }
+.empty { color:var(--muted); padding:20px; }
+@media (max-width: 950px) { main { grid-template-columns:1fr; } .table-wrap { border-right:0; } .detail { position:static; height:auto; border-top:1px solid var(--border); } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <div class="controls">
+    <input id="search" type="search" placeholder="filter id, title, source, notes…">
+    <select id="importance"><option value="">all importance</option></select>
+    <select id="status"><option value="">all status</option></select>
+    <select id="verification"><option value="">all verification</option></select>
+    <select id="alignment"><option value="">all alignment</option></select>
+  </div>
+</header>
+<main>
+<div class="table-wrap"><table><thead><tr><th>id</th><th>importance</th><th>source</th><th>status</th><th>verification</th><th>alignment</th></tr></thead><tbody id="rows"></tbody></table></div>
+<aside class="detail" id="detail"><div class="empty">Select a census row.</div></aside>
+</main>
+<script type="application/json" id="payload">__PAYLOAD__</script>
+<script>
+const payload = JSON.parse(document.getElementById('payload').textContent);
+const items = payload.data.items || [];
+document.getElementById('title').textContent = payload.title + ' — ' + payload.family;
+function val(row,key){ return row[key] ?? ''; }
+function align(row){ return row.semantic_alignment?.classification || ''; }
+function fillSelect(id, values){ const el=document.getElementById(id); [...new Set(values.filter(Boolean))].sort().forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);}); }
+fillSelect('importance', items.map(r=>val(r,'importance'))); fillSelect('status',items.map(r=>val(r,'status'))); fillSelect('verification',items.map(r=>val(r,'verification'))); fillSelect('alignment',items.map(align));
+const controls=['search','importance','status','verification','alignment']; controls.forEach(id=>document.getElementById(id).addEventListener('input', render));
+let selected = null;
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function matches(r){ const q=document.getElementById('search').value.toLowerCase(); const blob=JSON.stringify(r).toLowerCase(); const importance=document.getElementById('importance').value; const status=document.getElementById('status').value; const verification=document.getElementById('verification').value; const alignment=document.getElementById('alignment').value; return (!q||blob.includes(q)) && (!importance||val(r,'importance')===importance) && (!status||val(r,'status')===status) && (!verification||val(r,'verification')===verification) && (!alignment||align(r)===alignment); }
+function render(){ const tbody=document.getElementById('rows'); tbody.innerHTML=''; items.filter(matches).forEach(r=>{ const tr=document.createElement('tr'); if(selected===r.id)tr.className='selected'; tr.innerHTML=`<td><code>${esc(r.id)}</code></td><td>${esc(val(r,'importance'))}</td><td>${esc(val(r,'source_anchor'))}</td><td>${esc(val(r,'status'))}</td><td>${esc(val(r,'verification'))}</td><td>${esc(align(r))}</td>`; tr.onclick=()=>{selected=r.id;showDetail(r);render();}; tbody.appendChild(tr); }); }
+function showDetail(r){ const pairs=[['title',r.title],['section',r.section],['source',r.source_anchor],['kind',r.source_kind],['status',r.status],['verification',r.verification],['importance',r.importance],['alignment',align(r)]]; let body=`<h2><code>${esc(r.id)}</code></h2><dl class="kv">`; pairs.filter(x=>x[1]!==undefined&&x[1]!=='').forEach(([k,v])=>body+=`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`); body+='</dl>'; for(const [k,label] of [['summary','Summary'],['source_claim','Source claim'],['notes','Notes'],['next_action','Next action'],['scope_gap','Scope gap']]) if(r[k]) body+=`<h3>${label}</h3><p>${esc(r[k])}</p>`; if(r.semantic_alignment?.detail) body+=`<h3>Semantic alignment</h3><p>${esc(r.semantic_alignment.detail)}</p>`; if(r.lean_declarations?.length) body+=`<h3>Lean declarations</h3><ul>${r.lean_declarations.map(x=>`<li><code>${esc(x)}</code></li>`).join('')}</ul>`; if(r.gap_refs?.length) body+=`<h3>Gap refs</h3><p>${r.gap_refs.map(x=>`<span class="badge">${esc(x)}</span>`).join('')}</p>`; body+=`<details><summary>Raw row JSON</summary><pre>${esc(JSON.stringify(r,null,2))}</pre></details>`; document.getElementById('detail').innerHTML=body; }
+render();
+</script>
+</body></html>

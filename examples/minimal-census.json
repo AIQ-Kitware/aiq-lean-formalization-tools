@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "primary_source": {
+    "citation": "Example paper, 2026"
+  },
+  "status_definitions": {
+    "implemented": "A source-facing Lean result exists.",
+    "planned": "The source-facing result is not implemented yet."
+  },
+  "verification_definitions": {
+    "proved_in_build": "Every cited declaration resolves in the current build.",
+    "partially_in_build": "Some cited declarations resolve.",
+    "absent": "No cited declaration resolves."
+  },
+  "importance_definitions": {
+    "headline": "Primary result.",
+    "supporting": "Supporting result."
+  },
+  "gaps": {},
+  "items": [
+    {
+      "id": "theorem-1",
+      "section": "2",
+      "source_kind": "theorem",
+      "source_anchor": "Theorem 1",
+      "title": "Example headline theorem",
+      "summary": "A normalized description of the printed claim.",
+      "status": "implemented",
+      "verification": "proved_in_build",
+      "importance": "headline",
+      "lean_declarations": ["ExamplePaper.theorem_one"],
+      "gap_refs": [],
+      "notes": ""
+    }
+  ]
+}

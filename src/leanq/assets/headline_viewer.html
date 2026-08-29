@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>__LEANQ_TITLE__</title>
+<style>
+:root {
+  --bg:#f6f7f9; --panel:#fff; --text:#1f2933; --muted:#657383; --border:#d8dee6;
+  --accent:#315c9b; --accent-soft:#e8f0fb; --edge:#7d8da0; --unused:#a8b0ba;
+  --shadow:0 6px 20px rgba(31,41,51,.08); --radius:10px;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark) {
+  :root { --bg:#11161c; --panel:#19212a; --text:#edf2f7; --muted:#a8b3bf; --border:#34404d;
+    --accent:#8ab4f8; --accent-soft:#22344d; --edge:#718096; --unused:#687482; --shadow:0 6px 20px rgba(0,0,0,.25); }
+}
+*{box-sizing:border-box} html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)} body{padding:16px}
+button,select,input{font:inherit;color:inherit} button,select,input[type=search]{border:1px solid var(--border);border-radius:7px;background:var(--panel)}
+button{padding:6px 10px;min-height:34px;cursor:pointer} button:hover{border-color:var(--accent)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{max-width:1900px;margin:0 auto} header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:10px}
+h1{font-size:clamp(1.2rem,2vw,1.65rem);margin:0} header p{margin:5px 0 0;color:var(--muted);max-width:950px}.badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.badge{border:1px solid var(--border);background:var(--panel);border-radius:999px;padding:4px 8px;font-size:.78rem;white-space:nowrap}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.toolbar .spacer{flex:1}.toolbar label{font-size:.84rem;color:var(--muted)} select,input[type=search]{min-height:34px;padding:5px 8px} input[type=search]{min-width:260px}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:10px;align-items:stretch}.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);min-width:0}.canvas-panel{position:relative;overflow:hidden;min-height:720px}#graph{display:block;width:100%;height:720px;touch-action:none;cursor:grab}.canvas-actions{position:absolute;right:8px;top:8px;display:flex;gap:5px}.canvas-note{position:absolute;left:10px;bottom:8px;color:var(--muted);font-size:.74rem;background:color-mix(in srgb,var(--panel) 90%,transparent);padding:4px 7px;border-radius:6px}
+.details{padding:12px;overflow-wrap:anywhere}.details h2{margin:0 0 8px;font-size:1rem}.details h3{margin:15px 0 6px;text-transform:uppercase;letter-spacing:.04em;font-size:.76rem;color:var(--muted)}.details .title{font-weight:700;font-size:.98rem}.details .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.meta{display:grid;grid-template-columns:auto 1fr;gap:5px 8px;font-size:.8rem}.meta dt{color:var(--muted)}.meta dd{margin:0}.path{padding-left:20px;margin:7px 0;font-size:.78rem}.path li{margin:4px 0}.decls{max-height:190px;overflow:auto;padding-left:18px;font-size:.76rem}.empty{color:var(--muted);font-size:.85rem;line-height:1.45}.status-used{color:#20734d;font-weight:650}.status-unused{color:var(--muted);font-weight:650}
+svg .lane-label{font-size:13px;font-weight:700;fill:var(--muted)} svg .edge{fill:none;stroke:var(--edge);stroke-width:1.6;opacity:.72;cursor:pointer}svg .edge:hover,svg .edge.selected{stroke:var(--accent);stroke-width:3;opacity:1}svg .node{cursor:pointer}svg .node rect{stroke:color-mix(in srgb,var(--text) 35%,transparent);stroke-width:1.1;rx:8;ry:8}svg .node.unused{opacity:.42}svg .node.target rect{stroke:var(--accent);stroke-width:3}svg .node.selected rect{stroke:var(--accent);stroke-width:3.5}svg .node text{font-size:11px;fill:#17202a;pointer-events:none}svg .node text.sub{font-size:8.5px;fill:#4b5968}@media(prefers-color-scheme:dark){svg .node text{fill:#f5f7fa}svg .node text.sub{fill:#d0d7df}}
+.summary{margin-top:10px;padding:10px 12px}.summary h2{margin:0 0 8px;font-size:.95rem}.claim-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}.claim-chip{border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:.78rem;cursor:pointer;background:var(--panel);text-align:left}.claim-chip strong{display:block;margin-bottom:2px}.claim-chip span{color:var(--muted)}.claim-chip.unused{opacity:.55}
+@media(max-width:1050px){.workspace{grid-template-columns:1fr}.canvas-panel,#graph{height:620px;min-height:620px}.details{min-height:200px}}@media(max-width:650px){body{padding:9px}header{flex-direction:column}.badges{justify-content:flex-start}.toolbar input[type=search]{min-width:0;width:100%}.canvas-panel,#graph{height:540px;min-height:540px}}
+</style>
+</head>
+<body>
+<div id="app">
+<header><div><h1 id="title"></h1><p id="subtitle"></p></div><div class="badges" id="badges"></div></header>
+<div class="toolbar">
+  <label>Family <select id="family"><option value="">All</option></select></label>
+  <label>Status <select id="status"><option value="">All</option><option value="used">Any registered use</option><option value="canonical">Canonical theorem</option><option value="supporting">Supporting realization</option><option value="registered-support">Other registered support</option><option value="unused">Not consumed</option></select></label>
+  <input id="search" type="search" placeholder="Search headline or declaration…" aria-label="Search headlines">
+  <span class="spacer"></span>
+  <button id="fit" type="button">Fit</button><button id="zoom-in" type="button">+</button><button id="zoom-out" type="button">−</button>
+</div>
+<div class="workspace">
+  <section class="panel canvas-panel" aria-label="Headline consumption graph">
+    <svg id="graph" role="img" aria-label="Census headline consumption graph"><defs><marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L9,3.5 L0,7 z" fill="context-stroke"></path></marker></defs><g id="viewport"></g></svg>
+    <div class="canvas-note">Dashed/gray headline nodes are not consumed by the selected target. Click an edge for the exact Lean witness path.</div>
+  </section>
+  <aside class="panel details"><h2>Selection</h2><div id="details" class="empty">Select a headline, integration declaration, or collapsed edge.</div></aside>
+</div>
+<section class="panel summary"><h2>Headline census</h2><div id="claim-grid" class="claim-grid"></div></section>
+</div>
+<script id="leanq-data" type="application/json">__LEANQ_DATA__</script>
+<script>
+(() => {
+"use strict";
+const DATA=JSON.parse(document.getElementById("leanq-data").textContent);
+const analysis=DATA.headlineAnalysis||{claims:[],familyCounts:{}};
+const svg=document.getElementById("graph"), viewport=document.getElementById("viewport"), NS="http://www.w3.org/2000/svg";
+const details=document.getElementById("details"), familySelect=document.getElementById("family"), statusSelect=document.getElementById("status"), search=document.getElementById("search");
+const nodesById=new Map(DATA.nodes.map(n=>[n.id,n])); const claimsByNode=new Map(analysis.claims.map(c=>[c.nodeId,c]));
+let selectedNode=null, selectedEdge=null, transform={x:0,y:0,scale:1}, dragging=null, current={nodes:[],edges:[]};
+const stagePlan=analysis.stagePlan||[];
+const stages=stagePlan.length?stagePlan.map((row,i)=>row.label||`Stage ${i+1}`):["Source headline claims","Selected target"];
+document.getElementById("title").textContent=analysis.title||"Headline theorem consumption";
+document.getElementById("subtitle").textContent=`Census claims over compiler-derived dependencies for ${(DATA.targets||[]).join(", ")}. Unused headlines remain visible.`;
+for(const family of Object.keys(analysis.familyCounts||{}).sort()){const o=document.createElement("option");o.value=family;o.textContent=family;familySelect.append(o)}
+renderBadges();renderClaimGrid();render();
+function shortName(id){return String(id).split(".").pop()}
+function groupOf(n){return n.library||n.module||"Other"}
+function hashString(t){let h=2166136261;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function colorFor(group){return `hsl(${hashString(group)%360} 52% 78%)`}
+function labelFor(n){return n.claim?n.claimTitle:shortName(n.id)}
+function consumptionLabel(value){return value==="canonical"?"canonical theorem consumed":value==="supporting"?"supporting realization consumed":value==="registered-support"?"registered support reachable":"not consumed"}
+function wrap(text,max=30){if(text.length<=max)return[text];const words=text.split(/[\s_]+/).filter(Boolean),lines=[""];for(const w of words){let cur=lines[lines.length-1];if((cur+" "+w).trim().length<=max||lines.length===2)lines[lines.length-1]=(cur+" "+w).trim();else lines.push(w)}if(lines.length>2)lines.length=2;if(lines[1]?.length>max)lines[1]=lines[1].slice(0,max-1)+"…";return lines}
+function filtered(){const fam=familySelect.value,q=search.value.trim().toLowerCase(),status=statusSelect.value;const visibleClaims=new Set();for(const c of analysis.claims){if(fam&&c.family!==fam)continue;if(status==="used"&&!c.consumed)continue;if(status==="unused"&&c.consumed)continue;if(status&&status!=="used"&&status!=="unused"&&c.consumptionClass!==status)continue;if(q&&!`${c.title} ${c.id} ${c.family} ${(c.consumedDeclarations||[]).join(" ")}`.toLowerCase().includes(q))continue;visibleClaims.add(c.nodeId)}
+ const edges=DATA.edges.filter(e=>!e.originClaim||visibleClaims.has(e.originClaim));
+ const touched=new Set((DATA.targets||[]));for(const e of edges){touched.add(e.source);touched.add(e.target)};for(const id of visibleClaims)touched.add(id);
+ return {nodes:DATA.nodes.filter(n=>touched.has(n.id)),edges};}
+function layout(nodes,edges){const byStage=new Map();for(const n of nodes){const s=Number.isFinite(n.stage)?n.stage:0;if(!byStage.has(s))byStage.set(s,[]);byStage.get(s).push(n)}for(const rows of byStage.values())rows.sort((a,b)=>groupOf(a).localeCompare(groupOf(b))||labelFor(a).localeCompare(labelFor(b)));const pos=new Map(),boxW=235,boxH=66,xGap=96,yGap=22,marginX=42,marginY=74;let maxRows=1,maxStage=0;for(const [stage,rows] of [...byStage.entries()].sort((a,b)=>a[0]-b[0])){maxStage=Math.max(maxStage,stage);maxRows=Math.max(maxRows,rows.length);rows.forEach((n,i)=>pos.set(n.id,{x:marginX+stage*(boxW+xGap),y:marginY+i*(boxH+yGap),w:boxW,h:boxH}))}const laneCount=Math.max(stages.length,maxStage+1,1);return{pos,width:marginX*2+laneCount*boxW+Math.max(0,laneCount-1)*xGap,height:marginY+maxRows*(boxH+yGap)+40,boxW,boxH,laneCount}}
+function el(name,attrs={}){const e=document.createElementNS(NS,name);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,String(v));return e}
+function render(){current=filtered();viewport.replaceChildren();selectedNode=null;selectedEdge=null;const L=layout(current.nodes,current.edges);for(let s=0;s<L.laneCount;s++){const t=el("text",{x:42+s*(235+96),y:32,class:"lane-label"});t.textContent=stages[s]||`Stage ${s+1}`;viewport.append(t)}
+ for(const e of current.edges){const a=L.pos.get(e.source),b=L.pos.get(e.target);if(!a||!b)continue;const x1=a.x+a.w,y1=a.y+a.h/2,x2=b.x,y2=b.y+b.h/2,mid=(x1+x2)/2;const p=el("path",{d:`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`,class:"edge","marker-end":"url(#arrow)"});p.addEventListener("click",ev=>{ev.stopPropagation();selectEdge(e,p)});e._element=p;viewport.append(p)}
+ for(const n of current.nodes){const p=L.pos.get(n.id);if(!p)continue;const g=el("g",{class:`node${n.target?" target":""}${n.claim&&!n.consumed?" unused":""}`,transform:`translate(${p.x},${p.y})`});const r=el("rect",{width:p.w,height:p.h,fill:colorFor(groupOf(n))});g.append(r);const lines=wrap(labelFor(n));lines.forEach((line,i)=>{const t=el("text",{x:10,y:22+i*15});t.textContent=line;g.append(t)});const sub=el("text",{x:10,y:57,class:"sub"});sub.textContent=n.claim?consumptionLabel(n.consumptionClass):(n.target?"target":groupOf(n));g.append(sub);g.addEventListener("click",ev=>{ev.stopPropagation();selectNode(n,g)});n._element=g;viewport.append(g)}
+ svg.setAttribute("viewBox",`0 0 ${L.width} ${L.height}`);transform={x:0,y:0,scale:1};applyTransform();showEmpty();}
+function selectNode(n,g){clearSel();selectedNode=n.id;g.classList.add("selected");details.replaceChildren();if(n.claim){const c=claimsByNode.get(n.id);const title=document.createElement("div");title.className="title";title.textContent=c.title;const sub=document.createElement("div");sub.className="sub";sub.innerHTML=`${escapeHtml(c.family)} · <span class="${c.consumed?"status-used":"status-unused"}">${escapeHtml(consumptionLabel(c.consumptionClass))}</span>`;const integrationRows=[["Claim",c.id],["Consumption",consumptionLabel(c.consumptionClass)],["Representative",c.representativeDeclaration||"—"],["Canonical consumed",c.canonicalConsumed?"yes":"no"],["First consumer",c.firstConsumer||"—"]];for(const hit of (c.landmarkHits||[]))integrationRows.push([hit.label,hit.declaration||"—"]);integrationRows.push(["Nearest downstream headline",c.nearestDownstreamHeadline?.title||"—"],["Edges to target",c.distanceToTarget??"—"]);details.append(title,sub,heading("Integration"),meta(integrationRows));if(c.witnessToTarget){details.append(heading("Exact witness to target"),pathList(c.witnessToTarget))}for(const [label,rows] of [["Canonical declarations consumed",c.canonicalConsumedDeclarations||[]],["Supporting declarations consumed",c.supportingConsumedDeclarations||[]],["Other registered declarations consumed",c.otherConsumedDeclarations||[]]]){details.append(heading(label));const ul=document.createElement("ul");ul.className="decls";rows.forEach(x=>{const li=document.createElement("li");li.textContent=x;ul.append(li)});if(!ul.children.length){const li=document.createElement("li");li.textContent="None";ul.append(li)}details.append(ul)}}else{const title=document.createElement("div");title.className="title";title.textContent=shortName(n.id);const sub=document.createElement("div");sub.className="sub";sub.textContent=n.id;details.append(title,sub,heading("Declaration"),meta([["Library",n.library||"—"],["Module",n.module||"—"],["Kind",n.kind||"—"],["Target",n.target?"yes":"no"]]))}}
+function selectEdge(e,p){clearSel();selectedEdge=e;p.classList.add("selected");details.replaceChildren();const t=document.createElement("div");t.className="title";t.textContent=`${labelFor(nodesById.get(e.source))} → ${labelFor(nodesById.get(e.target))}`;const s=document.createElement("div");s.className="sub";s.textContent=`${e.role||"collapsed dependency"}; ${Math.max(0,(e.witness?.length||2)-2)} omitted declaration(s)`;details.append(t,s,heading("Exact witness path"),pathList(e.witness||[]))}
+function clearSel(){if(selectedNode)nodesById.get(selectedNode)?._element?.classList.remove("selected");if(selectedEdge)selectedEdge._element?.classList.remove("selected");selectedNode=null;selectedEdge=null}
+function showEmpty(){details.className="";details.replaceChildren();const d=document.createElement("div");d.className="empty";d.textContent="Select a headline, integration declaration, or collapsed edge. Edge details preserve the exact elaborated witness path.";details.append(d)}
+function heading(t){const h=document.createElement("h3");h.textContent=t;return h}function meta(rows){const dl=document.createElement("dl");dl.className="meta";for(const[k,v]of rows){const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=k;dd.textContent=String(v);dl.append(dt,dd)}return dl}function pathList(rows){const ol=document.createElement("ol");ol.className="path";for(const x of rows){const li=document.createElement("li");li.textContent=x;ol.append(li)}return ol}function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function renderBadges(){const b=document.getElementById("badges");for(const [family,count] of Object.entries(analysis.familyCounts||{})){const s=document.createElement("span");s.className="badge";s.textContent=`${family}: ${count.consumed}/${count.claims} reachable · ${count.canonical||0} canonical · ${count.supporting||0} supporting`;b.append(s)}}
+function renderClaimGrid(){const grid=document.getElementById("claim-grid");for(const c of analysis.claims){const b=document.createElement("button");b.type="button";b.className=`claim-chip${c.consumed?"":" unused"}`;b.innerHTML=`<strong>${escapeHtml(c.title)}</strong><span>${escapeHtml(c.family)} · ${escapeHtml(consumptionLabel(c.consumptionClass))}</span>`;b.addEventListener("click",()=>{familySelect.value="";statusSelect.value="";search.value=c.title;render();const n=nodesById.get(c.nodeId);if(n?._element)selectNode(n,n._element)});grid.append(b)}}
+function applyTransform(){viewport.setAttribute("transform",`translate(${transform.x} ${transform.y}) scale(${transform.scale})`)}function zoom(f){transform.scale=Math.max(.25,Math.min(3.5,transform.scale*f));applyTransform()}function fit(){transform={x:0,y:0,scale:1};applyTransform()}
+familySelect.addEventListener("change",render);statusSelect.addEventListener("change",render);search.addEventListener("input",render);document.getElementById("fit").addEventListener("click",fit);document.getElementById("zoom-in").addEventListener("click",()=>zoom(1.2));document.getElementById("zoom-out").addEventListener("click",()=>zoom(.83));svg.addEventListener("wheel",e=>{e.preventDefault();zoom(e.deltaY<0?1.1:.9)},{passive:false});svg.addEventListener("pointerdown",e=>{if(e.target.closest?.(".node")||e.target.closest?.(".edge"))return;svg.setPointerCapture(e.pointerId);dragging={x:e.clientX,y:e.clientY,tx:transform.x,ty:transform.y}});svg.addEventListener("pointermove",e=>{if(dragging){transform.x=dragging.tx+e.clientX-dragging.x;transform.y=dragging.ty+e.clientY-dragging.y;applyTransform()}});svg.addEventListener("pointerup",e=>{dragging=null;try{svg.releasePointerCapture(e.pointerId)}catch(_){}});
+})();
+</script>
+</body>
+</html>

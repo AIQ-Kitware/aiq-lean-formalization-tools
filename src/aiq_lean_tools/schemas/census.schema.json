@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aiq-lean-formalization-tools/census.schema.json",
+  "title": "Lean source census",
+  "type": "object",
+  "required": ["schema_version", "items"],
+  "properties": {
+    "schema_version": {"type": ["integer", "string"]},
+    "census_kind": {"type": "string"},
+    "primary_source": {"type": "object"},
+    "paper": {"type": "object"},
+    "status_definitions": {"type": "object"},
+    "verification_definitions": {"type": "object"},
+    "importance_definitions": {"type": "object"},
+    "semantic_alignment_definitions": {"type": "object"},
+    "completion_certification_definitions": {"type": "object"},
+    "gaps": {"type": "object"},
+    "blockers": {"type": "object"},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "source_anchor": {"type": "string"},
+        "source_kind": {"type": "string"},
+        "status": {"type": "string"},
+        "verification": {"type": "string"},
+        "importance": {"type": "string"},
+        "lean_declarations": {"type": "array", "items": {"type": "string"}},
+        "planned_declarations": {"type": "array", "items": {"type": "string"}},
+        "gap_refs": {"type": "array", "items": {"type": "string"}},
+        "blocked_by": {"type": "array", "items": {"type": "string"}},
+        "source_locator": {
+          "type": "object",
+          "properties": {
+            "file": {"type": "string"},
+            "lines": {
+              "type": "array",
+              "prefixItems": [{"type": "integer"}, {"type": "integer"}],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        },
+        "semantic_alignment": {"type": "object"},
+        "semantic_review": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

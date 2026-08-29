@@ -1,0 +1,16 @@
+# Optional policy for `aiq-lean gates list|run`.
+pattern: scripts/check_*.py
+unavailable_exit_code: 3
+
+# Gates in this list still run normally, but `--fast` skips them.
+slow:
+  - check_full_lean_build
+
+# Some scripts use --check for a stronger completion target rather than merely
+# making a soft regression check strict. The runner withholds --check here.
+check_is_stronger:
+  check_completion_target: "full completion is aspirational; default mode is the regression gate"
+
+# Prefer deleting unactionable checks. This mechanism exists for checks that are
+# intentionally informative and cannot be made binary.
+advisory: {}
