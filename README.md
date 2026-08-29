@@ -89,6 +89,28 @@ aiq-lean source provenance --root . --include 'MyLibrary/**/*.lean' \
     --marker 'adaptation=adapted|ported|donor' --details
 aiq-lean source module-migrate MyLibrary/Foo.lean MyLibrary/Bar.lean --check
 aiq-lean source module-migrate MyLibrary/Foo.lean MyLibrary/Bar.lean --write
+aiq-lean source staging dev/staging-policy.yaml --root .
+aiq-lean source staging dev/staging-policy.yaml --root . --compile
+aiq-lean source module-plan dev/module-plan.yaml --root .
+aiq-lean source export dev/module-export.yaml --source-root . \
+    --target-root /path/to/upstream --cluster core
+
+# Exact module-pair signature compatibility before an external comparator
+aiq-lean signatures check dev/signature-policy.yaml --root .
+
+# Recursive foundation campaign status and visualization
+aiq-lean foundations validate dev/foundation-map.yaml --root .
+aiq-lean foundations html dev/foundation-map.yaml --root . -o build/foundations.html
+
+# Literature / source-reference inventory
+aiq-lean literature validate prose/literature/source_manifest.json --root .
+aiq-lean literature summary prose/literature/source_manifest.json
+aiq-lean literature patch prose/literature/source_manifest.json \
+    --id DavisKahan1970 --set distilled_status=complete
+aiq-lean literature html prose/literature/source_manifest.json -o build/literature.html
+
+# Reproducible evidence bundle defined entirely by a project plan
+aiq-lean certify build dev/certification.yaml --root . --out build/certification --archive
 aiq-lean source snapshot --root . -o dev/declaration-snapshot.json
 aiq-lean source drift dev/declaration-snapshot.json --root . --check
 aiq-lean source conflicts --root . --check
@@ -135,7 +157,10 @@ leanq graph-html build/leanq/project-semantic-graph.json \
 ## Python API
 
 ```python
-from aiq_lean_tools import CensusDocument, FormalizationWorkspace
+from aiq_lean_tools import (
+    CensusDocument, CertificationPlan, FormalizationWorkspace, FoundationMap,
+    LiteratureDocument, ModuleExportPolicy, SignaturePolicy, StagingPolicy,
+)
 from aiq_lean_tools.census import load_census
 from aiq_lean_tools.lean_backend import MockLeanBackend
 
@@ -173,9 +198,10 @@ See `docs/census-model.md` for the shared conventions and `src/aiq_lean_tools/sc
 
 ## Workspace discovery
 
-`FormalizationWorkspace` discovers census, semantic-review, and result/source-atom coverage JSON recursively, ignores build/vendor metadata directories, reads `formalization.yaml` when present, and reports:
+`FormalizationWorkspace` discovers census, semantic-review, result/source-atom coverage, literature inventories, and foundation maps recursively, ignores build/vendor metadata directories, reads `formalization.yaml` when present, and reports:
 
 - census/review row counts plus counted-result and source-atom totals;
+- literature-work and tracked-foundation-node totals with their maintained status summaries;
 - status, verification, importance, and semantic-alignment distributions;
 - unique Lean declarations cited by the source ledgers;
 - declarations reused across source papers;
@@ -194,4 +220,4 @@ The `leanq` CLI and Python package are retained as their own top-level package s
 
 `scripts/setup-lake-cache.sh` carries the reusable bind-mount cache workflow for Lean repositories on slow/shared filesystems. `scripts/run-git-of-theseus.sh` carries the optional repository-history visualization wrapper. They remain shell scripts because their behavior is fundamentally host/mount/tooling orchestration rather than a portable Python library API.
 
-See `examples/gate-suite.yaml`, `examples/grounding-policy.yaml`, `examples/ratchet-policy.yaml`, and `examples/formalization.yaml` for starter policy/metadata files.
+See `examples/` for starter formalization, gate, grounding, ratchet, signature, foundation, staging, module-export, module-plan, certification, and literature policy/metadata files.

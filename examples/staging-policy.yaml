@@ -1,0 +1,10 @@
+allowed_statuses: [active, parked]
+compile_statuses: [active]
+records:
+  - module: MyProject.Experimental.NextLemma
+    status: active
+    reason: Under active proof repair.
+aggregate:
+  target: MyProject.Experimental
+  require_success: false
+  require_empty_on_success: true

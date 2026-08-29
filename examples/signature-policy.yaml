@@ -1,0 +1,12 @@
+build: true
+pairs:
+  - name: public-interface
+    left_module: MyProject.Challenge
+    right_module: MyProject.Solution
+    left_label: challenge
+    right_label: solution
+    build_targets:
+      - MyProject.Challenge
+      - MyProject.Solution
+    declarations:
+      - MyProject.main_theorem

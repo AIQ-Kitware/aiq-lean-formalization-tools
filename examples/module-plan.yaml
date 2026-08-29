@@ -1,0 +1,28 @@
+library: ExampleLibrary
+source_dir: .
+require_total_topics: true
+require_total_ladder: false
+
+topics:
+  - id: T01
+    title: Foundations
+    modules:
+      - Basic
+      - Definitions
+  - id: T02
+    title: Main results
+    modules:
+      - Main
+
+# Optional editorial submission seeds. Each rung is expanded to its cumulative
+# source-import closure before new_modules and closed_slice are reported.
+rungs:
+  - id: R1
+    title: Foundations
+    seeds:
+      - Basic
+      - Definitions
+  - id: R2
+    title: Main result
+    seeds:
+      - Main

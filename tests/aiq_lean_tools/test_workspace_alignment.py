@@ -136,3 +136,68 @@ def test_workspace_discovers_coverage_inventory(tmp_path: Path):
     assert overview["source_fidelity_atoms"] == 1
     assert ws.validate() == []
     assert "paper-formalization-result-inventory.json" in ws.render_html()
+
+
+def test_workspace_discovers_literature_and_foundation_tracking(tmp_path: Path):
+    dev = tmp_path / "dev"
+    dev.mkdir()
+    (tmp_path / "Demo.lean").write_text("namespace Demo\ntheorem base : True := by trivial\nend Demo\n")
+    literature = {
+        "version": "1",
+        "title": "Sources",
+        "role_legend": {"target": "target"},
+        "status_legend": {"missing": "missing"},
+        "bibliographic_status_legend": {"verified": "verified"},
+        "works": {
+            "Paper": {
+                "title": "Paper", "authors": ["A"], "year": 2026,
+                "kind": "paper", "group": "Primary", "priority": "P0", "role": "target",
+                "formalization_status": "started", "distilled_status": "missing",
+                "bibliographic_status": "verified", "primary_url": "https://example.com",
+                "target_note": "paper.tex", "repo_evidence": ["Demo.lean"], "existing_assets": [],
+                "scope": "main theorem", "missing_work": "write note",
+            }
+        },
+    }
+    foundation = {
+        "title": "Foundations",
+        "nodes": [{
+            "id": "base", "module": "Demo", "file": "Demo.lean",
+            "declaration": "Demo.base", "kind": "proof_candidate",
+        }],
+    }
+    (dev / "paper-literature.json").write_text(json.dumps(literature))
+    (dev / "paper-foundations.json").write_text(json.dumps(foundation))
+    ws = FormalizationWorkspace.discover(tmp_path)
+    overview = ws.overview()
+    assert overview["literature_inventory_count"] == 1
+    assert overview["literature_works"] == 1
+    assert overview["foundation_map_count"] == 1
+    assert overview["foundation_nodes"] == 1
+    assert ws.validate() == []
+    html = ws.render_html()
+    assert "literature works" in html
+    assert "foundation nodes" in html
+
+
+def test_workspace_ignores_unrelated_foundation_named_json(tmp_path: Path):
+    dev = tmp_path / "dev"
+    dev.mkdir()
+    valid = {
+        "title": "Foundations",
+        "nodes": [{
+            "id": "base", "module": "Demo", "file": "Demo.lean",
+            "declaration": "Demo.base", "kind": "proof_candidate",
+        }],
+    }
+    (tmp_path / "Demo.lean").write_text("namespace Demo\ntheorem base : True := by trivial\nend Demo\n")
+    (dev / "paper-foundations.json").write_text(json.dumps(valid))
+    (dev / "shared-hard-foundations-candidates.json").write_text(json.dumps({
+        "generated_at": "2026-08-29", "candidates": [{"name": "Demo.base"}],
+    }))
+    (dev / "foundation-provenance.json").write_text(json.dumps({
+        "commit": "abc", "entries": [{"source": "Demo.lean"}],
+    }))
+    ws = FormalizationWorkspace.discover(tmp_path)
+    assert len(ws.foundation_paths) == 1
+    assert ws.foundation_paths[0].name == "paper-foundations.json"

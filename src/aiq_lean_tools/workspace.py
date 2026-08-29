@@ -4,6 +4,8 @@ import collections
 import html
 import json
 import pathlib
+
+import yaml
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any, Iterable, Sequence
@@ -12,13 +14,17 @@ from .audits import source_audit_summary
 from .census import CensusDocument, load_census
 from .common import Finding, Path, find_workspace_root
 from .coverage import CoverageBundle, load_coverage_bundle
+from .foundations import FoundationMap, check_foundation_map
 from .lean_source import LeanSourceIndex, scan_lean_project
+from .literature import LiteratureDocument, load_literature
 from .manifest import FormalizationManifest, load_manifest
 from .semantic_review import SemanticReviewDocument, load_semantic_review
 
 DEFAULT_CENSUS_GLOBS = ("**/*full-source-census.json", "**/*source-census.json")
 DEFAULT_REVIEW_GLOBS = ("**/*result-semantic-review.json", "**/*semantic-review.json")
 DEFAULT_COVERAGE_GLOBS = ("**/*formalization-result-inventory.json", "**/*result-inventory.json")
+DEFAULT_LITERATURE_GLOBS = ("**/*literature*.json", "**/*literature*.yaml", "**/*literature*.yml", "**/distilled_literature/source_manifest.json")
+DEFAULT_FOUNDATION_GLOBS = ("**/*foundation*.json", "**/*foundation*.yaml", "**/*foundation*.yml")
 SKIP_PARTS = {".git", ".lake", "build", ".venv", "venv", "node_modules"}
 
 
@@ -28,6 +34,8 @@ class FormalizationWorkspace:
     census_paths: list[Path]
     review_paths: list[Path]
     coverage_paths: list[Path]
+    literature_paths: list[Path]
+    foundation_paths: list[Path]
     manifest_path: Path | None = None
 
     @classmethod
@@ -38,11 +46,15 @@ class FormalizationWorkspace:
         census_globs: Sequence[str] = DEFAULT_CENSUS_GLOBS,
         review_globs: Sequence[str] = DEFAULT_REVIEW_GLOBS,
         coverage_globs: Sequence[str] = DEFAULT_COVERAGE_GLOBS,
+        literature_globs: Sequence[str] = DEFAULT_LITERATURE_GLOBS,
+        foundation_globs: Sequence[str] = DEFAULT_FOUNDATION_GLOBS,
     ) -> "FormalizationWorkspace":
         base = find_workspace_root(root)
         census_paths = _glob_unique(base, census_globs)
         review_paths = _glob_unique(base, review_globs)
         coverage_paths = _glob_unique(base, coverage_globs)
+        literature_paths = [path for path in _glob_unique(base, literature_globs) if _looks_like_literature(path)]
+        foundation_paths = [path for path in _glob_unique(base, foundation_globs) if _looks_like_foundation_map(path)]
         # A dedicated semantic review can match a generic source-census glob if a
         # user chose a broad custom pattern.  Classification by top-level keys is
         # cheap and keeps the workspace robust.
@@ -62,7 +74,10 @@ class FormalizationWorkspace:
             else:
                 classified_census.append(path)
         manifest = base / "formalization.yaml"
-        return cls(base, classified_census, sorted(set(classified_review)), coverage_paths, manifest if manifest.is_file() else None)
+        return cls(
+            base, classified_census, sorted(set(classified_review)), coverage_paths,
+            literature_paths, foundation_paths, manifest if manifest.is_file() else None,
+        )
 
     def censuses(self) -> list[CensusDocument]:
         return [load_census(path, root=self.root) for path in self.census_paths]
@@ -72,6 +87,12 @@ class FormalizationWorkspace:
 
     def coverage_bundles(self) -> list[CoverageBundle]:
         return [load_coverage_bundle(path, root=self.root) for path in self.coverage_paths]
+
+    def literature_documents(self) -> list[LiteratureDocument]:
+        return [load_literature(path, root=self.root) for path in self.literature_paths]
+
+    def foundation_maps(self) -> list[FoundationMap]:
+        return [FoundationMap.load(path) for path in self.foundation_paths]
 
     def manifest(self) -> FormalizationManifest | None:
         return load_manifest(self.manifest_path) if self.manifest_path else None
@@ -94,6 +115,18 @@ class FormalizationWorkspace:
             rel = bundle.results.path.relative_to(self.root)
             for finding in bundle.validate(static_declarations=static_declarations, source_index=source_index):
                 findings.append(Finding(finding.level, finding.code, finding.message, f"{rel}:{finding.location}" if finding.location else str(rel)))
+        for doc in self.literature_documents():
+            rel = doc.path.relative_to(self.root)
+            for finding in doc.validate():
+                findings.append(Finding(finding.level, finding.code, finding.message, f"{rel}:{finding.location}" if finding.location else str(rel)))
+        foundation_maps = self.foundation_maps()
+        if foundation_maps and source_index is None:
+            source_index = scan_lean_project(self.root)
+        for fmap in foundation_maps:
+            rel = fmap.path.relative_to(self.root) if fmap.path else Path("foundation-map")
+            report = check_foundation_map(fmap, root=self.root, index=source_index)
+            for finding in report.findings:
+                findings.append(Finding(finding.level, finding.code, finding.message, f"{rel}:{finding.location}" if finding.location else str(rel)))
         manifest = self.manifest()
         if manifest:
             for finding in manifest.validate():
@@ -104,6 +137,9 @@ class FormalizationWorkspace:
         censuses = self.censuses()
         reviews = self.reviews()
         coverage = self.coverage_bundles()
+        literature = self.literature_documents()
+        foundation_maps = self.foundation_maps()
+        foundation_index = scan_lean_project(self.root) if foundation_maps else None
         status = collections.Counter()
         verification = collections.Counter()
         importance = collections.Counter()
@@ -132,10 +168,14 @@ class FormalizationWorkspace:
             "census_count": len(censuses),
             "semantic_review_count": len(reviews),
             "coverage_inventory_count": len(coverage),
+            "literature_inventory_count": len(literature),
+            "foundation_map_count": len(foundation_maps),
             "result_rows": sum(len(doc.items) for doc in censuses),
             "review_rows": sum(len(doc.rows) for doc in reviews),
             "coverage_results": sum(len(bundle.results.results) for bundle in coverage),
             "source_fidelity_atoms": sum(len(bundle.atoms.atoms) for bundle in coverage if bundle.atoms),
+            "literature_works": sum(len(doc.works) for doc in literature),
+            "foundation_nodes": sum(len(fmap.nodes) for fmap in foundation_maps),
             "status": dict(status),
             "verification": dict(verification),
             "importance": dict(importance),
@@ -153,6 +193,14 @@ class FormalizationWorkspace:
             "coverage": [
                 {**bundle.summary(), "path": bundle.results.path.relative_to(self.root).as_posix()}
                 for bundle in coverage
+            ],
+            "literature": [
+                {**doc.summary(), "path": doc.path.relative_to(self.root).as_posix()}
+                for doc in literature
+            ],
+            "foundations": [
+                {**check_foundation_map(fmap, root=self.root, index=foundation_index).summary(), "path": fmap.path.relative_to(self.root).as_posix() if fmap.path else ""}
+                for fmap in foundation_maps
             ],
         }
         graph_path = self.root / "build" / "leanq" / "project-semantic-graph.json"
@@ -204,3 +252,30 @@ def _glob_unique(root: Path, patterns: Sequence[str]) -> list[Path]:
             if path.is_file() and not SKIP_PARTS.intersection(path.relative_to(root).parts):
                 found.add(path.resolve())
     return sorted(found)
+
+
+def _load_mapping_for_discovery(path: Path) -> dict[str, Any] | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+        data = json.loads(text) if path.suffix.lower() == ".json" else yaml.safe_load(text)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _looks_like_foundation_map(path: Path) -> bool:
+    data = _load_mapping_for_discovery(path)
+    if not data or not isinstance(data.get("nodes"), list) or not data["nodes"]:
+        return False
+    return all(
+        isinstance(row, dict) and isinstance(row.get("id"), str) and isinstance(row.get("declaration"), str)
+        for row in data["nodes"]
+    )
+
+
+def _looks_like_literature(path: Path) -> bool:
+    data = _load_mapping_for_discovery(path)
+    works = data.get("works") if data else None
+    if not isinstance(works, dict) or not works:
+        return False
+    return all(isinstance(row, dict) and "title" in row and "authors" in row for row in works.values())

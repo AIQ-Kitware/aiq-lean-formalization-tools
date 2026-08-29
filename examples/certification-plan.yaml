@@ -1,0 +1,18 @@
+name: Example formalization certificate
+inputs:
+  - formalization.yaml
+  - dev/*source-census.json
+source_tree:
+  include:
+    - '**/*.lean'
+  exclude_parts: [.git, .lake, build, dist, external]
+require_clean_git: true
+require_input_matches: true
+tool_versions:
+  lean: [lean, --version]
+  lake: [lake, --version]
+commands:
+  - name: workspace validation
+    argv: [aiq-lean, workspace, validate, --static-declarations]
+    timeout: 3600
+    required: true

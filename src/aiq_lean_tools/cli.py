@@ -24,7 +24,9 @@ from .checklist import update_checklists
 from .census import load_census
 from .common import Path, atomic_write_text, load_json, parse_scalar
 from .coverage import load_coverage_bundle, load_result_inventory, load_source_atom_inventory
+from .certification import CertificationPlan, archive_certification_bundle, build_certification_bundle
 from .errors import FormalizationToolsError
+from .foundations import FoundationMap, check_foundation_map
 from .gates import GateSuiteConfig, discover_gates, run_gate_suite
 from .grounding import check_grounding_policy, load_grounding_policy
 from .history import history_summary, load_git_history, render_history_html
@@ -32,7 +34,10 @@ from .import_graph import SourceImportGraph
 from .hygiene import conflict_markers, orphan_build_modules, remove_orphan_build_modules
 from .import_policy import ImportPolicy, check_import_policy
 from .lean_source import declaration_source_texts, scan_lean_project
+from .literature import load_literature
 from .manifest import load_manifest
+from .module_export import ModuleExportPolicy, export_modules
+from .module_plan import ModulePlanPolicy, check_module_plan
 from .module_migration import migrate_module_file
 from .module_coverage import ModuleCoveragePolicy, check_module_coverage
 from .namespace_policy import check_namespace_policy, load_namespace_policy
@@ -40,6 +45,8 @@ from .provenance import provenance_inventory
 from .ratchet import evaluate_ratchets, load_ratchet_policy
 from .roadmap import compare_roadmap
 from .semantic_review import load_semantic_review
+from .signatures import SignaturePolicy, compare_signatures
+from .staging import StagingPolicy, check_staging
 from .source_candidates import (
     dead_definition_candidates,
     definitional_escape_candidates,
@@ -1118,6 +1125,230 @@ def cmd_manifest_summary(args) -> int:
     return 0
 
 
+
+def cmd_signatures_check(args) -> int:
+    policy = SignaturePolicy.load(args.policy)
+    report = compare_signatures(
+        policy,
+        root=args.root,
+        timeout=args.timeout,
+        build=not args.no_build,
+    )
+    if args.json:
+        _dump(report.to_json())
+    else:
+        for row in report.comparisons:
+            print(f"{row.status:<5} {row.pair}: {row.declaration}")
+            for finding in row.findings:
+                print(f"  {finding.code}: {finding.message}")
+        for finding in report.findings:
+            if not any(finding in row.findings for row in report.comparisons):
+                print(f"{finding.level.upper():7s} [{finding.code}] {finding.message}")
+        print(f"{len(report.comparisons)} comparison(s); {'PASS' if report.ok else 'FAIL'}")
+    return 0 if report.ok else 1
+
+
+def _foundation_report(args):
+    fmap = FoundationMap.load(args.path)
+    return check_foundation_map(
+        fmap,
+        root=args.root,
+        lean_probe=getattr(args, "lean_probe", False),
+        timeout=getattr(args, "timeout", 600),
+    )
+
+
+def cmd_foundations_validate(args) -> int:
+    report = _foundation_report(args)
+    if args.json:
+        _dump(report.to_json())
+    else:
+        summary = report.summary()
+        print(f"{summary['title']}: {summary['nodes']} node(s), {summary['source_present']} source-present")
+        return _print_findings(report.findings)
+    return 0 if report.ok else 1
+
+
+def cmd_foundations_render(args) -> int:
+    report = _foundation_report(args)
+    text = report.render_markdown()
+    if args.out:
+        atomic_write_text(Path(args.out), text)
+        print(args.out)
+    else:
+        sys.stdout.write(text)
+    return 0 if report.ok else 1
+
+
+def cmd_foundations_html(args) -> int:
+    report = _foundation_report(args)
+    out = Path(args.out) if args.out else Path(args.path).with_suffix('.html')
+    atomic_write_text(out, report.render_html())
+    print(out)
+    return 0 if report.ok else 1
+
+
+def cmd_source_staging(args) -> int:
+    policy = StagingPolicy.load(args.policy)
+    report = check_staging(
+        policy,
+        root=args.root,
+        compile=args.compile,
+        timeout=args.timeout,
+    )
+    if args.json:
+        _dump(report.to_json())
+    else:
+        for module, record in zip(report.normalized_modules, report.policy.records):
+            print(f"{record.status:<10} {module}")
+        return _print_findings(report.findings)
+    return 0 if report.ok else 1
+
+
+def cmd_source_export(args) -> int:
+    policy = ModuleExportPolicy.load(args.policy)
+    report = export_modules(
+        policy,
+        source_root=args.source_root or args.root or '.',
+        target_root=args.target_root,
+        cluster=args.cluster,
+        write=args.write,
+    )
+    if args.json:
+        _dump(report.to_json())
+    else:
+        for item in report.items:
+            print(f"{item.status:<10} {item.source_module} -> {item.target_module}")
+        return _print_findings(report.findings)
+    return 0 if report.ok else 1
+
+
+def cmd_source_module_plan(args) -> int:
+    policy = ModulePlanPolicy.load(args.policy)
+    report = check_module_plan(policy, root=args.root)
+    if args.render:
+        text = report.render_markdown()
+        if args.out:
+            atomic_write_text(Path(args.out), text)
+            print(args.out)
+        else:
+            sys.stdout.write(text)
+    elif args.json:
+        _dump(report.to_json())
+    else:
+        print(f"{policy.library}: {report.module_count} module(s), {len(report.topics)} topic(s), {len(report.rungs)} rung(s)")
+        for topic in report.topics:
+            needs = ", ".join(topic.prerequisites) or "-"
+            print(f"{topic.id:<8} {len(topic.modules):>3} module(s)  needs: {needs}")
+        if report.rungs:
+            for rung in report.rungs:
+                print(f"rung {rung.id:<8} +{len(rung.new_modules):>3} module(s)  closed={rung.closed_slice}")
+        return _print_findings(report.findings)
+    return 0 if report.ok else 1
+
+
+def cmd_certify_build(args) -> int:
+    plan = CertificationPlan.load(args.plan)
+    report = build_certification_bundle(
+        plan,
+        root=args.root,
+        output_dir=args.out,
+        overwrite=args.overwrite,
+    )
+    archive = None
+    if args.archive:
+        archive = archive_certification_bundle(report.output_dir, args.archive_path)
+    if args.json:
+        payload = report.to_json()
+        payload['archive'] = str(archive) if archive else None
+        _dump(payload)
+    else:
+        print(report.output_dir)
+        if archive:
+            print(archive)
+        for finding in report.findings:
+            print(f"{finding.level.upper():7s} [{finding.code}] {finding.message}")
+        print('PASS' if report.ok else 'FAIL')
+    return 0 if report.ok else 1
+
+
+def cmd_literature_validate(args) -> int:
+    return _print_findings(load_literature(args.path, root=args.root).validate(), json_mode=args.json)
+
+
+def cmd_literature_summary(args) -> int:
+    data = load_literature(args.path, root=args.root).summary()
+    if args.json:
+        _dump(data)
+    else:
+        print(f"{data['title']}\nworks: {data['works']}")
+        for field in ('groups', 'priorities', 'distilled_status', 'bibliographic_status'):
+            if data[field]:
+                print(f"\n{field.replace('_', ' ')}")
+                for key, value in data[field].items():
+                    print(f"  {key}: {value}")
+    return 0
+
+
+def cmd_literature_show(args) -> int:
+    _dump(load_literature(args.path, root=args.root).row(args.id))
+    return 0
+
+
+def cmd_literature_render(args) -> int:
+    doc = load_literature(args.path, root=args.root)
+    text = doc.render_markdown()
+    if args.out:
+        atomic_write_text(Path(args.out), text)
+        print(args.out)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_literature_latex(args) -> int:
+    doc = load_literature(args.path, root=args.root)
+    text = doc.render_latex()
+    if args.out:
+        atomic_write_text(Path(args.out), text)
+        print(args.out)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_literature_html(args) -> int:
+    doc = load_literature(args.path, root=args.root)
+    out = Path(args.out) if args.out else Path(args.path).with_suffix('.html')
+    atomic_write_text(out, doc.render_html())
+    print(out)
+    return 0
+
+
+def cmd_literature_patch(args) -> int:
+    doc = load_literature(args.path, root=args.root)
+    doc.patch_work(args.id, _sets(args.set), args.delete)
+    findings = doc.validate()
+    if any(f.level == 'error' for f in findings) and not args.force:
+        return _print_findings(findings)
+    doc.write()
+    print(doc.path)
+    return 0
+
+
+def cmd_literature_add(args) -> int:
+    doc = load_literature(args.path, root=args.root)
+    row = load_json(args.from_json)
+    if not isinstance(row, dict):
+        raise FormalizationToolsError('--from-json must contain one work object')
+    doc.append_work(args.id, row)
+    findings = doc.validate()
+    if any(f.level == 'error' for f in findings) and not args.force:
+        return _print_findings(findings)
+    doc.write()
+    print(doc.path)
+    return 0
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="aiq-lean", description="Reusable Lean formalization census, audit, and visualization tools")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -1212,6 +1443,36 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--root"); s.add_argument("--include", action="append", default=[]); s.add_argument("--heading", default="Provenance"); s.add_argument("--marker", action="append", default=[], help="LABEL=regex"); s.add_argument("--details", action="store_true"); s.add_argument("--require", action="store_true", help="fail when a scanned file has no matching block"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_provenance)
     s = ss.add_parser("module-migrate", help="convert Lean files to module/public-import style")
     s.add_argument("paths", nargs="+"); s.add_argument("--write", action="store_true"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_module_migrate)
+    s = ss.add_parser("staging", help="validate a configurable staging-module registry")
+    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--compile", action="store_true"); s.add_argument("--timeout", type=int, default=600); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_staging)
+    s = ss.add_parser("export", help="check or write a manifest-driven Lean module promotion")
+    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--source-root"); s.add_argument("--target-root", required=True); s.add_argument("--cluster"); s.add_argument("--write", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_export)
+    s = ss.add_parser("module-plan", help="validate an ordered module-topic partition and optional dependency-closed submission ladder")
+    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.add_argument("--render", action="store_true", help="render the report as Markdown"); s.add_argument("-o", "--out", help="write Markdown when --render is used"); s.set_defaults(func=cmd_source_module_plan)
+
+    signatures = sub.add_parser("signatures", help="compare exact Lean declaration interfaces across module pairs")
+    sigs = signatures.add_subparsers(dest="signatures_command", required=True)
+    sg = sigs.add_parser("check"); sg.add_argument("policy"); sg.add_argument("--root"); sg.add_argument("--no-build", action="store_true"); sg.add_argument("--timeout", type=int, default=600); sg.add_argument("--json", action="store_true"); sg.set_defaults(func=cmd_signatures_check)
+
+    foundations = sub.add_parser("foundations", help="validate and visualize recursive foundation campaigns")
+    fss = foundations.add_subparsers(dest="foundations_command", required=True)
+    for name, func in (("validate", cmd_foundations_validate), ("render", cmd_foundations_render), ("html", cmd_foundations_html)):
+        f = fss.add_parser(name); f.add_argument("path"); f.add_argument("--root"); f.add_argument("--lean-probe", action="store_true"); f.add_argument("--timeout", type=int, default=600); f.add_argument("--json", action="store_true") if name == "validate" else None; f.add_argument("-o", "--out") if name in {"render", "html"} else None; f.set_defaults(func=func)
+
+    literature = sub.add_parser("literature", help="validate, edit, and render literature/source inventories")
+    lss = literature.add_subparsers(dest="literature_command", required=True)
+    l = lss.add_parser("validate"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--json", action="store_true"); l.set_defaults(func=cmd_literature_validate)
+    l = lss.add_parser("summary"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--json", action="store_true"); l.set_defaults(func=cmd_literature_summary)
+    l = lss.add_parser("show"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.set_defaults(func=cmd_literature_show)
+    l = lss.add_parser("render"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_render)
+    l = lss.add_parser("latex"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_latex)
+    l = lss.add_parser("html"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_html)
+    l = lss.add_parser("patch"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.add_argument("--set", action="append", default=[]); l.add_argument("--delete", action="append", default=[]); l.add_argument("--force", action="store_true"); l.set_defaults(func=cmd_literature_patch)
+    l = lss.add_parser("add"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.add_argument("--from-json", required=True); l.add_argument("--force", action="store_true"); l.set_defaults(func=cmd_literature_add)
+
+    certify = sub.add_parser("certify", help="build reproducible evidence bundles from a declarative plan")
+    cts = certify.add_subparsers(dest="certify_command", required=True)
+    ct = cts.add_parser("build"); ct.add_argument("plan"); ct.add_argument("--root"); ct.add_argument("--out", required=True); ct.add_argument("--overwrite", action="store_true"); ct.add_argument("--archive", action="store_true"); ct.add_argument("--archive-path"); ct.add_argument("--json", action="store_true"); ct.set_defaults(func=cmd_certify_build)
 
     imports = sub.add_parser("imports", help="check configurable Lean module layering policies")
     ims = imports.add_subparsers(dest="imports_command", required=True)

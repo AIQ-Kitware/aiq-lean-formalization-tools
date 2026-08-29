@@ -6,13 +6,13 @@
 
 ### Census and review documents
 
-`census.py`, `coverage.py`, and `semantic_review.py` own JSON validation, mutation, summaries, Markdown rendering, and standalone HTML rendering. `coverage.py` keeps the hard formalization denominator separate from the finer source-fidelity atom inventory and validates their cross-links without hard-coding a paper-specific terminality policy. Validation is definition-driven: a census may define its own status, verification, completion, importance, gap, blocker, and semantic-alignment vocabularies.
+`census.py`, `coverage.py`, `semantic_review.py`, and `literature.py` own maintained tracking documents, validation, mutation, summaries, and generated views. `coverage.py` keeps the hard formalization denominator separate from the finer source-fidelity atom inventory and validates their cross-links without hard-coding a paper-specific terminality policy. Validation is definition-driven: a census may define its own status, verification, completion, importance, gap, blocker, and semantic-alignment vocabularies.
 
 `alignment.py` builds a reviewer-oriented packet from curated `semantic_review` material embedded in census rows. It can add compiler evidence without mixing compiler success with source-equivalence judgments.
 
 ### Lean execution seam
 
-`lean_backend.py` is the only external-process boundary used by the new census/alignment machinery.
+`lean_backend.py` is the shared Lean-process boundary for census/alignment probes, exact signature preflights, foundation probes, and staging compilation.
 
 - `SubprocessLeanBackend` runs generated probe modules through `lake env lean`.
 - `MockLeanBackend` makes those workflows deterministic in unit tests.
@@ -24,7 +24,7 @@
 
 ### Python-only structural audits
 
-`lean_source.py`, `audits.py`, `source_candidates.py`, `symbol_census.py`, `checklist.py`, `hygiene.py`, `aggregates.py`, `import_policy.py`, `namespace_policy.py`, `module_coverage.py`, `roadmap.py`, and `ratchet.py` operate on source/build-tree structure. They do not infer theorem meaning.
+`lean_source.py`, `audits.py`, `source_candidates.py`, `symbol_census.py`, `checklist.py`, `hygiene.py`, `aggregates.py`, `import_policy.py`, `namespace_policy.py`, `module_coverage.py`, `roadmap.py`, `module_export.py`, and `ratchet.py` operate on source/build-tree structure. They do not infer theorem meaning.
 
 This layer covers:
 
@@ -46,9 +46,13 @@ This layer covers:
 
 `gates.py` handles a different structural problem: it discovers repository `check_*.py` scripts, determines which accept the conventional `--check` strictness switch without executing them, and applies explicit configuration for slow, unavailable, advisory, or stronger-than-regression modes. This keeps a repository's named checks local while making the runner reusable.
 
+### Campaign tracking and reproducible evidence
+
+`foundations.py` models recursive human-tracked foundation campaigns while keeping those edges distinct from elaborated Lean dependencies. `staging.py` models staging-root state with optional compiler checks. `module_plan.py` validates ordered module-topic partitions and derives source-import prerequisites and dependency-closed submission rungs from project-supplied editorial seeds. `signatures.py` performs exact Lean interface preflights across module pairs. `certification.py` builds reproducible evidence bundles from declarative command/input plans; it records evidence but does not define scientific completion.
+
 ### Holistic workspace
 
-`workspace.py` discovers censuses, semantic reviews, result inventories, and linked source-fidelity atom inventories and produces an aggregate view across source papers. It intentionally aggregates evidence rather than inventing a single completion score. Source implementation status, compiler verification, semantic review, and completion certification remain distinguishable axes.
+`workspace.py` discovers censuses, semantic reviews, result inventories, linked source-fidelity atoms, literature inventories, and foundation maps and produces an aggregate view across source papers. It intentionally aggregates evidence rather than inventing a single completion score. Source implementation status, compiler verification, semantic review, and completion certification remain distinguishable axes.
 
 ### Build diagnostics
 

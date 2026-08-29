@@ -1,0 +1,10 @@
+source_prefix: ForUpstream
+target_prefix: Upstream
+allowed_import_prefixes: [Mathlib, Upstream]
+clusters:
+  - name: core
+    source_modules:
+      - ForUpstream.Analysis.Core
+records:
+  - source_module: ForUpstream.Analysis.Core
+    target_module: Upstream.Analysis.Core

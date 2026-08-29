@@ -562,13 +562,12 @@ following contain paper-specific scientific or release policy and should remain
 in DKPS, ideally rewritten as thin compositions of the reusable primitives:
 
 - `scripts/audit_full_paper_sine_theta.py`;
-- `scripts/certify_davis_kahan_1970.py`;
-- Davis--Kahan result-inventory/statement-map/final-certification rules;
-- hidden-foundations criteria and semantic roadmap completion rules beyond structural name matching;
-- comparator signature/install/run policy;
-- Palomar and TauCeti readiness/export/submission scripts;
-- experimental-tree staging policy;
-- distilled-literature-index and submission-prose policy;
+- Davis--Kahan result-selection, statement-map, and scientific final-certification rules;
+- semantic roadmap completion judgments beyond structural name matching;
+- external comparator installation/run policy and comparator fixture selection;
+- Palomar and TauCeti submission/readiness policy;
+- the actual experimental-tree status assignments and exception reasons;
+- literature corpus facts and submission-prose policy;
 - manuscript resource valuation, LLM token accounting, pricing, and statistical
   analysis;
 - post-hoc prompt-analysis research tooling.
@@ -640,3 +639,194 @@ A generalized source script is safe to remove when all of the following hold:
 For Lean-semantic tools, parity also requires a real-toolchain smoke test in
 DKPS.  Mock-backed package tests establish the Python contract but do not replace
 an elaboration check in the source formalization repository.
+
+## 24. Exact declaration-signature preflight
+
+### DKPS origin
+
+- `scripts/check_comparator_signatures.py`
+- comparator JSON under `palomar/**/comparator.json`
+
+### Reusable package
+
+`aiq_lean_tools.signatures` and `aiq-lean signatures check` compare two importable
+Lean interfaces on the two details the DKPS preflight had to preserve: raw
+positional universe parameters from `#print`, and the fully explicit declaration
+type from `pp.all #check`. Module pairs, labels, build targets, and declarations
+are policy data. `LeanBackend` remains the execution seam, so tests use a mock.
+
+This is still a preflight. A project that requires an external serializer or
+challenge comparator must run that tool as an additional certification step.
+
+### DKPS cleanup
+
+- Replace `check_comparator_signatures.py` with `aiq-lean signatures check`.
+- Keep the comparator JSON and external comparator invocation in DKPS.
+- Do not duplicate Lean pretty-printer parsing in Palomar wrappers.
+
+## 25. Recursive foundation campaign tracking
+
+### DKPS origin
+
+- `scripts/check_davis_kahan_hidden_foundations.py`
+- `dev/davis-kahan-hidden-foundations.json`
+
+### Reusable package
+
+`aiq_lean_tools.foundations` and `aiq-lean foundations` validate node IDs,
+tracked source files/declarations, recursive campaign edges, cycles, and optional
+proof-escape policy. They can add compiler-backed declaration probes and render
+Markdown or a standalone interactive HTML map. With no explicit escape scope,
+the checker scans the tracked node files rather than assuming a DKPS directory.
+
+The dependency edges in this document are campaign bookkeeping. Elaborated proof
+dependencies remain `leanq` data.
+
+### DKPS cleanup
+
+- Keep `dev/davis-kahan-hidden-foundations.json` as DKPS project state.
+- Replace the checker and status renderer with this package.
+- Use `leanq` whenever a claim is about actual declaration dependence.
+
+## 26. Staging registries
+
+### DKPS origin
+
+- `scripts/check_experimental_root_status.py`
+- `dev/experimental-root-status.json`
+
+### Reusable package
+
+`aiq_lean_tools.staging` and `aiq-lean source staging` separate the maintained
+status registry from optional compiler evidence. Status vocabulary, which states
+must compile, aggregate targets, and empty-on-success rules are configuration.
+Historical `.lean` paths and module names are both accepted during migration.
+
+### DKPS cleanup
+
+- Keep the experimental-root JSON in DKPS.
+- Replace parser, path resolution, and compilation orchestration with
+  `aiq-lean source staging`.
+- Keep the reason for parking or activating a root in DKPS data.
+
+## 27. Staging-to-upstream module export
+
+### DKPS origin
+
+- `scripts/export_for_tauceti.py`
+- `dev/tauceti/extraction-manifest.json`
+
+### Reusable package
+
+`aiq_lean_tools.module_export` and `aiq-lean source export` implement the
+mechanical export contract. A manifest supplies source/target module prefixes,
+clusters, target overrides, and allowed import prefixes. Export rewrites only the
+configured import prefix and otherwise preserves Lean source text verbatim. Check
+mode reports NEW/MATCH/DIFF; write mode is explicit. The loader accepts the
+historical TauCeti manifest shape, including the distinction between an original
+`source_module` and the actual `staging_module`.
+
+### DKPS cleanup
+
+- Keep `dev/tauceti/extraction-manifest.json` and external Tau Ceti checkout
+  selection in DKPS.
+- Replace the transformation/drift engine with `aiq-lean source export`.
+- Keep submission decisions and roadmap acceptance outside this package.
+
+## 28. Reproducible certification evidence bundles
+
+### DKPS origin
+
+- reusable mechanics from `scripts/certify_davis_kahan_1970.py`
+
+### Reusable package
+
+`aiq_lean_tools.certification` and `aiq-lean certify build` turn a declarative
+plan into an evidence directory containing declared input snapshots, Git and
+submodule state, stable source-tree hashes, tool-version probes, complete logs for
+named verification commands, `metadata.json`, `README.md`, `SHA256SUMS`, and an
+optional ZIP archive. Commands are argv lists, not shell strings.
+
+The plan says what evidence to execute. The package does not decide that a paper
+is mathematically complete because those commands pass.
+
+### DKPS cleanup
+
+- Rewrite the remaining Davis--Kahan certificate as a small plan plus any
+  genuinely paper-specific adjudication.
+- Remove duplicate hashing, Git snapshot, log capture, checksum, and archive code.
+- Have the plan call `workspace validate`, `coverage validate`, `alignment`,
+  `leanq`, and any external comparator gates required by DKPS policy.
+
+## 29. Literature/source inventory
+
+### DKPS origin
+
+- `scripts/check_distilled_literature_index.py`
+- `scripts/render_distilled_literature_index.py`
+- `prose/distilled_literature/source_manifest.json`
+
+### Reusable package
+
+`aiq_lean_tools.literature` and `aiq-lean literature` own the machine-readable
+literature inventory lifecycle: validation, stable-key lookup/edit/add, summary,
+Markdown, LaTeX, and standalone interactive HTML. Group/priority ordering,
+status/role/bibliographic vocabularies, target-note extension, reconstruction
+completion states, and required note markers all come from the manifest.
+
+The loader intentionally accepts the DKPS convention where `complete` is a
+terminal reconstruction state even when the status legend documents only the
+nonterminal categories.
+
+### DKPS cleanup
+
+- Keep `prose/distilled_literature/source_manifest.json` and the distilled notes.
+- Replace checker and renderer implementations with `aiq-lean literature`.
+- Keep source selection, bibliography facts, completion judgments, and prose
+  requirements in DKPS data.
+
+## 30. Ordered module plans and submission ladders
+
+### DKPS origin
+
+- `scripts/check_tauceti_roadmap_topics.py`
+- `scripts/derive_tauceti_submission_ladder.py`
+
+### Reusable package
+
+`aiq_lean_tools.module_plan` and `aiq-lean source module-plan` own the
+source-graph mechanics behind both tools. A policy supplies an ordered, total
+module-topic partition and optional editorial rung seeds. The package validates
+totality/disjointness, detects imports from an earlier topic into a later one,
+derives exact topic prerequisites, expands cumulative rung seeds to their local
+source-import closure, and reports new/off-ladder modules.
+
+This preserves the distinction from the DKPS scripts: topic membership, topic
+order, and rung seeds are editorial decisions; import closure and consistency
+checks are derived. Source-import edges are planning evidence, not
+declaration-level proof dependencies or successful elaboration.
+
+A compatibility run against the attached DKPS snapshot reproduced the old
+engines exactly on their shared mechanical outputs: 288 source modules, 230
+assigned modules, 3 stale topic entries, 61 unassigned modules, 1 forward
+reference, all 21 cumulative rung-closure sizes, and 100 off-ladder modules.
+The nonzero counts reflect drift in the historical DKPS tables relative to that
+newer source snapshot; both implementations report the same drift.
+
+### DKPS cleanup
+
+- Move `TOPICS` and `RUNGS` into a DKPS YAML/JSON module-plan policy.
+- Replace total/disjoint/order/prerequisite and dependency-closure calculations
+  with `aiq-lean source module-plan`.
+- Keep the external TauCetiRoadmap directory mapping, roadmap prose
+  synchronization, topic descriptions, and submission choices in DKPS.
+- Use `leanq` for declaration-level proof-dependency questions.
+
+## 31. Final extraction boundary
+
+After the ports above, the remaining DKPS-only scripts are compositions or
+scientific/release policy rather than missing reusable engines. Examples are the
+full-paper sine-theta adjudication, named Palomar/TauCeti submission gates,
+external comparator installation, manuscript cost/token analysis, and
+paper-specific result-selection rules. Those scripts should become thin callers
+of this package where possible, but their policy should not become defaults here.

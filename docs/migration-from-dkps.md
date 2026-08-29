@@ -21,7 +21,7 @@ This package extracts mechanisms that can serve another formalization. Source-pa
 | `render_semantic_alignment_review.py` | `alignment render`, optionally compiler-probed |
 | `source_census_importance.py` | normalized importance ordering used by alignment packets and workspace summaries |
 | `upgrade_census_schema_v4.py` | no one-shot migration baked in; current documents are read heterogeneously and edited with stable generic APIs |
-| `certify_davis_kahan_1970.py` | reusable pieces split across census validation/probing, alignment packets, workspace reports, and `leanq`; the DK-specific certificate composition remains project-local |
+| `certify_davis_kahan_1970.py` | `certify build` owns reproducible evidence-bundle mechanics; the DK-specific scientific completion plan remains project-local |
 
 ## Generalized into source/build audits
 
@@ -52,12 +52,12 @@ This package extracts mechanisms that can serve another formalization. Source-pa
 
 The following scripts encode a particular paper, extraction campaign, submission target, comparator, or repository policy. Their reusable primitives are present above, but their named policy is not installed globally:
 
-- Davis--Kahan/YWS paper certification, result-inventory, statement-map, hidden-foundation, full-paper sine-theta, and audit-packet scripts;
+- Davis--Kahan/YWS scientific completion criteria, statement-map policy, full-paper sine-theta adjudication, and audit-packet composition;
 - Tau Ceti, Palomar, Spectra, extraction-roadmap, and submission-readiness gates;
-- comparator-signature checks tied to specific generated comparator files;
-- experimental-tree status and coverage policy tied to the Davis--Kahan staging layout;
-- distilled literature index and submission-prose checks, whose groups, note requirements, and prose markers are themselves project content rather than a stable cross-project schema;
-- project-specific export/refresh scripts for Tau Ceti;
+- external comparator installation/invocation and the specific comparator fixture selections; exact Lean signature preflight is now `signatures check`;
+- the actual experimental-tree root/status assignments; the registry/compiler mechanism is now `source staging` and reachability coverage is `source module-coverage`;
+- literature corpus facts/groups/note requirements and submission-prose policy; the inventory validator/editor/renderers are now `literature`;
+- Tau Ceti submission/readiness, roadmap-directory mapping, and prose refresh policy; deterministic staging-to-upstream export is now `source export`, while ordered topic consistency and dependency-closed rung derivation are `source module-plan`;
 - DK/YWS/DKPS census contents and semantic judgments themselves.
 
 A new repository can express its import and namespace architecture in policy files, then keep source-specific certification composition next to its own source ledgers.

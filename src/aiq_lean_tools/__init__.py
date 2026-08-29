@@ -1,6 +1,13 @@
 """Reusable tooling for Lean formalization audits and semantic alignment."""
 
 from .census import CensusDocument, CensusValidationError, load_census
+from .certification import CertificationPlan, CertificationReport, build_certification_bundle, archive_certification_bundle
+from .foundations import FoundationMap, FoundationReport, check_foundation_map
+from .literature import LiteratureDocument, load_literature
+from .module_export import ModuleExportPolicy, ModuleExportReport, export_modules
+from .module_plan import ModulePlanPolicy, ModulePlanReport, check_module_plan
+from .signatures import SignaturePolicy, SignatureReport, compare_signatures
+from .staging import StagingPolicy, StagingReport, check_staging
 from .coverage import CoverageBundle, ResultInventoryDocument, SourceAtomInventoryDocument, load_coverage_bundle
 from .lean_backend import LeanBackend, MockLeanBackend, SubprocessLeanBackend
 from .gates import GateSuiteConfig
@@ -20,6 +27,27 @@ from .workspace import FormalizationWorkspace
 __version__ = "0.1.0"
 
 __all__ = [
+    "CertificationPlan",
+    "CertificationReport",
+    "FoundationMap",
+    "FoundationReport",
+    "LiteratureDocument",
+    "ModuleExportPolicy",
+    "ModuleExportReport",
+    "ModulePlanPolicy",
+    "ModulePlanReport",
+    "SignaturePolicy",
+    "SignatureReport",
+    "StagingPolicy",
+    "StagingReport",
+    "archive_certification_bundle",
+    "build_certification_bundle",
+    "check_foundation_map",
+    "check_module_plan",
+    "check_staging",
+    "compare_signatures",
+    "export_modules",
+    "load_literature",
     "CensusDocument",
     "load_coverage_bundle",
     "SourceAtomInventoryDocument",

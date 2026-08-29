@@ -1,0 +1,25 @@
+title: Example recursive foundation campaign
+description: Human-tracked prerequisites for a target theorem.
+kind_meanings:
+  proof_candidate: mathematical lemma still being closed
+  interface: public API or representation bridge
+nodes:
+  - id: core-gap
+    module: MyProject.Core
+    file: MyProject/Core.lean
+    declaration: MyProject.core_gap
+    kind: proof_candidate
+  - id: final-bridge
+    module: MyProject.Bridge
+    file: MyProject/Bridge.lean
+    declaration: MyProject.final_bridge
+    kind: interface
+    dependencies: [core-gap]
+campaigns:
+  - id: main
+    title: Main closure campaign
+    nodes: [core-gap, final-bridge]
+escape_scan:
+  patterns:
+    sorry: '\bsorry\b'
+    admit: '\badmit\b'

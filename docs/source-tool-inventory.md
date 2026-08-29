@@ -11,22 +11,22 @@ This ledger records the disposition of the reusable tooling found in the source 
 | `scripts/audit_full_paper_sine_theta.py` | Project-local paper audit composition; use census/review/alignment plus `leanq` for a new source. |
 | `scripts/audit_profile.py` | Generalized as `aiq-lean source profile`. |
 | `scripts/audit_scan.py` | Generalized as `source similar`, `large`, `dead`, `names`, and `definitional-escapes`. |
-| `scripts/certify_davis_kahan_1970.py` | Project-local certificate composition. Generic ingredients are census validation/probing, alignment packets, workspace reports, source audits, and `leanq`. |
-| `scripts/check_comparator_signatures.py` | Project-local comparator contract. |
+| `scripts/certify_davis_kahan_1970.py` | Generic evidence-bundle mechanics are extracted as `CertificationPlan` / `aiq-lean certify build`: input snapshots, stable source-tree hashes, Git/submodule state, tool versions, named command logs, checksums, and optional ZIP. The Davis--Kahan completion criteria and exact command plan remain DKPS policy. |
+| `scripts/check_comparator_signatures.py` | Generalized as `signatures check`. It compares raw universe-slot order and fully explicit Lean types with a mockable backend. Specific comparator fixtures and the external comparator remain project-local. |
 | `scripts/check_conflict_markers.py` | Generalized as `source conflicts`. |
 | `scripts/check_davis_kahan_1970_result_inventory.py` | Generic result/source-atom cross-linking is extracted as `coverage`; Davis--Kahan result-kind taxonomy, terminality, boundary reason codes, semantic adjudications, and hash-pinned certification policy remain project-local. |
 | `scripts/check_davis_kahan_1970_source_census.py` | Generalized by `census validate` and `workspace validate`. |
 | `scripts/check_davis_kahan_1970_statement_map.py` | Project-local organizational statement map. Its source-atom/result cross-links are now understood by `coverage`; statement grouping, TeX marker policy, and named source boundaries remain DKPS data. |
-| `scripts/check_davis_kahan_hidden_foundations.py` | Project-local foundation criterion; use `leanq deps`, graph slices, and configurable landmarks for a new project. |
+| `scripts/check_davis_kahan_hidden_foundations.py` | Generalized as `foundations validate/render/html`: recursive campaign nodes, tracked declarations/files, cycles, optional escape scans, and optional Lean probes. The historical foundation graph itself remains DKPS data. |
 | `scripts/check_declaration_name_drift.py` | Generalized as `source snapshot` and `source drift`. |
 | `scripts/check_dependency_layers.py` | Generalized as YAML/JSON-driven `imports check`. |
-| `scripts/check_distilled_literature_index.py` | Project-local literature corpus policy. Its fixed groups, required note markers, and completion definitions are source-project content. |
+| `scripts/check_distilled_literature_index.py` | Generalized as `literature validate/summary/show/patch/add`. Group/priority/status vocabularies, note markers, reconstruction policy, and bibliography facts remain manifest data. |
 | `scripts/check_dkps_application_source_censuses.py` | Generalized by heterogeneous `CensusDocument` validation and workspace aggregation. |
 | `scripts/check_dkps_result_semantic_reviews.py` | Generalized by `SemanticReviewDocument` and workspace validation. |
 | `scripts/check_docstring_coverage.py` | Generalized as `source docstrings`. |
 | `scripts/check_duplicate_qualified_names.py` | Generalized as `source duplicates`. |
 | `scripts/check_experimental_coverage.py` | Generalized as policy-driven `source module-coverage`; the DavisKahan.Experimental root, scope, and exception reasons remain DKPS policy data. |
-| `scripts/check_experimental_root_status.py` | Project-local staging/build policy. |
+| `scripts/check_experimental_root_status.py` | Generalized as `source staging`: configurable status vocabulary, static module registry checks, optional per-module Lean compilation, and optional aggregate-build policy. The registered roots/statuses remain DKPS data. |
 | `scripts/check_expose_ratchet.py` | Generalized as YAML-driven `ratchet check` with file or match counts. |
 | `scripts/check_library_structure.py` | The reusable mechanisms are `imports check`, `namespaces check`, `source aggregates`, admission/source audits, and `leanq`; the named library architecture remains project-local policy. |
 | `scripts/check_namespace_policy.py` | Generalized as YAML/JSON-driven `namespaces check`. |
@@ -37,12 +37,12 @@ This ledger records the disposition of the reusable tooling found in the source 
 | `scripts/check_stale_build_artifacts.py` | Generalized as `source orphan-artifacts --check`. |
 | `scripts/check_submission_prose.py` | Project-local submission prose policy. |
 | `scripts/check_tauceti_readiness.py` | Project-local readiness composition over reusable source/build primitives. |
-| `scripts/check_tauceti_roadmap_topics.py` | Project-local roadmap taxonomy. |
+| `scripts/check_tauceti_roadmap_topics.py` | Generic total/disjoint ordered topic partition, source-import forward-reference detection, and prerequisite derivation are `source module-plan`; TauCetiRoadmap directory coverage/DAG and the topic taxonomy remain project data/policy. |
 | `scripts/check_yu_wang_samworth_source_census.py` | Generalized by `census validate` and `workspace validate`. |
 | `scripts/clean_orphan_build_artifacts.py` | Generalized as `source orphan-artifacts --fix`. |
 | `scripts/closed_operator_census.py` | Generalized as `source symbol-census`, with raw and code-only counts. |
-| `scripts/derive_tauceti_submission_ladder.py` | Project-local roadmap/submission composition. |
-| `scripts/export_for_tauceti.py` | Project-local extraction/export policy. |
+| `scripts/derive_tauceti_submission_ladder.py` | Generic cumulative dependency-closed rung derivation and off-ladder reporting are `source module-plan`; rung seeds/order and synchronization of the Tau Ceti prose document remain project-local editorial policy. |
+| `scripts/export_for_tauceti.py` | Generalized as manifest-driven `source export`: source/target prefixes, clusters, per-module target overrides, import firewall, drift checking, and explicit write mode. TauCeti names and module selections remain manifest data. |
 | `scripts/fix_lean_warnings.py` | Retained/generalized as `lean-warning-fix` and `aiq_lean_tools.warning_fixer`. |
 | `scripts/generate_all_aggregates.py` | Generalized as configurable `source aggregates`. |
 | `scripts/install_comparator_tools.sh` | Project-local external comparator installation. |
@@ -54,7 +54,7 @@ This ledger records the disposition of the reusable tooling found in the source 
 | `scripts/refresh_tauceti_pr1_consistency.py` | Project-local generated consistency data. |
 | `scripts/render_davis_kahan_1970_audit_packet.py` | Project-local rendering composition; generic census/review/alignment/workspace HTML renderers are installed. |
 | `scripts/render_davis_kahan_1970_source_census.py` | Generalized as `census render` and `census html`. |
-| `scripts/render_distilled_literature_index.py` | Project-local literature index presentation because its grouping and prose are source-corpus content. |
+| `scripts/render_distilled_literature_index.py` | Generalized as `literature render`, `literature latex`, and standalone `literature html`; corpus grouping/prose are read from the manifest. |
 | `scripts/render_semantic_alignment_review.py` | Generalized as `review render/html` and `alignment render`. |
 | `scripts/run_challenge_comparator.sh` | Project-local comparator invocation. |
 | `scripts/run_gates.py` | Generalized as `gates list/run` with optional YAML policy for slow, unavailable, advisory, and stronger-check cases. |

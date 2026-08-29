@@ -1,0 +1,32 @@
+version: '1'
+title: Example formalization literature index
+purpose: Track source works, reconstruction artifacts, and bibliographic state.
+role_legend:
+  direct_target: A source whose named results are formalization targets.
+status_legend:
+  missing: No maintained source-order reconstruction exists.
+  complete: The maintained reconstruction is complete under this project's policy.
+bibliographic_status_legend:
+  verified: Core bibliographic identity has been checked.
+group_order: [Primary sources]
+priority_order: [P0]
+policy:
+  note_extension: .md
+works:
+  Example2026:
+    title: Example paper
+    authors: [A. Author]
+    year: 2026
+    kind: paper
+    group: Primary sources
+    priority: P0
+    role: direct_target
+    formalization_status: in_progress
+    distilled_status: missing
+    bibliographic_status: verified
+    primary_url: https://example.com/paper
+    target_note: example.md
+    repo_evidence: []
+    existing_assets: []
+    scope: Main theorem family.
+    missing_work: Write the source-order reconstruction.
