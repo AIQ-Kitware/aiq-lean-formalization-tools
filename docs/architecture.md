@@ -6,7 +6,7 @@
 
 ### Census and review documents
 
-`census.py` and `semantic_review.py` own JSON validation, mutation, summaries, Markdown rendering, and standalone HTML rendering. Validation is definition-driven: a census may define its own status, verification, completion, importance, gap, blocker, and semantic-alignment vocabularies.
+`census.py`, `coverage.py`, and `semantic_review.py` own JSON validation, mutation, summaries, Markdown rendering, and standalone HTML rendering. `coverage.py` keeps the hard formalization denominator separate from the finer source-fidelity atom inventory and validates their cross-links without hard-coding a paper-specific terminality policy. Validation is definition-driven: a census may define its own status, verification, completion, importance, gap, blocker, and semantic-alignment vocabularies.
 
 `alignment.py` builds a reviewer-oriented packet from curated `semantic_review` material embedded in census rows. It can add compiler evidence without mixing compiler success with source-equivalence judgments.
 
@@ -24,11 +24,13 @@
 
 ### Python-only structural audits
 
-`lean_source.py`, `audits.py`, `source_candidates.py`, `symbol_census.py`, `checklist.py`, `hygiene.py`, `aggregates.py`, `import_policy.py`, `namespace_policy.py`, and `ratchet.py` operate on source/build-tree structure. They do not infer theorem meaning.
+`lean_source.py`, `audits.py`, `source_candidates.py`, `symbol_census.py`, `checklist.py`, `hygiene.py`, `aggregates.py`, `import_policy.py`, `namespace_policy.py`, `module_coverage.py`, `roadmap.py`, and `ratchet.py` operate on source/build-tree structure. They do not infer theorem meaning.
 
 This layer covers:
 
 - source declarations, modules, imports, admissions, and docstrings;
+- policy-driven root coverage for staged module subtrees, including reasoned named/subtree exclusions;
+- structural roadmap delivery candidates based on declaration-name matches, with ambiguity surfaced rather than hidden;
 - proof-length/scaffolding census;
 - normalized theorem-statement and definition-body duplicate candidates, with forwarding aliases distinguished;
 - dead-definition, naming, long-statement/body, and definitional-escape review candidates;
@@ -46,7 +48,7 @@ This layer covers:
 
 ### Holistic workspace
 
-`workspace.py` discovers all ledgers and produces an aggregate view across source papers. It intentionally aggregates evidence rather than inventing a single completion score. Source implementation status, compiler verification, semantic review, and completion certification remain distinguishable axes.
+`workspace.py` discovers censuses, semantic reviews, result inventories, and linked source-fidelity atom inventories and produces an aggregate view across source papers. It intentionally aggregates evidence rather than inventing a single completion score. Source implementation status, compiler verification, semantic review, and completion certification remain distinguishable axes.
 
 ### Build diagnostics
 

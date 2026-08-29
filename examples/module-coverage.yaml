@@ -1,0 +1,8 @@
+roots:
+  - MyProject.Experimental
+scope:
+  - MyProject.Experimental
+excluded_modules: {}
+excluded_prefixes:
+  MyProject.Experimental.Scratch: "scratch work is intentionally outside the aggregate root"
+inherit_exclusions: true

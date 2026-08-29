@@ -23,6 +23,7 @@ from .audits import (
 from .checklist import update_checklists
 from .census import load_census
 from .common import Path, atomic_write_text, load_json, parse_scalar
+from .coverage import load_coverage_bundle, load_result_inventory, load_source_atom_inventory
 from .errors import FormalizationToolsError
 from .gates import GateSuiteConfig, discover_gates, run_gate_suite
 from .grounding import check_grounding_policy, load_grounding_policy
@@ -30,12 +31,14 @@ from .history import history_summary, load_git_history, render_history_html
 from .import_graph import SourceImportGraph
 from .hygiene import conflict_markers, orphan_build_modules, remove_orphan_build_modules
 from .import_policy import ImportPolicy, check_import_policy
-from .lean_source import scan_lean_project
+from .lean_source import declaration_source_texts, scan_lean_project
 from .manifest import load_manifest
 from .module_migration import migrate_module_file
+from .module_coverage import ModuleCoveragePolicy, check_module_coverage
 from .namespace_policy import check_namespace_policy, load_namespace_policy
 from .provenance import provenance_inventory
 from .ratchet import evaluate_ratchets, load_ratchet_policy
+from .roadmap import compare_roadmap
 from .semantic_review import load_semantic_review
 from .source_candidates import (
     dead_definition_candidates,
@@ -298,6 +301,84 @@ def _slug(text: str) -> str:
     return value[:80] or "source"
 
 
+def cmd_coverage_validate(args) -> int:
+    bundle = load_coverage_bundle(args.path, root=args.root)
+    return _print_findings(
+        bundle.validate(static_declarations=args.static_declarations),
+        json_mode=args.json,
+    )
+
+
+def cmd_coverage_summary(args) -> int:
+    data = load_coverage_bundle(args.path, root=args.root).summary()
+    if args.json:
+        _dump(data)
+    else:
+        print(f"results: {data['results']}")
+        print(f"completion obligations: {data['completion_obligations']}")
+        print(f"unique Lean declarations: {data['unique_lean_declarations']}")
+        if data.get("source_atoms"):
+            print(f"source atoms: {data['source_atoms']['atoms']}")
+        for field in ("dispositions", "verification", "semantic_certification", "semantic_alignment"):
+            values = data.get(field) or {}
+            if values:
+                print(f"\n{field.replace('_', ' ')}")
+                for key, value in values.items():
+                    print(f"  {key}: {value}")
+    return 0
+
+
+def cmd_coverage_show(args) -> int:
+    bundle = load_coverage_bundle(args.path, root=args.root)
+    if args.atom:
+        if bundle.atoms is None:
+            raise FormalizationToolsError("result inventory does not link an available source-atom inventory")
+        row = bundle.atoms.atom(args.atom)
+    else:
+        row = bundle.results.row(args.id)
+    print(json.dumps(row, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_coverage_render(args) -> int:
+    text = load_coverage_bundle(args.path, root=args.root).render_markdown()
+    if args.out:
+        atomic_write_text(Path(args.out), text)
+        print(args.out)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_coverage_html(args) -> int:
+    bundle = load_coverage_bundle(args.path, root=args.root)
+    out = Path(args.out) if args.out else bundle.results.path.with_suffix(".html")
+    atomic_write_text(out, bundle.render_html())
+    print(out)
+    return 0
+
+
+def cmd_coverage_patch(args) -> int:
+    bundle = load_coverage_bundle(args.path, root=args.root)
+    if args.atom:
+        if bundle.atoms is None:
+            raise FormalizationToolsError("result inventory does not link an available source-atom inventory")
+        bundle.atoms.patch_atom(args.atom, _sets(args.set), args.delete)
+        findings = bundle.atoms.validate()
+        if any(f.level == "error" for f in findings) and not args.force:
+            return _print_findings(findings)
+        bundle.atoms.write()
+        print(bundle.atoms.path)
+    else:
+        bundle.results.patch_item(args.id, _sets(args.set), args.delete)
+        findings = bundle.validate()
+        if any(f.level == "error" for f in findings) and not args.force:
+            return _print_findings(findings)
+        bundle.results.write()
+        print(bundle.results.path)
+    return 0
+
+
 def cmd_workspace_init(args) -> int:
     root = Path(args.root or ".").expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -531,6 +612,32 @@ def cmd_source_orphan_artifacts(args) -> int:
     return 1 if args.check and modules and not args.fix else 0
 
 
+def cmd_source_declaration(args) -> int:
+    index = scan_lean_project(args.root)
+    payload: dict[str, list[dict[str, Any]]] = {}
+    missing: list[str] = []
+    for name in args.names:
+        rows = declaration_source_texts(index, name)
+        payload[name] = [row.to_json(index.root) for row in rows]
+        if not rows:
+            missing.append(name)
+    if args.json:
+        _dump({"declarations": payload, "missing": missing})
+    else:
+        for name in args.names:
+            rows = declaration_source_texts(index, name)
+            print(f"## {name}")
+            if not rows:
+                print("not found")
+                continue
+            for row in rows:
+                rel = row.declaration.path.relative_to(index.root)
+                print(f"{rel}:{row.declaration.line}")
+                print(row.render())
+                print()
+    return 1 if args.check and missing else 0
+
+
 def cmd_source_private_shadows(args) -> int:
     index = scan_lean_project(args.root)
     rows = index.private_shadows_imported_public()
@@ -715,6 +822,71 @@ def cmd_source_checklist(args) -> int:
             print(f"wrote {args.groups}")
     return 0
 
+
+
+def cmd_source_module_coverage(args) -> int:
+    policy = ModuleCoveragePolicy.load(args.policy)
+    report = check_module_coverage(policy, root=args.root)
+    errors = [finding for finding in report.findings if finding.level == "error"]
+    if args.json:
+        _dump(report.to_json())
+    else:
+        print(
+            f"module coverage: {len(report.scope_modules)} scoped, "
+            f"{len(report.covered)} reached, {len(report.uncovered)} uncovered, "
+            f"{len(report.explicitly_excluded)} named exclusions, "
+            f"{len(report.prefix_excluded)} subtree exclusions, "
+            f"{len(report.inherited_excluded)} inherited exclusions"
+        )
+        for finding in report.findings:
+            prefix = f"{finding.location}: " if finding.location else ""
+            print(f"{finding.level.upper():7s} {prefix}[{finding.code}] {finding.message}")
+        print("Source import reachability does not certify Lean elaboration or successful compilation.")
+    return 1 if errors else 0
+
+
+
+def cmd_source_roadmap(args) -> int:
+    report = compare_roadmap(
+        args.roadmap_root,
+        args.root or ".",
+        suggested_glob=args.suggested_glob,
+        libraries=args.library,
+        preferred_prefixes=args.prefer,
+    )
+    topics = report.topics
+    if args.topic:
+        topics = [topic for topic in topics if topic.topic == args.topic or Path(topic.topic).name == args.topic]
+        if not topics:
+            raise FormalizationToolsError(f"no roadmap topic matches {args.topic!r}")
+    if args.json:
+        data = report.to_json()
+        data["topics"] = [topic.to_json() for topic in topics]
+        data["total"] = sum(topic.total for topic in topics)
+        data["delivered"] = sum(topic.delivered for topic in topics)
+        _dump(data)
+        return 0
+    total = sum(topic.total for topic in topics)
+    delivered = sum(topic.delivered for topic in topics)
+    for topic in topics:
+        pct = 100.0 * topic.delivered / topic.total if topic.total else 0.0
+        print(f"{topic.topic}: {topic.delivered}/{topic.total} ({pct:.1f}%)")
+        if args.missing:
+            for name in topic.missing:
+                print(f"  outstanding: {name}")
+        if args.map:
+            for name, path in sorted(topic.mapping.items()):
+                suffix = " [AMBIGUOUS]" if name in topic.ambiguous else ""
+                print(f"  {name} -> {path}{suffix}")
+        if args.ambiguous:
+            for name, paths in sorted(topic.ambiguous.items()):
+                print(f"  ambiguous: {name}")
+                for path in paths:
+                    print(f"    {path}")
+    pct = 100.0 * delivered / total if total else 0.0
+    print(f"roadmap delivery: {delivered}/{total} ({pct:.1f}%)")
+    print("Declaration-name matches do not establish statement equivalence or roadmap completion.")
+    return 0
 
 
 def cmd_source_grounding(args) -> int:
@@ -975,6 +1147,15 @@ def build_parser() -> argparse.ArgumentParser:
     r = rs.add_parser("patch"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--id", required=True); r.add_argument("--set", action="append", default=[]); r.add_argument("--delete", action="append", default=[]); r.add_argument("--force", action="store_true"); r.set_defaults(func=cmd_review_patch)
     r = rs.add_parser("add"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--from-json", required=True); r.add_argument("--force", action="store_true"); r.set_defaults(func=cmd_review_add)
 
+    coverage = sub.add_parser("coverage", help="validate and inspect result/source-fidelity coverage inventories")
+    cvs = coverage.add_subparsers(dest="coverage_command", required=True)
+    cv = cvs.add_parser("validate"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("--static-declarations", action="store_true"); cv.add_argument("--json", action="store_true"); cv.set_defaults(func=cmd_coverage_validate)
+    cv = cvs.add_parser("summary"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("--json", action="store_true"); cv.set_defaults(func=cmd_coverage_summary)
+    cv = cvs.add_parser("show"); cv.add_argument("path"); cv.add_argument("--root"); group=cv.add_mutually_exclusive_group(required=True); group.add_argument("--id"); group.add_argument("--atom"); cv.set_defaults(func=cmd_coverage_show)
+    cv = cvs.add_parser("render"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("-o", "--out"); cv.set_defaults(func=cmd_coverage_render)
+    cv = cvs.add_parser("html"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("-o", "--out"); cv.set_defaults(func=cmd_coverage_html)
+    cv = cvs.add_parser("patch"); cv.add_argument("path"); cv.add_argument("--root"); group=cv.add_mutually_exclusive_group(required=True); group.add_argument("--id"); group.add_argument("--atom"); cv.add_argument("--set", action="append", default=[]); cv.add_argument("--delete", action="append", default=[]); cv.add_argument("--force", action="store_true"); cv.set_defaults(func=cmd_coverage_patch)
+
     workspace = sub.add_parser("workspace", help="aggregate the whole formalization effort")
     ws = workspace.add_subparsers(dest="workspace_command", required=True)
     w = ws.add_parser("init", help="create starter manifest, grounding policy, and source ledgers"); w.add_argument("--root"); w.add_argument("--name", required=True); w.add_argument("--source", action="append", default=[]); w.add_argument("--force", action="store_true"); w.set_defaults(func=cmd_workspace_init)
@@ -997,6 +1178,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--root"); s.add_argument("--all-files", action="store_true", help="scan all files instead of Git-tracked files"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_conflicts)
     s = ss.add_parser("orphan-artifacts", help="find Lake build products whose Lean source is gone")
     s.add_argument("--root"); s.add_argument("--library", action="append", default=[]); s.add_argument("--fix", action="store_true"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_orphan_artifacts)
+    s = ss.add_parser("declaration", help="show human-written Lean declaration headers and relevant ambient binders")
+    s.add_argument("names", nargs="+"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_declaration)
     s = ss.add_parser("private-shadows", help="find private declarations shadowing public imports")
     s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_private_shadows)
     s = ss.add_parser("similar", help="find normalized theorem-statement or definition-body duplicate candidates")
@@ -1015,6 +1198,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("expression"); s.add_argument("--regex", action="store_true"); s.add_argument("--root"); s.add_argument("--include", action="append", default=[]); s.add_argument("--exclude", action="append", default=[]); s.add_argument("--keep-imports", action="store_true"); s.add_argument("--keep-commands", action="store_true"); s.add_argument("--verbose", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_symbol_census)
     s = ss.add_parser("checklist", help="generate file and group review checklists while preserving checked marks")
     s.add_argument("--root"); s.add_argument("--file", default="dev/audit/FILE-CHECKLIST.md"); s.add_argument("--groups", default="dev/audit/GROUP-CHECKLIST.md"); s.add_argument("--include", action="append", default=[]); s.add_argument("--exclude", action="append", default=[]); s.add_argument("--group-depth", type=int, default=2); s.add_argument("--no-kind-split", action="store_true"); s.add_argument("--progress", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_checklist)
+
+    s = ss.add_parser("module-coverage", help="require every module in a source scope to be root-reachable or explicitly excluded")
+    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_module_coverage)
+    s = ss.add_parser("roadmap", help="compare suggested Lean declaration names with delivered libraries")
+    s.add_argument("--roadmap-root", required=True); s.add_argument("--root"); s.add_argument("--suggested-glob", default="**/Suggested.lean"); s.add_argument("--library", action="append", default=[]); s.add_argument("--prefer", action="append", default=[]); s.add_argument("--topic"); s.add_argument("--missing", action="store_true"); s.add_argument("--map", action="store_true"); s.add_argument("--ambiguous", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_roadmap)
 
     s = ss.add_parser("grounding", help="check a policy-driven structural grounding contract")
     s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_grounding)

@@ -23,6 +23,7 @@ from .common import (
 from .errors import ValidationError
 from .lean_backend import DeclarationProbe, LeanBackend, SubprocessLeanBackend
 from .lean_source import LeanSourceIndex, scan_lean_project
+from .semantic_surface import validate_embedded_surface
 
 KNOWN_IMPORTANCE = ("headline", "major", "supporting", "technical")
 PROVED_STATES = {"proved_in_build", "proved_outside_build", "proved_conditional", "partially_in_build"}
@@ -130,6 +131,21 @@ class CensusDocument:
         blockers = self.data.get("blockers", {})
         certification_defs = self.data.get("completion_certification_definitions", {})
 
+        embedded_review_mode = (
+            self.data.get("embedded_semantic_review") is True
+            or (
+                self.family != "source-semantic-alignment"
+                and isinstance(importance_defs, Mapping)
+                and set(KNOWN_IMPORTANCE).issubset(importance_defs)
+            )
+            or any(
+                isinstance(row, dict)
+                and row.get("importance") == "headline"
+                and isinstance(row.get("semantic_review"), dict)
+                for row in items
+            )
+        )
+
         seen: set[str] = set()
         used_gaps: set[str] = set()
         used_blockers: set[str] = set()
@@ -209,6 +225,24 @@ class CensusDocument:
             source_locator = row.get("source_locator")
             if source_locator is not None:
                 findings.extend(self._validate_source_locator(source_locator, rloc, check_source_locations))
+
+            # The DK/YWS source censuses used an embedded curated review surface.
+            # Application-style source/semantic-alignment censuses keep their
+            # clause review in a companion document, so only source/completion
+            # censuses with an explicit importance vocabulary require headline
+            # rows to carry the embedded contract.
+            require_headline_review = (
+                embedded_review_mode
+                and self.family != "source-semantic-alignment"
+                and row.get("importance") == "headline"
+            )
+            findings.extend(
+                validate_embedded_surface(
+                    row,
+                    row_location=rloc,
+                    require_headline_review=require_headline_review,
+                )
+            )
 
         for gap in sorted(set(gaps) - used_gaps):
             findings.append(Finding("warning", "orphan-gap", f"gap {gap!r} is not referenced by any row"))

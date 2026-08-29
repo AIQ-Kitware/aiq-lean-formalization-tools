@@ -68,3 +68,97 @@ def test_validation_catches_unknown_definition_values(tmp_path: Path):
     path.write_text(json.dumps(data))
     findings = load_census(path, root=tmp_path).validate()
     assert any(f.code == "status" and f.level == "error" for f in findings)
+
+
+def _curated_review():
+    return {
+        "group": "g1",
+        "group_title": "Main result",
+        "claim": "A source claim.",
+        "source_statement": {
+            "setup": ["Objects are fixed."],
+            "hypotheses": ["A hypothesis holds."],
+            "conclusions": ["The conclusion follows."],
+            "scope": [],
+        },
+        "canonical_declarations": ["Paper.one"],
+        "supporting_declarations": ["Paper.helper"],
+        "context_declarations": [
+            {"name": "Paper.Context", "mathematical_role": "Defines the paper norm."}
+        ],
+        "clause_map": [
+            {
+                "source_clause": "The conclusion follows.",
+                "lean_realization": "Paper.one states the conclusion.",
+                "status": "claimed_exact",
+            }
+        ],
+    }
+
+
+def test_embedded_semantic_review_contract(tmp_path: Path):
+    data = _data()
+    data["items"][0]["semantic_review"] = _curated_review()
+    data["items"][0]["semantic_review_variants"] = [
+        {
+            "id": "derived-projector-form",
+            "title": "Derived projector form",
+            "claim": "A derived review target.",
+            "provenance_note": "Derived from the main paper theorem.",
+            "source_statement": {
+                "setup": [],
+                "hypotheses": ["The main theorem applies."],
+                "conclusions": ["A projector inequality follows."],
+                "scope": ["This is not a separately printed source theorem."],
+            },
+            "canonical_declarations": ["Paper.derived"],
+            "supporting_declarations": [],
+            "context_declarations": [],
+            "clause_map": [
+                {
+                    "source_clause": "Derived projector inequality.",
+                    "lean_realization": "Paper.derived",
+                    "status": "derived",
+                }
+            ],
+        }
+    ]
+    path = tmp_path / "curated-census.json"
+    path.write_text(json.dumps(data))
+    doc = load_census(path, root=tmp_path)
+    assert not [f for f in doc.validate() if f.level == "error"]
+
+    # Once any headline row opts into the embedded review contract, headline
+    # rows are required to keep the full curated surface well formed.
+    del data["items"][0]["semantic_review"]["source_statement"]
+    path.write_text(json.dumps(data))
+    findings = load_census(path, root=tmp_path).validate()
+    assert any(f.code == "semantic-source-statement" for f in findings)
+
+
+def test_headline_review_contract_survives_total_review_removal(tmp_path):
+    path = tmp_path / "paper-full-source-census.json"
+    data = {
+        "schema_version": 1,
+        "primary_source": {"citation": "Paper"},
+        "status_definitions": {"implemented": "done"},
+        "verification_definitions": {"proved_in_build": "yes"},
+        "importance_definitions": {
+            "headline": "main",
+            "major": "major",
+            "supporting": "supporting",
+            "technical": "technical",
+        },
+        "items": [{
+            "id": "main",
+            "title": "Main result",
+            "status": "implemented",
+            "verification": "proved_in_build",
+            "importance": "headline",
+            "lean_declarations": ["Paper.main"],
+        }],
+    }
+    path.write_text(json.dumps(data))
+    doc = load_census(path, root=tmp_path)
+    codes = {finding.code for finding in doc.validate()}
+    assert "semantic-review" in codes

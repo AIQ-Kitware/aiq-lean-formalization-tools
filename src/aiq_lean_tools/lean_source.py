@@ -334,3 +334,136 @@ def scan_lean_project(root: str | pathlib.Path | None = None, *, exclude_dirs: I
         if has_admission:
             admitted.add(module)
     return LeanSourceIndex(base, declarations, imports, modules, admitted)
+
+
+@dataclass(frozen=True)
+class SourceDeclarationText:
+    """Human-written Lean declaration header plus relevant ambient binders."""
+
+    declaration: SourceDecl
+    header: str
+    ambient: str
+
+    def to_json(self, root: Path | None = None) -> dict:
+        data = self.declaration.to_json(root)
+        data.update({"header": self.header, "ambient": self.ambient})
+        return data
+
+    def render(self) -> str:
+        parts = []
+        if self.ambient.strip():
+            parts.append(self.ambient.rstrip())
+        parts.append(self.header.rstrip())
+        return "\n".join(parts).rstrip()
+
+
+def _source_header(lines: list[str], start: int) -> str:
+    """Extract a declaration header and stop before its top-level body."""
+    out: list[str] = []
+    paren = bracket = brace = 0
+    for line in lines[start:]:
+        cut: int | None = None
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if ch == "(":
+                paren += 1
+            elif ch == ")":
+                paren = max(0, paren - 1)
+            elif ch == "[":
+                bracket += 1
+            elif ch == "]":
+                bracket = max(0, bracket - 1)
+            elif ch == "{":
+                brace += 1
+            elif ch == "}":
+                brace = max(0, brace - 1)
+            if paren == bracket == brace == 0:
+                if line.startswith(":=", i):
+                    cut = i
+                    break
+                if line.startswith("where", i) and (i == 0 or line[i - 1].isspace()):
+                    after = i + len("where")
+                    if after == len(line) or line[after].isspace():
+                        cut = i
+                        break
+            i += 1
+        if cut is not None:
+            prefix = line[:cut].rstrip()
+            if prefix:
+                out.append(prefix)
+            break
+        out.append(line.rstrip())
+    return "\n".join(out).rstrip()
+
+
+def _variable_blocks_before(lines: list[str], decl_line: int) -> list[str]:
+    blocks: list[str] = []
+    i = 0
+    while i < decl_line:
+        if re.match(r"^\s*variable\b", lines[i]):
+            block = [lines[i].rstrip()]
+            i += 1
+            while i < decl_line:
+                stripped = lines[i].strip()
+                if not stripped:
+                    break
+                if re.match(
+                    r"^(?:variable|theorem|lemma|def|abbrev|structure|class|inductive|axiom|instance|opaque|alias|section|end|namespace|/-|/--)",
+                    stripped,
+                ):
+                    break
+                if lines[i][:1].isspace():
+                    block.append(lines[i].rstrip())
+                    i += 1
+                    continue
+                break
+            blocks.append("\n".join(block))
+            continue
+        i += 1
+    return blocks
+
+
+def _binder_names(block: str) -> set[str]:
+    names: set[str] = set()
+    for group in re.findall(r"[\{\(]\s*([^:}\)]+?)\s*:(?!=)", block):
+        for name in group.split():
+            if re.match(r"^[A-Za-z_𝕜ℝℂ][\w₀-₉𝕜ℝℂ]*$", name):
+                names.add(name)
+    return names
+
+
+def _ambient_variables(lines: list[str], decl_line: int, declaration: str) -> str:
+    used = set(re.findall(r"\b[A-Za-z_][A-Za-z_0-9₀-₉]*\b|[𝕜ℝℂ]", declaration))
+    explicitly_bound = _binder_names(declaration)
+    missing = used - explicitly_bound
+    chosen: list[str] = []
+    covered: set[str] = set()
+    for block in reversed(_variable_blocks_before(lines, decl_line)):
+        names = _binder_names(block)
+        relevant = (names & missing) - covered
+        if relevant:
+            chosen.append(block)
+            covered |= names
+    chosen.reverse()
+    return "\n".join(chosen).rstrip()
+
+
+def declaration_source_texts(index: LeanSourceIndex, name: str) -> list[SourceDeclarationText]:
+    """Return source headers for exact or short-name declaration matches.
+
+    Exact qualified-name matches are preferred.  When only a short name is
+    available, every source-level candidate is returned so callers can present
+    the ambiguity rather than selecting a project-specific path by convention.
+    """
+    rows = index.by_name.get(name)
+    if not rows:
+        rows = index.resolve(name)
+    out: list[SourceDeclarationText] = []
+    for row in rows:
+        lines = row.path.read_text(encoding="utf-8", errors="replace").splitlines()
+        start = max(0, row.line - 1)
+        header = _source_header(lines, start)
+        ambient = _ambient_variables(lines, start, header)
+        out.append(SourceDeclarationText(row, header=header, ambient=ambient))
+    return out

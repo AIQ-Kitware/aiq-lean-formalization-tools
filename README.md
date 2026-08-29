@@ -5,7 +5,7 @@ Reusable tooling for source-faithful Lean formalization projects. The package tu
 The package has two complementary layers:
 
 - **`leanq`** queries the elaborated Lean environment. Use it for declaration kinds, axiom closure, dependency and reverse-dependency queries, project semantic graphs, graph slicing, and the interactive graph viewers.
-- **`aiq_lean_tools` / `aiq-lean`** manages source censuses and semantic reviews, compiler probes, workspace summaries, HTML reports, source audits, import/namespace policies, aggregate modules, Lake diagnostics, and repository hygiene.
+- **`aiq_lean_tools` / `aiq-lean`** manages source censuses, hard result/source-atom coverage inventories, semantic reviews, compiler probes, workspace summaries, HTML reports, source audits, import/namespace policies, aggregate modules, Lake diagnostics, and repository hygiene.
 
 Source-level Python scans are structural audits. They are useful for names, imports, admissions, docstrings, review prioritization, migration counts, and file bookkeeping. The `similar`, `dead`, `names`, and `large` commands intentionally report candidates for human review. Questions that depend on elaboration belong in `leanq` or a compiler-backed probe.
 
@@ -41,6 +41,14 @@ aiq-lean census probe dev/paper-full-source-census.json --write
 aiq-lean census render dev/paper-full-source-census.json -o build/paper-census.md
 aiq-lean census html dev/paper-full-source-census.json -o build/paper-census.html
 
+# Hard completion denominator + fine-grained source-fidelity atoms
+aiq-lean coverage validate dev/paper-result-inventory.json --static-declarations
+aiq-lean coverage summary dev/paper-result-inventory.json
+aiq-lean coverage show dev/paper-result-inventory.json --id theorem-2
+aiq-lean coverage show dev/paper-result-inventory.json --atom source-2.1-hypothesis
+aiq-lean coverage render dev/paper-result-inventory.json -o build/paper-coverage.md
+aiq-lean coverage html dev/paper-result-inventory.json -o build/paper-coverage.html
+
 # Dedicated clause-by-clause semantic reviews
 aiq-lean review init dev/paper-result-semantic-review.json --title "Paper semantic review"
 aiq-lean review add dev/paper-result-semantic-review.json --from-json dev/new-review-row.json
@@ -68,6 +76,9 @@ aiq-lean source definitional-escapes --root . --check
 aiq-lean source profile --root . --library MyLibrary --details
 aiq-lean source symbol-census ClosedOperator --root . --include 'MyLibrary/**/*.lean' --verbose
 aiq-lean source checklist --root .
+aiq-lean source module-coverage dev/module-coverage.yaml --root .
+aiq-lean source roadmap --roadmap-root /path/to/roadmap --root . \
+    --library MyLibrary --prefer MyLibrary.Core --missing --map
 aiq-lean source grounding dev/grounding-policy.yaml --root .
 aiq-lean source import-closure --root . \
     --target 'Core=MyLibrary.Core' --target 'Application=MyApplication'
@@ -153,7 +164,8 @@ The package deliberately supports the census families that arose during the DK/Y
 - source census with status and compiler verification;
 - completion census with a third completion-certification axis;
 - application source/semantic-alignment census with source locators and explicit semantic classification;
-- dedicated clause-by-clause semantic review documents.
+- dedicated clause-by-clause semantic review documents;
+- a separate hard result inventory linked to fine-grained source-fidelity atoms when a project wants an explicit completion denominator.
 
 The authoritative artifact is JSON. Markdown and HTML are generated views. The validators preserve paper-specific status vocabularies by reading each document's `*_definitions` tables rather than hard-coding one project's states.
 
@@ -161,9 +173,9 @@ See `docs/census-model.md` for the shared conventions and `src/aiq_lean_tools/sc
 
 ## Workspace discovery
 
-`FormalizationWorkspace` discovers census and semantic-review JSON recursively, ignores build/vendor metadata directories, reads `formalization.yaml` when present, and reports:
+`FormalizationWorkspace` discovers census, semantic-review, and result/source-atom coverage JSON recursively, ignores build/vendor metadata directories, reads `formalization.yaml` when present, and reports:
 
-- result and review row counts;
+- census/review row counts plus counted-result and source-atom totals;
 - status, verification, importance, and semantic-alignment distributions;
 - unique Lean declarations cited by the source ledgers;
 - declarations reused across source papers;
@@ -174,7 +186,7 @@ Its HTML report embeds all data in one file and needs no server. Review checklis
 
 ## Architecture
 
-See `docs/architecture.md` for the package boundaries, `docs/migration-from-dkps.md` for the extraction rationale, and `docs/source-tool-inventory.md` for the path-by-path disposition of the original tooling snapshot.
+See `docs/architecture.md` for the package boundaries, `HISTORY.md` for the DKPS-to-package correspondence and cleanup sequence, `docs/migration-from-dkps.md` for the extraction rationale, and `docs/source-tool-inventory.md` for the path-by-path disposition of the original tooling snapshot.
 
 The `leanq` CLI and Python package are retained as their own top-level package so existing agent instructions and command lines continue to work.
 

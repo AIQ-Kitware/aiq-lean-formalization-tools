@@ -30,3 +30,22 @@ def test_source_inventory_and_private_shadow(tmp_path: Path):
     assert len(rows) == 1
     assert rows[0]["name"] == "helper"
     assert rows[0]["providers"] == ["Lib.Base"]
+
+
+def test_declaration_source_text_includes_relevant_ambient_variables(tmp_path: Path):
+    _write(
+        tmp_path,
+        "Paper/Main.lean",
+        """namespace Paper\nvariable {E : Type} [TopologicalSpace E]\nvariable {unused : Type}\n\ntheorem main (x : E)\n    : True := by\n  trivial\nend Paper\n""",
+    )
+    from aiq_lean_tools.lean_source import declaration_source_texts
+
+    index = scan_lean_project(tmp_path)
+    rows = declaration_source_texts(index, "Paper.main")
+    assert len(rows) == 1
+    rendered = rows[0].render()
+    assert "variable {E : Type}" in rendered
+    assert "unused" not in rendered
+    assert "theorem main (x : E)" in rendered
+    assert ": True" in rendered
+    assert ":= by" not in rendered

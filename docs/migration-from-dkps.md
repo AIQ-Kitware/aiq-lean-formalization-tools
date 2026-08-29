@@ -74,4 +74,4 @@ The original generator encoded `DavisKahan`, fixed skip directories, a copyright
 
 The original compact headline publisher encoded the YWS, Acharyya, and Quench integration stages directly in `leanq.headlines` and its JavaScript viewer. The extracted package replaces those fixed names with repeatable `--landmark LABEL=LIBRARY` stages and an optional `--terminal-family`. Existing projects can reproduce their prior lane structure through CLI configuration, while new projects can use arbitrary library seams and census families.
 
-For a path-by-path accounting of the extraction snapshot, see [`source-tool-inventory.md`](source-tool-inventory.md).
+For the subsystem-by-subsystem port history and DKPS cleanup sequence, see [`../HISTORY.md`](../HISTORY.md). For a path-by-path accounting of the extraction snapshot, see [`source-tool-inventory.md`](source-tool-inventory.md).

@@ -14,9 +14,9 @@ This ledger records the disposition of the reusable tooling found in the source 
 | `scripts/certify_davis_kahan_1970.py` | Project-local certificate composition. Generic ingredients are census validation/probing, alignment packets, workspace reports, source audits, and `leanq`. |
 | `scripts/check_comparator_signatures.py` | Project-local comparator contract. |
 | `scripts/check_conflict_markers.py` | Generalized as `source conflicts`. |
-| `scripts/check_davis_kahan_1970_result_inventory.py` | Project-local inventory policy; source-result tracking is handled by `CensusDocument` and workspace validation. |
+| `scripts/check_davis_kahan_1970_result_inventory.py` | Generic result/source-atom cross-linking is extracted as `coverage`; Davis--Kahan result-kind taxonomy, terminality, boundary reason codes, semantic adjudications, and hash-pinned certification policy remain project-local. |
 | `scripts/check_davis_kahan_1970_source_census.py` | Generalized by `census validate` and `workspace validate`. |
-| `scripts/check_davis_kahan_1970_statement_map.py` | Project-local source statement map; use census semantic-review data plus `alignment render`. |
+| `scripts/check_davis_kahan_1970_statement_map.py` | Project-local organizational statement map. Its source-atom/result cross-links are now understood by `coverage`; statement grouping, TeX marker policy, and named source boundaries remain DKPS data. |
 | `scripts/check_davis_kahan_hidden_foundations.py` | Project-local foundation criterion; use `leanq deps`, graph slices, and configurable landmarks for a new project. |
 | `scripts/check_declaration_name_drift.py` | Generalized as `source snapshot` and `source drift`. |
 | `scripts/check_dependency_layers.py` | Generalized as YAML/JSON-driven `imports check`. |
@@ -25,14 +25,14 @@ This ledger records the disposition of the reusable tooling found in the source 
 | `scripts/check_dkps_result_semantic_reviews.py` | Generalized by `SemanticReviewDocument` and workspace validation. |
 | `scripts/check_docstring_coverage.py` | Generalized as `source docstrings`. |
 | `scripts/check_duplicate_qualified_names.py` | Generalized as `source duplicates`. |
-| `scripts/check_experimental_coverage.py` | Project-local staging-tree policy. |
+| `scripts/check_experimental_coverage.py` | Generalized as policy-driven `source module-coverage`; the DavisKahan.Experimental root, scope, and exception reasons remain DKPS policy data. |
 | `scripts/check_experimental_root_status.py` | Project-local staging/build policy. |
 | `scripts/check_expose_ratchet.py` | Generalized as YAML-driven `ratchet check` with file or match counts. |
 | `scripts/check_library_structure.py` | The reusable mechanisms are `imports check`, `namespaces check`, `source aggregates`, admission/source audits, and `leanq`; the named library architecture remains project-local policy. |
 | `scripts/check_namespace_policy.py` | Generalized as YAML/JSON-driven `namespaces check`. |
 | `scripts/check_palomar_readiness.py` | Project-local submission/comparator readiness composition. |
 | `scripts/check_private_shadows_public.py` | Generalized as `source private-shadows`. |
-| `scripts/check_roadmap_delivered.py` | Project-local roadmap policy. |
+| `scripts/check_roadmap_delivered.py` | Generalized name-delivery scan is `source roadmap`; the TauCeti roadmap checkout, donor-library selection, preference order, and semantic completion decisions remain project-local data/policy. |
 | `scripts/check_spectra_namespace.py` | Generalized mechanism is `namespaces check`; the Spectra-specific rule stays project-local. |
 | `scripts/check_stale_build_artifacts.py` | Generalized as `source orphan-artifacts --check`. |
 | `scripts/check_submission_prose.py` | Project-local submission prose policy. |

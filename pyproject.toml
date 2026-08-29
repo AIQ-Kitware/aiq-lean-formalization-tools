@@ -40,3 +40,16 @@ leanq = ["assets/*.html", "lean/*.lean"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+[tool.xcookie]
+tags = ["purepy"]
+mod_name = "aiq_lean_tools"
+repo_name = "aiq-lean-formalization-tools"
+pkg_name = "aiq-lean-formalization-tools"
+rel_mod_parent_dpath = "src"
+min_python = "3.10"
+author = "Jon Crall"
+description = "Reusable Lean formalization census, semantic-alignment, graph, audit, and reporting tools"
+typed = true
+use_setup_py = false
+use_pyproject_requirements = true
