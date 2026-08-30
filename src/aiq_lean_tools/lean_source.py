@@ -55,6 +55,24 @@ IMPORT_RE = re.compile(
 )
 ADMISSION_RE = re.compile(r"(?<![A-Za-z0-9_.'])(?:sorry|admit)(?![A-Za-z0-9_.'])")
 DOCSTRING_END_RE = re.compile(r"-/\s*$")
+# Lines Lean allows between a docstring and the declaration it documents.
+INTERSTITIAL_RE = re.compile(
+    r"^\s*(?:@\[|attribute\b|omit\b|set_option\b|open\b|variable\b|local\b|--|$)"
+)
+
+
+def module_in_scope(
+    module: str,
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+) -> bool:
+    """Does ``module`` fall under an included prefix and no excluded one?"""
+    def under(prefix: str) -> bool:
+        return module == prefix or module.startswith(prefix + ".")
+
+    if include and not any(under(prefix) for prefix in include):
+        return False
+    return not any(under(prefix) for prefix in exclude)
 
 
 @dataclass(frozen=True)
@@ -160,6 +178,31 @@ class LeanSourceIndex:
             for name, rows in self.by_name.items()
             if len({row.module for row in rows if not row.private}) > 1
         }
+
+    def restricted(
+        self,
+        *,
+        include: Sequence[str] = (),
+        exclude: Sequence[str] = (),
+    ) -> "LeanSourceIndex":
+        """A view of this index limited to modules under the given prefixes.
+
+        Whole-tree scanning is right for imports and admissions, and wrong for
+        checks whose question is scoped to part of the architecture -- a
+        conformance or challenge library restates library statements on purpose,
+        so a repository-wide duplicate-name check reports its whole point as a
+        defect.
+        """
+        if not include and not exclude:
+            return self
+        keep = {module for module in self.modules if module_in_scope(module, include, exclude)}
+        return LeanSourceIndex(
+            root=self.root,
+            declarations=[row for row in self.declarations if row.module in keep],
+            imports={mod: deps for mod, deps in self.imports.items() if mod in keep},
+            modules={mod: path for mod, path in self.modules.items() if mod in keep},
+            admitted_modules={mod for mod in self.admitted_modules if mod in keep},
+        )
 
     def private_shadows_imported_public(self) -> list[dict]:
         """Find private declarations reusing a public name from their import closure.
@@ -309,10 +352,18 @@ def _namespace_at(events: Sequence[tuple[int, str, str | None]], offset: int) ->
 
 
 def _has_docstring(original: str, decl_offset: int) -> bool:
+    """Is the declaration at ``decl_offset`` preceded by its own ``/-- ... -/``?
+
+    Only blank lines, attributes, and the handful of commands Lean allows between
+    a docstring and the declaration it documents may intervene.  Stopping at the
+    first non-blank line instead reports a documented declaration as undocumented
+    whenever it carries an attribute or an explanatory ``--`` line, which in one
+    repository was 237 of its declarations.
+    """
     prefix = original[:decl_offset]
     lines = prefix.splitlines()
     i = len(lines) - 1
-    while i >= 0 and not lines[i].strip():
+    while i >= 0 and INTERSTITIAL_RE.match(lines[i]) and not lines[i].rstrip().endswith("-/"):
         i -= 1
     if i < 0 or not DOCSTRING_END_RE.search(lines[i]):
         return False

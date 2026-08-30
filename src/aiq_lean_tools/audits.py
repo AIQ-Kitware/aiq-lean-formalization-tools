@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 from .common import Path, atomic_write_json
-from .lean_source import LeanSourceIndex, SourceDecl, scan_lean_project
+from .lean_source import LeanSourceIndex, SourceDecl, module_in_scope, scan_lean_project
 
 SCAFFOLD_DEFNS: dict[str, str] = {
     "published": r"^\s*(let\b|set\b|obtain\b|haveI\b|letI\b|classical\b)",
@@ -168,11 +168,15 @@ def admission_report(index: LeanSourceIndex) -> list[dict[str, Any]]:
     return rows
 
 
-def undocumented_public(index: LeanSourceIndex, *, roots: Sequence[str] = ()) -> list[SourceDecl]:
-    prefixes = tuple(roots)
+def undocumented_public(
+    index: LeanSourceIndex,
+    *,
+    roots: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+) -> list[SourceDecl]:
     return [
         row for row in index.declarations
-        if not row.private and not row.documented and (not prefixes or row.module.startswith(prefixes))
+        if not row.private and not row.documented and module_in_scope(row.module, roots, exclude)
     ]
 
 

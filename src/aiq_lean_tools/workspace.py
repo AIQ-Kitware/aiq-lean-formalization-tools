@@ -15,7 +15,7 @@ from .census import CensusDocument, load_census
 from .common import Finding, Path, find_workspace_root
 from .coverage import CoverageBundle, load_coverage_bundle
 from .foundations import FoundationMap, check_foundation_map
-from .lean_source import LeanSourceIndex, scan_lean_project
+from .lean_source import LeanSourceIndex, SourceScope, scan_lean_project
 from .literature import LiteratureDocument, load_literature
 from .manifest import FormalizationManifest, load_manifest
 from .semantic_review import SemanticReviewDocument, load_semantic_review
@@ -245,11 +245,22 @@ class FormalizationWorkspace:
         return template.replace("__TITLE__", html.escape(str(title))).replace("__PAYLOAD__", encoded)
 
 
+def _discovery_skip_parts(root: Path) -> set[str]:
+    """Directories whose contents are not this workspace's ledgers.
+
+    Reuses the project's ``source_scope.exclude_dirs`` so a reference checkout,
+    a vendored donor, or a submitted copy of the project does not contribute its
+    example or duplicated census documents to this workspace's totals.
+    """
+    return SKIP_PARTS | set(SourceScope.load(root).exclude_dirs)
+
+
 def _glob_unique(root: Path, patterns: Sequence[str]) -> list[Path]:
+    skip = _discovery_skip_parts(root)
     found: set[Path] = set()
     for pattern in patterns:
         for path in root.glob(pattern):
-            if path.is_file() and not SKIP_PARTS.intersection(path.relative_to(root).parts):
+            if path.is_file() and not skip.intersection(path.relative_to(root).parts):
                 found.add(path.resolve())
     return sorted(found)
 

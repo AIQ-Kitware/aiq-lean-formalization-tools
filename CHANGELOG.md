@@ -20,7 +20,17 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   see, and keep them out of every name-keyed view.
 - Add accepted-finding baselines (`--baseline`, `--write-baseline`) to
   `source duplicates`, `source docstrings`, and `source private-shadows`, with stale
-  entries reported as failures.
+  entries reported as failures. A baseline document may carry other top-level keys,
+  which are preserved when it is rewritten.
+- Add `--prefix` / `--exclude-prefix` module scoping to the same three checks. A
+  conformance or challenge library restates library statements on purpose, so a
+  repository-wide duplicate-name check otherwise reports its whole point as a defect.
+- Skip attributes, `--` lines, and the other commands Lean allows between a docstring
+  and its declaration when deciding whether a declaration is documented. Stopping at
+  the first non-blank line called 237 documented declarations undocumented in the
+  first repository migrated.
+- Honour the project source scope when discovering workspace ledgers, so a reference
+  checkout's example census documents do not join this workspace's totals.
 - Let a gate suite declare gates as argv commands, not only discover `check_*.py`
   scripts, so a project whose gates are package commands plus policy files does not
   have to keep wrapper scripts alive for the runner to find.

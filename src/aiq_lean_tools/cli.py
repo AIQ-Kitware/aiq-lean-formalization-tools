@@ -34,7 +34,7 @@ from .import_graph import SourceImportGraph
 from .hygiene import conflict_markers, orphan_build_modules, remove_orphan_build_modules
 from .import_policy import ImportPolicy, check_import_policy
 from .baseline import Baseline
-from .lean_source import declaration_source_texts, scan_lean_project
+from .lean_source import declaration_source_texts, module_in_scope, scan_lean_project
 from .literature import load_literature
 from .manifest import load_manifest
 from .module_export import ModuleExportPolicy, export_modules
@@ -488,7 +488,7 @@ def _report_baseline(partition, *, label: str, describe) -> int:
 
 
 def cmd_source_duplicates(args) -> int:
-    index = scan_lean_project(args.root)
+    index = scan_lean_project(args.root).restricted(include=args.prefix, exclude=args.exclude_prefix)
     found = index.duplicate_public_names()
     baseline = Baseline.load(args.baseline)
     partition = baseline.partition(found)
@@ -536,7 +536,7 @@ def _docstring_key(root, row) -> str:
 
 def cmd_source_docstrings(args) -> int:
     index = scan_lean_project(args.root)
-    rows = undocumented_public(index, roots=args.prefix)
+    rows = undocumented_public(index, roots=args.prefix, exclude=args.exclude_prefix)
     keys = {_docstring_key(index.root, row): row for row in rows}
     baseline = Baseline.load(args.baseline)
     partition = baseline.partition(keys)
@@ -700,7 +700,10 @@ def cmd_source_declaration(args) -> int:
 
 def cmd_source_private_shadows(args) -> int:
     index = scan_lean_project(args.root)
-    rows = index.private_shadows_imported_public()
+    rows = [
+        row for row in index.private_shadows_imported_public()
+        if module_in_scope(row["module"], args.prefix, args.exclude_prefix)
+    ]
     keys = {f"{row['module']}:{row['name']}": row for row in rows}
     baseline = Baseline.load(args.baseline)
     partition = baseline.partition(keys)
@@ -1469,9 +1472,9 @@ def build_parser() -> argparse.ArgumentParser:
     source = sub.add_parser("source", help="Python-only Lean source audits")
     ss = source.add_subparsers(dest="source_command", required=True)
     s = ss.add_parser("scan"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_scan)
-    s = ss.add_parser("duplicates"); s.add_argument("--root"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_duplicates)
+    s = ss.add_parser("duplicates"); s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[], help="restrict to modules under this prefix (repeatable)"); s.add_argument("--exclude-prefix", action="append", default=[], help="skip modules under this prefix (repeatable)"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_duplicates)
     s = ss.add_parser("admissions"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_admissions)
-    s = ss.add_parser("docstrings"); s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[]); s.add_argument("--baseline", help="JSON/YAML of tolerated undocumented declarations"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_docstrings)
+    s = ss.add_parser("docstrings"); s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[]); s.add_argument("--exclude-prefix", action="append", default=[]); s.add_argument("--baseline", help="JSON/YAML of tolerated undocumented declarations"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_docstrings)
     s = ss.add_parser("proof-length"); s.add_argument("--root"); s.add_argument("--library", action="append", default=[]); s.add_argument("--min", type=int, default=50); s.add_argument("--scaffold-definition", choices=("published", "have-term", "have-all", "have-and-cases"), default="published"); s.add_argument("--extractable", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_proof_length)
     s = ss.add_parser("snapshot"); s.add_argument("--root"); s.add_argument("-o", "--out", required=True); s.set_defaults(func=cmd_source_snapshot)
     s = ss.add_parser("drift"); s.add_argument("baseline"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_drift)
@@ -1484,7 +1487,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = ss.add_parser("declaration", help="show human-written Lean declaration headers and relevant ambient binders")
     s.add_argument("names", nargs="+"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_declaration)
     s = ss.add_parser("private-shadows", help="find private declarations shadowing public imports")
-    s.add_argument("--root"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH", help="record the current findings as accepted"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_private_shadows)
+    s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[], help="restrict to modules under this prefix (repeatable)"); s.add_argument("--exclude-prefix", action="append", default=[], help="skip modules under this prefix (repeatable)"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH", help="record the current findings as accepted"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_private_shadows)
     s = ss.add_parser("similar", help="find normalized theorem-statement or definition-body duplicate candidates")
     s.add_argument("--root"); s.add_argument("--library", action="append", default=[]); s.add_argument("--definitions", action="store_true"); s.add_argument("--min-chars", type=int, default=60); s.add_argument("--include-forwarders", action="store_true"); s.add_argument("--all-files", action="store_true"); s.add_argument("--top", type=int, default=25); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_similar)
     s = ss.add_parser("large", help="rank declarations by statement and body length")

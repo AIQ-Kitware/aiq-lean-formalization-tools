@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Sequence
 
 import yaml
@@ -48,6 +48,9 @@ class Baseline:
 
     path: Path | None
     reasons: Mapping[str, str]
+    #: Other top-level keys in the document, preserved when it is rewritten so a
+    #: project can keep a prose note next to a long list of accepted findings.
+    extra: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def keys(self) -> frozenset[str]:
@@ -61,14 +64,16 @@ class Baseline:
     def from_data(cls, data: Any, path: Path | None = None) -> "Baseline":
         if data is None:
             return cls(path, {})
-        if isinstance(data, Mapping):
-            accepted = data.get("accepted", data)
+        extra: dict[str, Any] = {}
+        if isinstance(data, Mapping) and "accepted" in data:
+            accepted = data["accepted"]
+            extra = {k: v for k, v in data.items() if k != "accepted"}
         else:
             accepted = data
         if isinstance(accepted, Mapping):
-            return cls(path, {str(k): str(v) for k, v in accepted.items()})
+            return cls(path, {str(k): str(v) for k, v in accepted.items()}, extra)
         if isinstance(accepted, list) and all(isinstance(x, str) for x in accepted):
-            return cls(path, {x: "" for x in accepted})
+            return cls(path, {x: "" for x in accepted}, extra)
         raise FormalizationToolsError(
             "a baseline must be a list of finding keys or a mapping from key to reason"
         )
@@ -97,6 +102,7 @@ class Baseline:
         target = Path(path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         accepted = {key: self.reasons.get(key, "") for key in sorted(set(found))}
-        payload = json.dumps({"accepted": accepted}, indent=2, ensure_ascii=False) + "\n"
+        document = {**self.extra, "accepted": accepted}
+        payload = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         target.write_text(payload, encoding="utf-8")
         return target

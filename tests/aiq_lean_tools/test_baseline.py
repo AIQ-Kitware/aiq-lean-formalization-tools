@@ -49,3 +49,13 @@ def test_malformed_baseline_is_rejected(tmp_path):
     path.write_text(json.dumps({"accepted": [1, 2]}))
     with pytest.raises(FormalizationToolsError):
         Baseline.load(path)
+
+
+def test_write_preserves_other_document_keys(tmp_path):
+    path = tmp_path / "accepted.json"
+    path.write_text(json.dumps({"_comment": "why this debt exists", "accepted": {"a": "reviewed"}}))
+    baseline = Baseline.load(path)
+    baseline.write(path, ["a"])
+    document = json.loads(path.read_text())
+    assert document["_comment"] == "why this debt exists"
+    assert document["accepted"] == {"a": "reviewed"}

@@ -88,3 +88,19 @@ def test_private_shadow_baseline(tmp_path):
     assert main([
         "source", "private-shadows", "--root", str(tmp_path), "--baseline", str(baseline), "--check",
     ]) == 0
+
+
+def test_module_prefix_scoping(tmp_path, capsys):
+    _collision_tree(tmp_path)
+    _write(tmp_path, "Conformance/Restate.lean", "namespace Lib\ntheorem clash : True := by trivial\nend Lib\n")
+    _write(tmp_path, "Lib/Experimental/Draft.lean", "namespace Lib\ntheorem draft : True := by trivial\nend Lib\n")
+    _write(tmp_path, "Lib/Draft.lean", "namespace Lib\ntheorem draft : True := by trivial\nend Lib\n")
+
+    assert main([
+        "source", "duplicates", "--root", str(tmp_path),
+        "--prefix", "Lib", "--exclude-prefix", "Lib.Experimental",
+    ]) == 0
+    out = capsys.readouterr().out
+    assert "Lib.clash" in out
+    assert "Lib.draft" not in out
+    assert "Conformance" not in out
