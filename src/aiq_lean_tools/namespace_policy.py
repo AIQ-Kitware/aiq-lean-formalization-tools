@@ -18,11 +18,14 @@ from typing import Any
 import yaml
 
 from .errors import ValidationError
+from . import lean_source
 from .lean_source import SourceScope, lean_files, strip_comments
 
-NAMESPACE_RE = re.compile(r"(?m)^\s*namespace\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*$")
-END_RE = re.compile(r"(?m)^\s*end(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*$")
-SECTION_RE = re.compile(r"(?m)^\s*section(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*$")
+# The one shared set of structure patterns; see `lean_source` for why they must
+# not span a newline.
+NAMESPACE_RE = lean_source.NAMESPACE_RE
+END_RE = lean_source.END_RE
+SECTION_RE = lean_source.SECTION_RE
 
 
 @dataclass(frozen=True)

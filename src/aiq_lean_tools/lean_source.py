@@ -42,16 +42,24 @@ ANONYMOUS_INSTANCE_RE = re.compile(
     r"(?P<kind>instance)\s*(?=[:(\[{])"
 )
 ANONYMOUS_NAME = "<anonymous>"
-NAMESPACE_RE = re.compile(r"(?m)^\s*namespace\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*(?:--.*)?$")
-SECTION_RE = re.compile(r"(?m)^\s*(?:(?:noncomputable|private|public)\s+)*section(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*(?:--.*)?$")
-END_RE = re.compile(r"(?m)^\s*end(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*(?:--.*)?$")
+# Horizontal whitespace only.  `\s` matches a newline, so `end` on one line and
+# `section` on the next parse as a single `end section`, which pops the wrong
+# entry and silently mis-qualifies every declaration in the rest of the file.
+_H = r"[ \t]"
+_NAME = r"[A-Za-z0-9_'.₀-₉⁰-⁹′]+"
+NAMESPACE_RE = re.compile(rf"(?m)^{_H}*namespace{_H}+({_NAME}){_H}*(?:--.*)?$")
+SECTION_RE = re.compile(
+    rf"(?m)^{_H}*(?:(?:@\[[^\]\n]*\]|noncomputable|private|public){_H}+)*"
+    rf"section(?:{_H}+({_NAME}))?{_H}*(?:--.*)?$"
+)
+END_RE = re.compile(rf"(?m)^{_H}*end(?:{_H}+({_NAME}))?{_H}*(?:--.*)?$")
 # Lean 4 module-system imports may carry `public`, `private`, or `meta`
 # modifiers.  Missing them silently drops real edges from every import-derived
 # view (layer policy, admission closure, module plans, coverage), which reads as
 # a clean architecture rather than as an unparsed line.
 IMPORT_RE = re.compile(
-    r"(?m)^\s*(?:(?:public|private|meta)\s+)*import\s+"
-    r"([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*(?:--.*)?$"
+    rf"(?m)^{_H}*(?:(?:public|private|meta){_H}+)*import{_H}+"
+    rf"({_NAME}){_H}*(?:--.*)?$"
 )
 ADMISSION_RE = re.compile(r"(?<![A-Za-z0-9_.'])(?:sorry|admit)(?![A-Za-z0-9_.'])")
 DOCSTRING_END_RE = re.compile(r"-/\s*$")

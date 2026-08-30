@@ -136,3 +136,55 @@ def test_nested_root_wins_over_the_tree_containing_it(tmp_path: Path):
     )
     index = scan_lean_project(tmp_path)
     assert set(index.modules) == {"Paper.Core"}
+
+
+def test_end_and_section_on_consecutive_lines_do_not_merge(tmp_path: Path):
+    # `end` on one line and `section` on the next must not parse as a single
+    # `end section`: that pops the wrong stack entry and silently mis-qualifies
+    # every declaration in the rest of the file.
+    _write(
+        tmp_path,
+        "Lib/A.lean",
+        "namespace N\n"
+        "end\n"
+        "section\n"
+        "theorem outside : True := by trivial\n"
+        "end\n",
+    )
+    index = scan_lean_project(tmp_path)
+    assert [row.name for row in index.declarations] == ["outside"]
+
+
+def test_a_bare_end_closing_a_section_does_not_close_the_namespace(tmp_path: Path):
+    _write(
+        tmp_path,
+        "Lib/A.lean",
+        "namespace Outer\n"
+        "section\n"
+        "theorem inside : True := by trivial\n"
+        "end\n"
+        "theorem after : True := by trivial\n"
+        "end Outer\n"
+        "theorem outside : True := by trivial\n",
+    )
+    index = scan_lean_project(tmp_path)
+    assert sorted(row.name for row in index.declarations) == [
+        "Outer.after", "Outer.inside", "outside",
+    ]
+
+
+def test_structure_keywords_need_a_whole_line(tmp_path: Path):
+    _write(
+        tmp_path,
+        "Lib/A.lean",
+        "namespace N\n"
+        "-- `end` and `section` mentioned in prose, and an attributed section:\n"
+        "@[expose] public section\n"
+        "noncomputable section Named\n"
+        "theorem x : True := by trivial\n"
+        "end Named\n"
+        "end\n"
+        "end N\n",
+    )
+    index = scan_lean_project(tmp_path)
+    assert [row.name for row in index.declarations] == ["N.x"]

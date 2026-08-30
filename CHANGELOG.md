@@ -4,6 +4,12 @@
 
 Changes driven by migrating the `aiq-dkps-formalization` repository onto the package.
 
+- Anchor the `namespace` / `section` / `end` / `import` patterns to horizontal
+  whitespace. `\s` matches a newline, so `end` on one line and `section` on the
+  next parsed as a single `end section`, popping the wrong stack entry and
+  silently mis-qualifying every declaration in the rest of the file. The
+  namespace-policy module now shares the one set of patterns instead of carrying
+  its own.
 - Parse Lean 4 module-system `public` / `private` / `meta` import modifiers. They
   were silently unparsed, which dropped 902 real import edges in the first
   repository migrated and made every import-derived view -- layer policy,
