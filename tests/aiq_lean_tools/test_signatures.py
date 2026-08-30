@@ -1,8 +1,15 @@
-from aiq_lean_tools.lean_backend import CommandResult
+from aiq_lean_tools.lean_backend import CommandResult, LeanQueryProbe
 from aiq_lean_tools.signatures import SignaturePolicy, compare_signatures
 
 
 class SequenceBackend:
+    """Hands back the queued outputs one query at a time.
+
+    Signature evidence is batched per module -- one Lean run for every
+    declaration in it -- so the backend sees one `probe_queries` call per module,
+    with a `print` and a `check_pp_all` query per declaration.
+    """
+
     def __init__(self, outputs):
         self.outputs = list(outputs)
         self.calls = []
@@ -15,7 +22,12 @@ class SequenceBackend:
         return CommandResult(tuple(argv), 0, text, "")
 
     def probe_queries(self, root, queries, imports, *, timeout=3600):
-        raise AssertionError("not used")
+        self.calls.append((root, tuple(queries), tuple(imports), timeout))
+        rows = []
+        for mode, name in queries:
+            text = self.outputs.pop(0)
+            rows.append(LeanQueryProbe(mode, name, True, text))
+        return rows
 
     def probe_declarations(self, root, declarations, imports, *, timeout=3600):
         raise AssertionError("not used")
@@ -74,3 +86,28 @@ def test_signature_policy_accepts_legacy_comparator_shape():
     })
     assert cfg.pairs[0].left_module == "Challenge"
     assert cfg.pairs[0].declarations == ("A", "B")
+
+
+def test_one_lean_run_per_module_not_per_declaration(tmp_path):
+    (tmp_path / "lakefile.toml").write_text("")
+    policy = SignaturePolicy.from_mapping({
+        "build": False,
+        "pairs": [{
+            "name": "candidate",
+            "left_module": "Challenge",
+            "right_module": "Solution",
+            "declarations": ["Demo.one", "Demo.two"],
+        }],
+    })
+    outputs = [
+        "theorem Demo.one.{u} : P := by trivial\n", "@Demo.one : Nat\n",
+        "theorem Demo.two.{u} : P := by trivial\n", "@Demo.two : Nat\n",
+        "theorem Demo.one.{u} : P := by trivial\n", "@Demo.one : Nat\n",
+        "theorem Demo.two.{u} : P := by trivial\n", "@Demo.two : Nat\n",
+    ]
+    backend = SequenceBackend(outputs)
+    report = compare_signatures(policy, root=tmp_path, backend=backend)
+    assert report.ok
+    # Two modules, two declarations each: two probe calls, not four.
+    assert len(backend.calls) == 2
+    assert [len(call[1]) for call in backend.calls] == [4, 4]

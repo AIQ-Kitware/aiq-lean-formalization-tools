@@ -256,6 +256,44 @@ def _parse_full_type(output: str, declaration: str) -> str | None:
     return value or None
 
 
+def inspect_signatures(
+    root: str | pathlib.Path,
+    module: str,
+    declarations: Sequence[str],
+    *,
+    backend: LeanBackend | None = None,
+    timeout: int = 600,
+) -> list[LeanSignature]:
+    """Read every declaration's signature evidence from one module in one run.
+
+    Two facts are needed per declaration and neither implies the other:
+    `#print` shows the raw positional universe list an exporter sees, which
+    `#check` alpha-normalizes away; `pp.all #check` shows the fully explicit type,
+    which the universe list alone does not constrain.  Both go in the same probe
+    file, so a module costs one Lean invocation rather than two per declaration.
+    """
+    base = find_workspace_root(root)
+    engine = backend or SubprocessLeanBackend()
+    queries: list[tuple[str, str]] = []
+    for declaration in declarations:
+        queries.append(("print", declaration))
+        queries.append(("check_pp_all", declaration))
+    rows = engine.probe_queries(base, queries, [module], timeout=timeout)
+    out: list[LeanSignature] = []
+    for index, declaration in enumerate(declarations):
+        print_output = rows[2 * index].output
+        check_output = rows[2 * index + 1].output
+        out.append(LeanSignature(
+            module=module,
+            declaration=declaration,
+            universe_signature=_parse_universe_signature(print_output, declaration),
+            full_type=_parse_full_type(check_output, declaration),
+            print_output=print_output,
+            check_output=check_output,
+        ))
+    return out
+
+
 def inspect_signature(
     root: str | pathlib.Path,
     module: str,
@@ -264,25 +302,7 @@ def inspect_signature(
     backend: LeanBackend | None = None,
     timeout: int = 600,
 ) -> LeanSignature:
-    base = find_workspace_root(root)
-    engine = backend or SubprocessLeanBackend()
-    printed = _run_lean_source(engine, base, f"import {module}\n#print {declaration}", timeout=timeout)
-    checked = _run_lean_source(
-        engine,
-        base,
-        f"import {module}\nset_option pp.all true in\n#check @{declaration}",
-        timeout=timeout,
-    )
-    print_output = printed.combined
-    check_output = checked.combined
-    return LeanSignature(
-        module=module,
-        declaration=declaration,
-        universe_signature=_parse_universe_signature(print_output, declaration),
-        full_type=_parse_full_type(check_output, declaration),
-        print_output=print_output,
-        check_output=check_output,
-    )
+    return inspect_signatures(root, module, [declaration], backend=backend, timeout=timeout)[0]
 
 
 def compare_signatures(
@@ -320,13 +340,13 @@ def compare_signatures(
     # Still inspect after a failed build.  This produces useful resolution
     # diagnostics from an existing cache/source tree instead of hiding all rows.
     for pair in policy.pairs:
-        for declaration in pair.declarations:
-            try:
-                left = inspect_signature(base, pair.left_module, declaration, backend=engine, timeout=timeout)
-                right = inspect_signature(base, pair.right_module, declaration, backend=engine, timeout=timeout)
-            except LeanExecutionError as ex:
-                findings.append(Finding("error", "signature-execution", str(ex), f"{pair.name}:{declaration}"))
-                continue
+        try:
+            lefts = inspect_signatures(base, pair.left_module, pair.declarations, backend=engine, timeout=timeout)
+            rights = inspect_signatures(base, pair.right_module, pair.declarations, backend=engine, timeout=timeout)
+        except LeanExecutionError as ex:
+            findings.append(Finding("error", "signature-execution", str(ex), pair.name))
+            continue
+        for declaration, left, right in zip(pair.declarations, lefts, rights):
             row_findings: list[Finding] = []
             if not left.resolved:
                 row_findings.append(Finding(

@@ -18,6 +18,14 @@ END = "AIQ_LEAN_PROBE_END|"
 #: nothing, and the failure is silent: every declaration reads as resolved and
 #: the census reports full coverage.  One extra query per run rules that out.
 CANARY = "AiqLeanTools.ProbeCanary.MustNotResolve"
+#: What each probe mode asks Lean.  `check_pp_all` exists because `#check` alone
+#: alpha-normalizes universe parameters and hides the instance telescope, and an
+#: exporter that compares declarations sees both.
+_PROBE_COMMANDS = {
+    "check": lambda name: f"#check @{name}",
+    "print": lambda name: f"#print {name}",
+    "check_pp_all": lambda name: f"set_option pp.all true in\n#check @{name}",
+}
 
 
 @dataclass(frozen=True)
@@ -105,9 +113,12 @@ class SubprocessLeanBackend:
         probed = [*queries, ("check", CANARY)]
         lines = [*(f"import {module}" for module in imports), "", "-- generated compiler probe"]
         for index, (mode, name) in enumerate(probed):
-            if mode not in {"check", "print"}:
-                raise LeanExecutionError(f"unknown probe mode {mode!r}; expected check or print")
-            command = f"#check @{name}" if mode == "check" else f"#print {name}"
+            if mode not in _PROBE_COMMANDS:
+                raise LeanExecutionError(
+                    f"unknown probe mode {mode!r}; expected one of "
+                    + ", ".join(sorted(_PROBE_COMMANDS))
+                )
+            command = _PROBE_COMMANDS[mode](name)
             lines.extend([
                 f'#eval IO.println "{BEGIN}{index}"',
                 command,

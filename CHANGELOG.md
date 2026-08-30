@@ -42,6 +42,9 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   and its declaration when deciding whether a declaration is documented. Stopping at
   the first non-blank line called 237 documented declarations undocumented in the
   first repository migrated.
+- Read a module's signature evidence in one Lean run instead of two per
+  declaration. `signatures check` cost 2 x declarations x sides Lean invocations,
+  which is why the gate it backs was one people avoided running.
 - Probe every Lean query set with a canary that must not resolve. A probe whose
   parser cannot fail proves nothing, and the failure is silent: every declaration
   reads as resolved and the census reports full coverage.
