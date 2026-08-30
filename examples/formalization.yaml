@@ -24,5 +24,11 @@ status:
 # check.  Omit the section to scan the whole checkout minus the usual build
 # directories.
 source_scope:
-  roots: ["MyLibrary", "MyPaper"]
   exclude_dirs: [".git", ".lake", "build", "vendor", "external", "submodules", "retired"]
+  roots:
+    - "MyLibrary"
+    # A Lake library with `srcDir` names its modules relative to that directory,
+    # so state the module root or every module in it is silently renamed and none
+    # of its imports resolve.
+    - path: "MyPaper/MyPaper"
+      module_root: "MyPaper"

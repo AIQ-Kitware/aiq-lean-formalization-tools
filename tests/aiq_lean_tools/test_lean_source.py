@@ -104,3 +104,35 @@ def test_explicit_exclude_dirs_still_override_the_manifest(tmp_path: Path):
     (tmp_path / "formalization.yaml").write_text("version: \"1\"\nsource_scope:\n  roots: [\"Lib\"]\n")
     index = scan_lean_project(tmp_path, exclude_dirs=(".lake",))
     assert set(index.modules) == {"Lib.Base", "reference.Other.Base"}
+
+
+def test_src_dir_libraries_keep_their_lake_module_names(tmp_path: Path):
+    _write(tmp_path, "Lib/Base.lean", "theorem base : True := by trivial\n")
+    _write(tmp_path, "Paper/Paper/Core.lean", "theorem core : True := by trivial\n")
+    _write(tmp_path, "Paper/Paper/Main.lean", "import Paper.Core\ntheorem main : True := by trivial\n")
+    (tmp_path / "formalization.yaml").write_text(
+        "version: \"1\"\n"
+        "source_scope:\n"
+        "  roots:\n"
+        "    - \"Lib\"\n"
+        "    - path: \"Paper/Paper\"\n"
+        "      module_root: \"Paper\"\n"
+    )
+    index = scan_lean_project(tmp_path)
+    assert set(index.modules) == {"Lib.Base", "Paper.Core", "Paper.Main"}
+    # The import now resolves against the index, which is the whole point.
+    assert index.import_closure(["Paper.Main"]) == {"Paper.Main", "Paper.Core"}
+
+
+def test_nested_root_wins_over_the_tree_containing_it(tmp_path: Path):
+    _write(tmp_path, "Paper/Paper/Core.lean", "theorem core : True := by trivial\n")
+    (tmp_path / "formalization.yaml").write_text(
+        "version: \"1\"\n"
+        "source_scope:\n"
+        "  roots:\n"
+        "    - \"Paper\"\n"
+        "    - path: \"Paper/Paper\"\n"
+        "      module_root: \"Paper\"\n"
+    )
+    index = scan_lean_project(tmp_path)
+    assert set(index.modules) == {"Paper.Core"}

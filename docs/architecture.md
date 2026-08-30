@@ -70,9 +70,16 @@ docstring, namespace, and import audits then report them as findings, so the ans
 is wrong rather than late.
 
 `SourceScope` reads that answer once from `source_scope` in `formalization.yaml`
-(`roots`, `exclude_dirs`) and both `lean_source.scan_lean_project` and the candidate
-audits in `source_candidates` honour it. An explicit argument still wins, so external
-trees such as an upstream roadmap checkout are scanned on their own terms.
+(`roots`, `exclude_dirs`) and `lean_source.scan_lean_project`, `namespace_policy`,
+and the candidate audits in `source_candidates` honour it. An explicit argument
+still wins, so external trees such as an upstream roadmap checkout are scanned on
+their own terms.
+
+A root may also carry a `module_root`, because a Lake library with `srcDir` names
+its modules relative to that directory rather than to the checkout. Deriving module
+names from the checkout instead renames every module in such a library, after which
+none of its imports resolve against the index and every import-derived rule quietly
+stops applying to it.
 
 ## Accepted-finding baselines
 

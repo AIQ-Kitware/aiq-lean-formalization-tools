@@ -326,10 +326,11 @@ def _has_docstring(original: str, decl_offset: int) -> bool:
     return False
 
 
-def _scan_file(root: Path, path: Path) -> tuple[list[SourceDecl], set[str], bool]:
+def _scan_file(root: Path, path: Path, *, module: str | None = None) -> tuple[list[SourceDecl], set[str], bool]:
     original = path.read_text(encoding="utf-8", errors="replace")
     clean = strip_comments(original)
-    module = _module_name(root, path)
+    if module is None:
+        module = _module_name(root, path)
     events = _namespace_events(clean)
     rows: list[SourceDecl] = []
     for match in DECL_RE.finditer(clean):
@@ -373,6 +374,43 @@ DEFAULT_EXCLUDE_DIRS: tuple[str, ...] = (".git", ".lake", "build", "vendor", "ex
 
 
 @dataclass(frozen=True)
+class SourceRoot:
+    """A directory of project Lean source, and the module prefix it carries.
+
+    Lake libraries may set ``srcDir``, in which case a module's name is its path
+    relative to that directory rather than to the checkout.  Deriving module
+    names from the checkout instead silently renames every module in such a
+    library, and then none of its imports resolve against the index.
+    """
+
+    path: str
+    module_root: str = ""
+
+    @classmethod
+    def parse(cls, entry: Any) -> "SourceRoot":
+        if isinstance(entry, str):
+            cleaned = entry.strip("/")
+            return cls(cleaned, cleaned.replace("/", "."))
+        if isinstance(entry, Mapping):
+            path = str(entry.get("path", "")).strip("/")
+            if not path:
+                raise ValueError("a source_scope root object requires a 'path'")
+            module_root = entry.get("module_root")
+            if module_root is None:
+                module_root = path.replace("/", ".")
+            return cls(path, str(module_root).strip("."))
+        raise ValueError("source_scope.roots entries must be strings or objects with a 'path'")
+
+    def contains(self, relative: pathlib.PurePath) -> bool:
+        posix = relative.as_posix()
+        return posix == self.path or posix.startswith(self.path + "/")
+
+    def module_name(self, relative: pathlib.PurePath) -> str:
+        inner = relative.relative_to(self.path).with_suffix("").parts
+        return ".".join(([self.module_root] if self.module_root else []) + list(inner))
+
+
+@dataclass(frozen=True)
 class SourceScope:
     """Which Lean files in a checkout are *this project's* source.
 
@@ -388,11 +426,14 @@ class SourceScope:
     .. code-block:: yaml
 
         source_scope:
-          roots: ["MyLib", "MyPaper"]        # optional; default: whole checkout
-          exclude_dirs: [".lake", "retired"] # directory *names*, at any depth
+          exclude_dirs: [".lake", "retired"]  # directory *names*, at any depth
+          roots:                              # optional; default: whole checkout
+            - "MyLib"
+            - path: "MyPaper/MyPaper"         # a Lake `srcDir` library
+              module_root: "MyPaper"
     """
 
-    roots: tuple[str, ...] = ()
+    roots: tuple[SourceRoot, ...] = ()
     exclude_dirs: tuple[str, ...] = DEFAULT_EXCLUDE_DIRS
 
     @classmethod
@@ -401,15 +442,19 @@ class SourceScope:
             return cls()
         roots = data.get("roots", [])
         excludes = data.get("exclude_dirs", list(DEFAULT_EXCLUDE_DIRS))
-        if isinstance(roots, str):
+        if isinstance(roots, (str, Mapping)):
             roots = [roots]
         if isinstance(excludes, str):
             excludes = [excludes]
-        if not isinstance(roots, list) or not all(isinstance(x, str) for x in roots):
-            raise ValueError("source_scope.roots must be a list of directory paths")
+        if not isinstance(roots, list):
+            raise ValueError("source_scope.roots must be a list")
         if not isinstance(excludes, list) or not all(isinstance(x, str) for x in excludes):
             raise ValueError("source_scope.exclude_dirs must be a list of directory names")
-        return cls(tuple(r.strip("/") for r in roots if r.strip("/")), tuple(excludes))
+        parsed = tuple(SourceRoot.parse(entry) for entry in roots)
+        seen = [root.path for root in parsed]
+        if len(seen) != len(set(seen)):
+            raise ValueError("source_scope.roots contains a duplicate path")
+        return cls(parsed, tuple(excludes))
 
     @classmethod
     def load(cls, root: str | pathlib.Path) -> "SourceScope":
@@ -421,13 +466,27 @@ class SourceScope:
             return cls()
         return cls.from_data(data.get("source_scope"))
 
+    @property
+    def root_paths(self) -> tuple[str, ...]:
+        return tuple(root.path for root in self.roots)
+
+    def root_for(self, relative: pathlib.PurePath) -> SourceRoot | None:
+        # Longest path first, so a nested root wins over the tree containing it.
+        for root in sorted(self.roots, key=lambda r: len(r.path), reverse=True):
+            if root.contains(relative):
+                return root
+        return None
+
     def includes(self, relative: pathlib.PurePath) -> bool:
         if set(self.exclude_dirs).intersection(relative.parts):
             return False
-        if not self.roots:
-            return True
-        posix = relative.as_posix()
-        return any(posix == r or posix.startswith(r + "/") for r in self.roots)
+        return not self.roots or self.root_for(relative) is not None
+
+    def module_name(self, relative: pathlib.PurePath) -> str:
+        root = self.root_for(relative)
+        if root is not None:
+            return root.module_name(relative)
+        return ".".join(relative.with_suffix("").parts)
 
 
 def _resolve_scope(
@@ -467,8 +526,8 @@ def scan_lean_project(
     modules: dict[str, Path] = {}
     admitted: set[str] = set()
     for path in sorted(lean_files(base, scope=resolved)):
-        rows, deps, has_admission = _scan_file(base, path)
-        module = _module_name(base, path)
+        module = resolved.module_name(path.relative_to(base))
+        rows, deps, has_admission = _scan_file(base, path, module=module)
         modules[module] = path
         imports[module] = deps
         declarations.extend(rows)

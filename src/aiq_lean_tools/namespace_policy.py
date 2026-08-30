@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from .errors import ValidationError
-from .lean_source import lean_files, strip_comments
+from .lean_source import SourceScope, lean_files, strip_comments
 
 NAMESPACE_RE = re.compile(r"(?m)^\s*namespace\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*$")
 END_RE = re.compile(r"(?m)^\s*end(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*$")
@@ -111,9 +111,10 @@ def load_namespace_policy(path: str | Path) -> dict[str, Any]:
 
 def check_namespace_policy(root: str | Path, policy: dict[str, Any]) -> list[NamespaceViolation]:
     base = Path(root).expanduser().resolve()
+    scope = SourceScope.load(base)
     violations: list[NamespaceViolation] = []
-    for path in lean_files(base):
-        module = ".".join(path.relative_to(base).with_suffix("").parts)
+    for path in lean_files(base, scope=scope):
+        module = scope.module_name(path.relative_to(base))
         governing = [raw for raw in policy["rules"] if any(_match(module, pat) for pat in raw["modules"])]
         if not governing:
             continue
