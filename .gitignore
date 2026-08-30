@@ -21,3 +21,6 @@ venv/
 wheelhouse/
 profile_output.*
 *.tar.gz
+
+# LLM resource-tally rows are machine-local bookkeeping, never tracked.
+.llm_resource_tally/local/
