@@ -184,3 +184,25 @@ def test_render_check_reports_a_stale_generated_file(tmp_path, capsys):
     out.write_text("hand-edited\n")
     assert main(["census", "render", str(census), "-o", str(out), "--check"]) == 1
     assert "stale" in capsys.readouterr().out
+
+
+def test_probe_distinguishes_a_private_declaration_from_a_missing_one(tmp_path):
+    lib = tmp_path / "Lib"
+    lib.mkdir()
+    (lib / "Core.lean").write_text(
+        "namespace Lib\nprivate theorem hidden : True := by trivial\nend Lib\n"
+    )
+    census = tmp_path / "census.json"
+    census.write_text(json.dumps({
+        "title": "Example",
+        "status_definitions": {"done": "done"},
+        "items": [
+            {"id": "r1", "title": "Row", "status": "done",
+             "lean_declarations": ["Lib.hidden", "Lib.vanished"]},
+        ],
+    }))
+    doc = load_census(census, root=tmp_path)
+    backend = MockLeanBackend(resolved={})
+    probe = doc.probe(backend=backend, imports=["Lib.Core"])
+    assert probe.private_declarations == {"Lib.hidden": "Lib.Core"}
+    assert "Lib.vanished" not in probe.private_declarations

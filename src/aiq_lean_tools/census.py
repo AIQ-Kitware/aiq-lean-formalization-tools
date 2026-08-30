@@ -4,7 +4,7 @@ import collections
 import html
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -38,6 +38,12 @@ class CensusValidationError(ValidationError):
 class ProbeSummary:
     results: tuple[DeclarationProbe, ...]
     imports: tuple[str, ...]
+    #: Unresolved names that a `private` declaration of the same short name
+    #: exists for, mapped to the module declaring it.  "Gone" and "present but
+    #: private" look identical to a `#check` and mean opposite things: a missing
+    #: name is lost mathematics, a private name is mathematics that exists and
+    #: cannot be cited as evidence.
+    private_declarations: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def unresolved(self) -> list[str]:
@@ -52,6 +58,7 @@ class ProbeSummary:
             "imports": list(self.imports),
             "resolved": self.resolved,
             "unresolved": self.unresolved,
+            "private_declarations": dict(self.private_declarations),
             "results": [
                 {"name": row.name, "resolved": row.resolved, "output": row.output}
                 for row in self.results
@@ -327,7 +334,15 @@ class CensusDocument:
             )
         runner = backend or SubprocessLeanBackend()
         results = runner.probe_declarations(self.root, refs, inferred, timeout=timeout)
-        return ProbeSummary(tuple(results), tuple(inferred))
+        unresolved = {row.name for row in results if not row.resolved}
+        private: dict[str, str] = {}
+        if unresolved:
+            by_short = source_index.by_short_name
+            for name in sorted(unresolved):
+                rows = [row for row in by_short.get(name.rsplit(".", 1)[-1], ()) if row.private]
+                if rows:
+                    private[name] = rows[0].module
+        return ProbeSummary(tuple(results), tuple(inferred), private)
 
     def apply_probe(self, probe: ProbeSummary) -> int:
         """Refresh verification values where the document defines compatible states."""

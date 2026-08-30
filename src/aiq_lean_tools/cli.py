@@ -249,7 +249,12 @@ def cmd_census_probe(args) -> int:
         if probe.unresolved:
             print("unresolved:")
             for name in probe.unresolved:
-                print(f"  {name}")
+                module = probe.private_declarations.get(name)
+                if module:
+                    print(f"  {name}  [declared PRIVATE in {module}: proved but not citable, "
+                          "so it is not evidence for a source item]")
+                else:
+                    print(f"  {name}  [no declaration of this name exists]")
         if args.write:
             print(f"updated verification on {changed} row(s)")
     return 1 if probe.unresolved else 0

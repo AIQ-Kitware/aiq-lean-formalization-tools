@@ -32,6 +32,10 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   and its declaration when deciding whether a declaration is documented. Stopping at
   the first non-blank line called 237 documented declarations undocumented in the
   first repository migrated.
+- Report an unresolved census declaration that exists as a `private` one, and say
+  which module declares it. "Gone" and "present but private" look identical to a
+  `#check` and mean opposite things: a missing name is lost mathematics, a private
+  name is mathematics that exists and cannot be cited as evidence.
 - Add `--check` to every Markdown/LaTeX render command (`census`, `review`,
   `coverage`, `literature`, `foundations`, `alignment`, `source module-plan`).
   A generated file committed to Git and never verified goes stale silently and
