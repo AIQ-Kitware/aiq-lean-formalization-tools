@@ -644,9 +644,11 @@ def cmd_source_aggregates(args) -> int:
         root_import=args.root_import,
         header=header,
         check=args.check,
+        respect_cycles=not args.ignore_import_cycles,
     )
     stale = [row for row in rows if row.changed]
     dangling = [(row, name) for row in rows for name in row.dangling_reexports]
+    unplaceable = [name for row in rows for name in row.unplaceable_modules]
     if args.json:
         _dump({
             "aggregates": [row.to_json(root) for row in rows],
@@ -654,6 +656,7 @@ def cmd_source_aggregates(args) -> int:
             "dangling_reexports": [
                 {"aggregate": row.module, "module": name} for row, name in dangling
             ],
+            "unplaceable_modules": unplaceable,
         })
     else:
         verb = "stale" if args.check else "regenerated"
@@ -661,8 +664,10 @@ def cmd_source_aggregates(args) -> int:
             print(f"{verb}: {row.module}")
         for row, name in dangling:
             print(f"dangling re-export: {row.module} -> {name}")
+        for name in unplaceable:
+            print(f"unplaceable: {name} depends on every aggregate that could hold it")
         print(f"aggregates: {len(rows)} checked, {len(stale)} {verb}")
-    return 1 if args.check and (stale or dangling) else 0
+    return 1 if (unplaceable or (args.check and (stale or dangling))) else 0
 
 
 def cmd_source_conflicts(args) -> int:
@@ -1484,7 +1489,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = ss.add_parser("snapshot"); s.add_argument("--root"); s.add_argument("-o", "--out", required=True); s.set_defaults(func=cmd_source_snapshot)
     s = ss.add_parser("drift"); s.add_argument("baseline"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_drift)
     s = ss.add_parser("aggregates", help="generate or check recursive import-only aggregate modules")
-    s.add_argument("--root"); s.add_argument("--base", required=True); s.add_argument("--library"); s.add_argument("--aggregate-name", default="All.lean"); s.add_argument("--skip-dir", action="append", default=[]); s.add_argument("--no-preserve-foreign", action="store_true"); s.add_argument("--root-import"); s.add_argument("--header-file"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_aggregates)
+    s.add_argument("--root"); s.add_argument("--base", required=True); s.add_argument("--library"); s.add_argument("--aggregate-name", default="All.lean"); s.add_argument("--skip-dir", action="append", default=[]); s.add_argument("--no-preserve-foreign", action="store_true"); s.add_argument("--ignore-import-cycles", action="store_true", help="place every module in its own directory aggregate even when that is a Lake build cycle"); s.add_argument("--root-import"); s.add_argument("--header-file"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_aggregates)
     s = ss.add_parser("conflicts", help="find exact Git merge-conflict markers")
     s.add_argument("--root"); s.add_argument("--all-files", action="store_true", help="scan all files instead of Git-tracked files"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_conflicts)
     s = ss.add_parser("orphan-artifacts", help="find Lake build products whose Lean source is gone")

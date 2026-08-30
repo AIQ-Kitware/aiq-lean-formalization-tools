@@ -62,3 +62,35 @@ def test_a_hand_written_directory_note_survives_regeneration(tmp_path):
     (lib / "All.lean").write_text("import Lib.A\n\n/-! # `Other` -/\n")
     generate_aggregates(tmp_path, lib, own_library="Lib")
     assert (lib / "All.lean").read_text().endswith("/-! # `Lib` -/\n")
+
+
+def test_a_module_that_depends_on_its_own_aggregate_is_promoted(tmp_path):
+    from aiq_lean_tools.aggregates import generate_aggregates
+
+    lib = tmp_path / "Lib"
+    (lib / "Sub").mkdir(parents=True)
+    (lib / "Sub/Leaf.lean").write_text("theorem leaf : True := by trivial\n")
+    # `Wide` sits in `Sub/` but consumes the whole subtree through a parent
+    # module, so listing it in `Sub/All.lean` is a Lake build cycle.
+    (lib / "Wide.lean").write_text("import Lib.Sub.All\ntheorem wide : True := by trivial\n")
+    (lib / "Sub/Consumer.lean").write_text("import Lib.Wide\ntheorem c : True := by trivial\n")
+
+    generate_aggregates(tmp_path, lib, own_library="Lib")
+    sub = (lib / "Sub/All.lean").read_text()
+    top = (lib / "All.lean").read_text()
+    assert "import Lib.Sub.Leaf" in sub
+    assert "Lib.Sub.Consumer" not in sub
+    assert "import Lib.Sub.Consumer" in top
+
+
+def test_ignoring_cycles_restores_the_naive_placement(tmp_path):
+    from aiq_lean_tools.aggregates import generate_aggregates
+
+    lib = tmp_path / "Lib"
+    (lib / "Sub").mkdir(parents=True)
+    (lib / "Sub/Leaf.lean").write_text("theorem leaf : True := by trivial\n")
+    (lib / "Wide.lean").write_text("import Lib.Sub.All\ntheorem wide : True := by trivial\n")
+    (lib / "Sub/Consumer.lean").write_text("import Lib.Wide\ntheorem c : True := by trivial\n")
+
+    generate_aggregates(tmp_path, lib, own_library="Lib", respect_cycles=False)
+    assert "import Lib.Sub.Consumer" in (lib / "Sub/All.lean").read_text()

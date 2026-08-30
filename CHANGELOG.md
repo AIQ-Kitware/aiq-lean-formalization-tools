@@ -43,6 +43,12 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   `coverage`, `literature`, `foundations`, `alignment`, `source module-plan`).
   A generated file committed to Git and never verified goes stale silently and
   then reads as a maintained document.
+- Place a module that depends on its own directory's aggregate in the nearest
+  ancestor aggregate instead. Listing it in its own is a Lake `build cycle
+  detected`, reported far from the file that caused it -- so a maintainer fixes it
+  by hand, after which the generator calls that file permanently stale and
+  regenerating it breaks the build. Six aggregates in the first repository migrated
+  were in exactly that state.
 - Preserve a hand-written directory note in a generated aggregate. The import list
   is the only part a generator can derive; overwriting the whole trailer deletes
   the note silently, because the file still compiles.

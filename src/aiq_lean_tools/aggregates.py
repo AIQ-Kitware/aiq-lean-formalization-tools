@@ -25,6 +25,9 @@ class AggregateChange:
     module: str
     changed: bool
     dangling_reexports: tuple[str, ...] = ()
+    #: Modules that depend on every aggregate that could hold them, so no
+    #: generated aggregate reaches them.  Reported rather than dropped silently.
+    unplaceable_modules: tuple[str, ...] = ()
     text: str = ""
 
     def to_json(self, root: Path | None = None) -> dict:
@@ -39,6 +42,7 @@ class AggregateChange:
             "module": self.module,
             "changed": self.changed,
             "dangling_reexports": list(self.dangling_reexports),
+            "unplaceable_modules": list(self.unplaceable_modules),
         }
 
 
@@ -56,6 +60,53 @@ def _under_skipped(base: Path, directory: Path, skip_dirs: set[str]) -> bool:
     except ValueError:
         return True
     return bool(skip_dirs.intersection(rel.parts))
+
+
+class AggregatePlacement:
+    """Decide which aggregate each module belongs in.
+
+    Normally a module belongs to its own directory's aggregate.  A module that
+    *depends on* that aggregate cannot: importing it there is a cycle, and Lake
+    reports it as `build cycle detected` far from the file that caused it.  Such
+    a module belongs to the nearest ancestor aggregate it does not depend on --
+    which is what a maintainer editing the file by hand ends up doing, after
+    which the generator reports the file as permanently stale and regenerating it
+    breaks the build.
+
+    Reachability is read from the source imports actually on disk, with the
+    candidate aggregate's own edges ignored, because those are the edges being
+    recomputed.
+    """
+
+    def __init__(self, root: Path, imports: dict[str, set[str]]) -> None:
+        self.root = root
+        self.imports = imports
+
+    @classmethod
+    def from_tree(cls, root: Path, scope=None) -> "AggregatePlacement":
+        from .lean_source import lean_files as _lean_files
+
+        imports: dict[str, set[str]] = {}
+        for path in _lean_files(root, scope=scope):
+            module = ".".join(path.relative_to(root).with_suffix("").parts)
+            text = path.read_text(encoding="utf-8", errors="replace")
+            imports[module] = set(IMPORT_RE.findall(text))
+        return cls(root, imports)
+
+    def depends_on(self, module: str, target: str) -> bool:
+        """Does ``module`` reach ``target``, ignoring ``target``'s own imports?"""
+        seen = {module}
+        stack = [module]
+        while stack:
+            current = stack.pop()
+            for dep in self.imports.get(current, ()):
+                if dep == target:
+                    return True
+                if dep in seen or dep == target:
+                    continue
+                seen.add(dep)
+                stack.append(dep)
+        return False
 
 
 def _foreign_reexports(
@@ -89,7 +140,9 @@ def aggregate_text(
     preserve_foreign_reexports: bool = True,
     root_import: str | None = None,
     header: str = "",
-) -> tuple[str | None, tuple[str, ...]]:
+    placement: "AggregatePlacement | None" = None,
+    promoted: Iterable[str] = (),
+) -> tuple[str | None, tuple[str, ...], tuple[str, ...]]:
     """Build the canonical aggregate text for one directory."""
     skip = set(skip_dirs)
     output = directory / aggregate_name
@@ -101,11 +154,22 @@ def aggregate_text(
         for child in (directory.iterdir() if directory.is_dir() else [])
         if child.is_dir() and _under_skipped(base, child, skip)
     }
+    aggregate_module = module_of(repo_root, output)
     own_modules = [
         module_of(repo_root, path)
         for path in directory.glob("*.lean")
         if path.name != aggregate_name and path.name not in skipped_roots
     ]
+    deferred: list[str] = []
+    if placement is not None:
+        keep: list[str] = []
+        for module in own_modules:
+            if placement.depends_on(module, aggregate_module):
+                deferred.append(module)
+            else:
+                keep.append(module)
+        own_modules = keep
+    own_modules.extend(promoted)
     dangling: list[str] = []
     if preserve_foreign_reexports:
         foreign, dangling = _foreign_reexports(
@@ -128,7 +192,7 @@ def aggregate_text(
     imports.extend(own_modules)
     imports = list(dict.fromkeys(imports))
     if not imports:
-        return None, tuple(dangling)
+        return None, tuple(dangling), tuple(deferred)
 
     title = directory.relative_to(repo_root).as_posix()
     normalized_header = header
@@ -136,7 +200,7 @@ def aggregate_text(
         normalized_header += "\n"
     text = normalized_header + "".join(f"import {module}\n" for module in imports)
     text += "\n" + _trailer(output, title)
-    return text, tuple(dangling)
+    return text, tuple(dangling), tuple(deferred)
 
 
 def _trailer(output: Path, title: str) -> str:
@@ -173,6 +237,7 @@ def generate_aggregates(
     root_import: str | None = None,
     header: str = "",
     check: bool = False,
+    respect_cycles: bool = True,
 ) -> list[AggregateChange]:
     """Generate or check recursive ``All.lean``-style aggregates.
 
@@ -201,13 +266,18 @@ def generate_aggregates(
         and any(p.is_file() for p in d.rglob("*.lean"))
     ]
     dirs.append(base_path)
+    placement = AggregatePlacement.from_tree(root) if respect_cycles else None
     changes: list[AggregateChange] = []
     seen: set[Path] = set()
+    #: Modules deferred by a child directory, waiting for an ancestor that can
+    #: take them.  Keyed by the directory that must offer them next.
+    pending: dict[Path, list[str]] = {}
+    unplaceable: list[str] = []
     for directory in sorted(dirs, key=lambda p: (-len(p.parts), p.as_posix())):
         if directory in seen:
             continue
         seen.add(directory)
-        text, dangling = aggregate_text(
+        text, dangling, deferred = aggregate_text(
             repo_root=root,
             base=base_path,
             directory=directory,
@@ -217,7 +287,14 @@ def generate_aggregates(
             preserve_foreign_reexports=preserve_foreign_reexports,
             root_import=root_import,
             header=header,
+            placement=placement,
+            promoted=sorted(pending.pop(directory, [])),
         )
+        if deferred:
+            if directory == base_path:
+                unplaceable.extend(deferred)
+            else:
+                pending.setdefault(directory.parent, []).extend(deferred)
         if text is None:
             continue
         output = directory / aggregate_name
@@ -230,6 +307,7 @@ def generate_aggregates(
             module=module_of(root, output),
             changed=changed,
             dangling_reexports=dangling,
+            unplaceable_modules=tuple(sorted(unplaceable)) if directory == base_path else (),
             text=text,
         ))
     return changes
