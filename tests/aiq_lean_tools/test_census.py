@@ -206,3 +206,25 @@ def test_probe_distinguishes_a_private_declaration_from_a_missing_one(tmp_path):
     probe = doc.probe(backend=backend, imports=["Lib.Core"])
     assert probe.private_declarations == {"Lib.hidden": "Lib.Core"}
     assert "Lib.vanished" not in probe.private_declarations
+
+
+def test_probe_refuses_to_report_when_the_canary_resolves(tmp_path, monkeypatch):
+    import pytest
+
+    from aiq_lean_tools import lean_backend
+    from aiq_lean_tools.lean_backend import (
+        CANARY, CommandResult, LeanExecutionError, SubprocessLeanBackend,
+    )
+
+    def fake_run(self, root, argv, *, timeout=3600):
+        # A parser that reports everything as resolved is exactly the failure the
+        # canary exists to catch.
+        out = []
+        for index in range(3):
+            out += [f"{lean_backend.BEGIN}{index}", "ok", f"{lean_backend.END}{index}"]
+        return CommandResult(tuple(argv), 0, "\n".join(out), "")
+
+    monkeypatch.setattr(SubprocessLeanBackend, "run", fake_run)
+    assert CANARY
+    with pytest.raises(LeanExecutionError):
+        SubprocessLeanBackend().probe_declarations(tmp_path, ["A.one", "A.two"], ["A"])

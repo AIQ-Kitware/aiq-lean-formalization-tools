@@ -14,6 +14,10 @@ from .errors import LeanExecutionError
 
 BEGIN = "AIQ_LEAN_PROBE_BEGIN|"
 END = "AIQ_LEAN_PROBE_END|"
+#: A name that must never resolve.  A probe whose parser cannot fail proves
+#: nothing, and the failure is silent: every declaration reads as resolved and
+#: the census reports full coverage.  One extra query per run rules that out.
+CANARY = "AiqLeanTools.ProbeCanary.MustNotResolve"
 
 
 @dataclass(frozen=True)
@@ -98,8 +102,9 @@ class SubprocessLeanBackend:
     ) -> list[LeanQueryProbe]:
         build = root / "build" / "aiq-lean-tools"
         build.mkdir(parents=True, exist_ok=True)
+        probed = [*queries, ("check", CANARY)]
         lines = [*(f"import {module}" for module in imports), "", "-- generated compiler probe"]
-        for index, (mode, name) in enumerate(queries):
+        for index, (mode, name) in enumerate(probed):
             if mode not in {"check", "print"}:
                 raise LeanExecutionError(f"unknown probe mode {mode!r}; expected check or print")
             command = f"#check @{name}" if mode == "check" else f"#print {name}"
@@ -117,7 +122,13 @@ class SubprocessLeanBackend:
         try:
             rel = probe_path.relative_to(root)
             result = self.run(root, ["lake", "env", "lean", "-DmaxErrors=100000", str(rel)], timeout=timeout)
-            return _parse_query_probe(result.combined, queries)
+            rows = _parse_query_probe(result.combined, probed)
+            if rows[-1].resolved:
+                raise LeanExecutionError(
+                    "the probe canary resolved: the diagnostic parser is broken and "
+                    "every result in this run is meaningless"
+                )
+            return rows[:-1]
         finally:
             probe_path.unlink(missing_ok=True)
 

@@ -32,6 +32,9 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   and its declaration when deciding whether a declaration is documented. Stopping at
   the first non-blank line called 237 documented declarations undocumented in the
   first repository migrated.
+- Probe every Lean query set with a canary that must not resolve. A probe whose
+  parser cannot fail proves nothing, and the failure is silent: every declaration
+  reads as resolved and the census reports full coverage.
 - Report an unresolved census declaration that exists as a `private` one, and say
   which module declares it. "Gone" and "present but private" look identical to a
   `#check` and mean opposite things: a missing name is lost mathematics, a private
