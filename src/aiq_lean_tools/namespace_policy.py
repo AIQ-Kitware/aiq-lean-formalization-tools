@@ -1,4 +1,11 @@
-"""Configurable namespace-placement checks for Lean source modules."""
+"""Configurable namespace-placement checks for Lean source modules.
+
+A rule names the modules it governs and then either an ``allow`` list (the
+namespaces those modules may declare into) or a ``deny`` list (namespaces they
+may not), or both.  ``deny`` exists because "nothing here may declare into a
+donor library's namespace" cannot be written as an allow-list without
+enumerating every namespace the project legitimately uses.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -88,12 +95,17 @@ def load_namespace_policy(path: str | Path) -> dict[str, Any]:
             raise ValidationError("every namespace rule requires an id")
         modules = raw.get("modules", [])
         allow = raw.get("allow", [])
+        deny = raw.get("deny", [])
         if isinstance(modules, str): modules = [modules]
         if isinstance(allow, str): allow = [allow]
-        if not modules or not allow:
-            raise ValidationError(f"namespace rule {raw.get('id')!r} requires modules and allow")
+        if isinstance(deny, str): deny = [deny]
+        if not modules:
+            raise ValidationError(f"namespace rule {raw.get('id')!r} requires modules")
+        if not allow and not deny:
+            raise ValidationError(f"namespace rule {raw.get('id')!r} requires allow or deny")
         raw["modules"] = modules
         raw["allow"] = allow
+        raw["deny"] = deny
     return data
 
 
@@ -102,12 +114,24 @@ def check_namespace_policy(root: str | Path, policy: dict[str, Any]) -> list[Nam
     violations: list[NamespaceViolation] = []
     for path in lean_files(base):
         module = ".".join(path.relative_to(base).with_suffix("").parts)
-        for raw in policy["rules"]:
-            if not any(_match(module, pat) for pat in raw["modules"]):
-                continue
-            allow = raw["allow"]
-            for namespace in declared_namespaces(path.read_text(encoding="utf-8", errors="replace")):
-                if not any(_match(namespace, pat) for pat in allow):
+        governing = [raw for raw in policy["rules"] if any(_match(module, pat) for pat in raw["modules"])]
+        if not governing:
+            continue
+        namespaces = declared_namespaces(path.read_text(encoding="utf-8", errors="replace"))
+        for raw in governing:
+            allow = raw.get("allow") or []
+            deny = raw.get("deny") or []
+            for namespace in namespaces:
+                if deny and any(_match(namespace, pat) for pat in deny):
+                    violations.append(NamespaceViolation(
+                        rule=str(raw["id"]),
+                        module=module,
+                        namespace=namespace,
+                        path=path,
+                        detail=str(raw.get("message") or f"namespace {namespace} is forbidden here"),
+                    ))
+                    continue
+                if allow and not any(_match(namespace, pat) for pat in allow):
                     violations.append(NamespaceViolation(
                         rule=str(raw["id"]),
                         module=module,

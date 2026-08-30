@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Iterable, Iterator, Sequence
 
 from .common import Path
-from .lean_source import strip_comments
+from .lean_source import SourceScope, strip_comments
 
 DECL_RE = re.compile(
     r"(?m)^(?P<indent>[ \t]*)"
@@ -144,14 +144,23 @@ def lean_files(
     *,
     roots: Sequence[str] = (),
     tracked_only: bool = True,
-    exclude_parts: Iterable[str] = (".git", ".lake", "build", "vendor", "external", "retired"),
+    exclude_parts: Iterable[str] | None = None,
 ) -> list[Path]:
     """Return Lean files for candidate audits.
 
     ``roots`` restricts candidate definitions/declarations.  Callers that need a
     whole-repository usage corpus should obtain it separately with ``roots=()``.
+
+    With neither argument given, the project's ``source_scope`` in
+    ``formalization.yaml`` decides, so candidate audits and the structural index
+    see the same tree.
     """
     base = Path(root).expanduser().resolve()
+    scope = SourceScope.load(base)
+    if not roots:
+        roots = scope.roots
+    if exclude_parts is None:
+        exclude_parts = tuple(scope.exclude_dirs) + ("retired",)
     files = _git_tracked_lean_files(base) if tracked_only else None
     if files is None:
         files = [path for path in base.rglob("*.lean") if path.is_file()]

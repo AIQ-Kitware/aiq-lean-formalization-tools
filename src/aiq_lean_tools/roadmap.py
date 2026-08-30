@@ -86,7 +86,7 @@ def _rank_decl(decl: SourceDecl, root: Path, preferred: Sequence[str]) -> tuple[
 def _topic_declarations(index: LeanSourceIndex, roadmap_root: Path, suggested_glob: str) -> dict[str, list[SourceDecl]]:
     selected = set(path.resolve() for path in roadmap_root.glob(suggested_glob) if path.is_file())
     out: dict[str, list[SourceDecl]] = {}
-    for decl in index.declarations:
+    for decl in index.named_declarations:
         if decl.path.resolve() not in selected:
             continue
         topic = decl.path.parent.relative_to(roadmap_root).as_posix() or "."

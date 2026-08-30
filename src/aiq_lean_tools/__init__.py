@@ -14,7 +14,7 @@ from .gates import GateSuiteConfig
 from .grounding import GroundingPolicy, check_grounding_policy, load_grounding_policy
 from .history import GitCommit, history_summary, load_git_history
 from .import_graph import SourceImportGraph
-from .lean_source import LeanSourceIndex, scan_lean_project
+from .lean_source import LeanSourceIndex, SourceScope, scan_lean_project
 from .module_coverage import ModuleCoveragePolicy, ModuleCoverageReport, check_module_coverage
 from .provenance import ProvenanceBlock, provenance_inventory
 from .ratchet import RatchetRule, evaluate_ratchets, load_ratchet_policy
@@ -83,6 +83,7 @@ __all__ = [
     "load_ratchet_policy",
     "load_semantic_review",
     "provenance_inventory",
+    "SourceScope",
     "scan_lean_project",
     "symbol_census",
     "semantic_review_template",

@@ -46,6 +46,8 @@ This layer covers:
 
 `gates.py` handles a different structural problem: it discovers repository `check_*.py` scripts, determines which accept the conventional `--check` strictness switch without executing them, and applies explicit configuration for slow, unavailable, advisory, or stronger-than-regression modes. This keeps a repository's named checks local while making the runner reusable.
 
+A suite may also *declare* gates as argv commands. Once the generic engines live in this package, most of a repository's gates are installed commands plus a project policy file, and filename discovery cannot see those. Without declared gates a project has to keep writing wrapper scripts purely so the runner can find them, which is the duplication the extraction exists to remove.
+
 ### Campaign tracking and reproducible evidence
 
 `foundations.py` models recursive human-tracked foundation campaigns while keeping those edges distinct from elaborated Lean dependencies. `staging.py` models staging-root state with optional compiler checks. `module_plan.py` validates ordered module-topic partitions and derives source-import prerequisites and dependency-closed submission rungs from project-supplied editorial seeds. `signatures.py` performs exact Lean interface preflights across module pairs. `certification.py` builds reproducible evidence bundles from declarative command/input plans; it records evidence but does not define scientific completion.
@@ -57,6 +59,30 @@ This layer covers:
 ### Build diagnostics
 
 `lake_report.py` is the reusable Lake diagnostic parser/reporter developed in the source formalization. `warning_fixer.py` applies only the mechanical Lean warning rewrites it knows how to verify syntactically; it is dry-run by default.
+
+## Project source scope
+
+Every structural audit needs the same answer to one question: which Lean files in
+this checkout are the project's own source? A formalization checkout usually also
+carries vendored donors, retired trees, reference checkouts of other repositories,
+and submitted copies of itself. Scanning those is not merely slow -- duplicate-name,
+docstring, namespace, and import audits then report them as findings, so the answer
+is wrong rather than late.
+
+`SourceScope` reads that answer once from `source_scope` in `formalization.yaml`
+(`roots`, `exclude_dirs`) and both `lean_source.scan_lean_project` and the candidate
+audits in `source_candidates` honour it. An explicit argument still wins, so external
+trees such as an upstream roadmap checkout are scanned on their own terms.
+
+## Accepted-finding baselines
+
+`baseline.py` backs the `--baseline` / `--write-baseline` options on the structural
+checks whose count a live repository cannot hold at zero. A baseline names the
+findings a project has accepted and why. It is deliberately not a count threshold:
+a threshold accepts any finding once the number is high enough, so retiring one
+accepted case silently makes room for a new defect. A baseline entry that no longer
+matches any finding fails the check for the same reason -- left in place it
+pre-accepts whatever next takes that name.
 
 ## Data versus policy
 

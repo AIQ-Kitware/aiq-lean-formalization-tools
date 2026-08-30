@@ -14,3 +14,17 @@ check_is_stronger:
 # Prefer deleting unactionable checks. This mechanism exists for checks that are
 # intentionally informative and cannot be made binary.
 advisory: {}
+
+# Gates the repository declares outright.  Once the generic engines live in this
+# package, most gates are installed commands plus a project policy file, and
+# filename discovery cannot see them.  `command` is an argv list, never a shell
+# string, and it runs from the repository root.  Set `pattern: ""` above if the
+# project has no check scripts left to discover.
+gates:
+  - name: import-layers
+    command: ["aiq-lean", "imports", "check", "dev/policy/import-layers.yaml"]
+    description: "library layering firewall"
+  - name: full-build
+    command: ["lake", "build"]
+    description: "the compiler is the only real gate"
+    slow: true

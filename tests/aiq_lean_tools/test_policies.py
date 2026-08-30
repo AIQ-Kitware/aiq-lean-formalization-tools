@@ -44,3 +44,32 @@ def test_namespace_policy(tmp_path: Path):
         "allow": ["Foundation", "Foundation.*"],
     }]})
     assert [row.namespace for row in rows] == ["Bad"]
+
+
+def test_namespace_policy_deny_rules(tmp_path: Path):
+    _write(tmp_path, "Paper/Own.lean", "namespace Paper\ntheorem a : True := by trivial\nend Paper\n")
+    _write(tmp_path, "Paper/Donor.lean", "namespace Donor.Sub\ntheorem b : True := by trivial\nend Donor.Sub\n")
+    _write(tmp_path, "Paper/Bridge.lean", "namespace DonorBridge\ntheorem c : True := by trivial\nend DonorBridge\n")
+    _write(tmp_path, "retired/Old.lean", "namespace Donor\ntheorem d : True := by trivial\nend Donor\n")
+    policy = {"rules": [{
+        "id": "no-donor-namespace",
+        "modules": ["Paper"],
+        "allow": [],
+        "deny": ["Donor"],
+        "message": "declare into the project namespace, not the donor's",
+    }]}
+    rows = check_namespace_policy(tmp_path, policy)
+    assert [(row.module, row.namespace) for row in rows] == [("Paper.Donor", "Donor.Sub")]
+    assert rows[0].detail == "declare into the project namespace, not the donor's"
+
+
+def test_namespace_policy_requires_allow_or_deny(tmp_path: Path):
+    import pytest
+
+    from aiq_lean_tools.errors import ValidationError
+    from aiq_lean_tools.namespace_policy import load_namespace_policy
+
+    path = tmp_path / "policy.yaml"
+    path.write_text("rules:\n  - id: empty\n    modules: [\"Paper\"]\n")
+    with pytest.raises(ValidationError):
+        load_namespace_policy(path)

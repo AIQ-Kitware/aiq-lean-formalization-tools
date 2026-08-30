@@ -8,10 +8,13 @@ elaborator-backed declaration/dependency authority.
 from __future__ import annotations
 
 import collections
+import functools
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
+
+import yaml
 
 from .common import Path, find_workspace_root
 
@@ -27,10 +30,29 @@ DECL_RE = re.compile(
     r"(?P<kind>" + "|".join(DECL_KINDS) + r")\s+"
     r"(?P<name>`[^`]+`|[A-Za-z_][A-Za-z0-9_'.₀-₉⁰-⁹′!?]*)"
 )
+# `instance : Foo Bar := ...` is legal and nameless, so a name-keyed scan drops it
+# entirely -- and a docstring gate that cannot see a declaration reports it as
+# documented.  Matched separately because it cannot share the named-declaration
+# regex: the whole difference is that no name follows the keyword.
+ANONYMOUS_INSTANCE_RE = re.compile(
+    r"(?m)^(?P<indent>[ \t]*)"
+    r"(?:(?:@\[[^\n]*\]\s*)?)*"
+    r"(?:(?P<private>private)\s+)?"
+    r"(?:(?:protected|noncomputable|unsafe|partial|scoped|local|public)\s+)*"
+    r"(?P<kind>instance)\s*(?=[:(\[{])"
+)
+ANONYMOUS_NAME = "<anonymous>"
 NAMESPACE_RE = re.compile(r"(?m)^\s*namespace\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*(?:--.*)?$")
 SECTION_RE = re.compile(r"(?m)^\s*(?:(?:noncomputable|private|public)\s+)*section(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*(?:--.*)?$")
 END_RE = re.compile(r"(?m)^\s*end(?:\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+))?\s*(?:--.*)?$")
-IMPORT_RE = re.compile(r"(?m)^\s*import\s+([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*(?:--.*)?$")
+# Lean 4 module-system imports may carry `public`, `private`, or `meta`
+# modifiers.  Missing them silently drops real edges from every import-derived
+# view (layer policy, admission closure, module plans, coverage), which reads as
+# a clean architecture rather than as an unparsed line.
+IMPORT_RE = re.compile(
+    r"(?m)^\s*(?:(?:public|private|meta)\s+)*import\s+"
+    r"([A-Za-z0-9_'.₀-₉⁰-⁹′]+)\s*(?:--.*)?$"
+)
 ADMISSION_RE = re.compile(r"(?<![A-Za-z0-9_.'])(?:sorry|admit)(?![A-Za-z0-9_.'])")
 DOCSTRING_END_RE = re.compile(r"-/\s*$")
 
@@ -45,6 +67,7 @@ class SourceDecl:
     line: int
     private: bool
     documented: bool
+    anonymous: bool = False
 
     def to_json(self, root: Path | None = None) -> dict:
         path = self.path
@@ -62,6 +85,7 @@ class SourceDecl:
             "line": self.line,
             "private": self.private,
             "documented": self.documented,
+            "anonymous": self.anonymous,
         }
 
 
@@ -73,17 +97,24 @@ class LeanSourceIndex:
     modules: dict[str, Path]
     admitted_modules: set[str]
 
-    @property
+    # `resolve` is called once per cited declaration, and a census can cite
+    # thousands.  Rebuilding these tables per lookup made name resolution the
+    # second-largest cost in a whole-repository scan.
+    @functools.cached_property
+    def named_declarations(self) -> list[SourceDecl]:
+        return [decl for decl in self.declarations if not decl.anonymous]
+
+    @functools.cached_property
     def by_name(self) -> dict[str, list[SourceDecl]]:
         out: dict[str, list[SourceDecl]] = collections.defaultdict(list)
-        for decl in self.declarations:
+        for decl in self.named_declarations:
             out[decl.name].append(decl)
         return dict(out)
 
-    @property
+    @functools.cached_property
     def by_short_name(self) -> dict[str, list[SourceDecl]]:
         out: dict[str, list[SourceDecl]] = collections.defaultdict(list)
-        for decl in self.declarations:
+        for decl in self.named_declarations:
             out[decl.short_name].append(decl)
         return dict(out)
 
@@ -139,7 +170,7 @@ class LeanSourceIndex:
         """
         public_by_module: dict[str, set[str]] = collections.defaultdict(set)
         private_by_module: dict[str, list[SourceDecl]] = collections.defaultdict(list)
-        for decl in self.declarations:
+        for decl in self.named_declarations:
             if decl.private:
                 private_by_module[decl.module].append(decl)
             else:
@@ -163,59 +194,74 @@ class LeanSourceIndex:
         return sorted(findings, key=lambda row: (row["module"], row["name"]))
 
 
+_COMMENT_TOKEN_RE = re.compile(r'"|/-|-/|--')
+_NON_NEWLINE_RE = re.compile(r"[^\n]")
+
+
+def _blank(text: str) -> str:
+    """Replace every character except a newline with a space."""
+    return _NON_NEWLINE_RE.sub(" ", text)
+
+
 def strip_comments(text: str) -> str:
-    """Strip nested Lean comments while preserving offsets and strings."""
+    """Strip nested Lean comments while preserving offsets and strings.
+
+    Offsets are preserved because every declaration/namespace offset computed on
+    the stripped text is reported against the original file.  The scanner jumps
+    between comment/string tokens rather than walking characters: this function
+    runs over every Lean file in a repository for most audits, and the
+    character loop it replaced dominated whole-tree scans.
+    """
     out: list[str] = []
-    i = 0
+    pos = 0
     depth = 0
-    in_string = False
-    escaped = False
-    while i < len(text):
-        ch = text[i]
-        nxt = text[i + 1] if i + 1 < len(text) else ""
+    size = len(text)
+    while pos < size:
+        match = _COMMENT_TOKEN_RE.search(text, pos)
+        if match is None:
+            rest = text[pos:]
+            out.append(_blank(rest) if depth else rest)
+            break
+        start = match.start()
+        token = match.group()
+        chunk = text[pos:start]
+        out.append(_blank(chunk) if depth else chunk)
         if depth:
-            if ch == "/" and nxt == "-":
+            if token == "/-":
                 depth += 1
-                out.extend("  ")
-                i += 2
-                continue
-            if ch == "-" and nxt == "/":
+            elif token == "-/":
                 depth -= 1
-                out.extend("  ")
-                i += 2
-                continue
-            out.append("\n" if ch == "\n" else " ")
-            i += 1
+            out.append(" " * len(token))
+            pos = start + len(token)
             continue
-        if in_string:
-            out.append(ch)
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-            i += 1
+        if token == '"':
+            cursor = start + 1
+            while cursor < size:
+                char = text[cursor]
+                if char == "\\":
+                    cursor += 2
+                    continue
+                cursor += 1
+                if char == '"':
+                    break
+            out.append(text[start:cursor])
+            pos = cursor
             continue
-        if ch == '"':
-            in_string = True
-            out.append(ch)
-            i += 1
-            continue
-        if ch == "/" and nxt == "-":
+        if token == "/-":
             depth = 1
-            out.extend("  ")
-            i += 2
+            out.append("  ")
+            pos = start + 2
             continue
-        if ch == "-" and nxt == "-":
-            out.extend("  ")
-            i += 2
-            while i < len(text) and text[i] != "\n":
-                out.append(" ")
-                i += 1
+        if token == "--":
+            eol = text.find("\n", start)
+            if eol == -1:
+                eol = size
+            out.append(" " * (eol - start))
+            pos = eol
             continue
-        out.append(ch)
-        i += 1
+        # A bare `-/` outside any comment is ordinary source text.
+        out.append(token)
+        pos = start + len(token)
     return "".join(out)
 
 
@@ -305,27 +351,122 @@ def _scan_file(root: Path, path: Path) -> tuple[list[SourceDecl], set[str], bool
             private=bool(match.group("private")),
             documented=_has_docstring(original, match.start()),
         ))
+    for match in ANONYMOUS_INSTANCE_RE.finditer(clean):
+        rows.append(SourceDecl(
+            name=ANONYMOUS_NAME,
+            short_name=ANONYMOUS_NAME,
+            kind="instance",
+            module=module,
+            path=path,
+            line=_line_of(clean, match.start()),
+            private=bool(match.group("private")),
+            documented=_has_docstring(original, match.start()),
+            anonymous=True,
+        ))
+    rows.sort(key=lambda decl: decl.line)
     imports = set(IMPORT_RE.findall(clean))
     admitted = bool(ADMISSION_RE.search(clean))
     return rows, imports, admitted
 
 
-def lean_files(root: Path, *, exclude_dirs: Iterable[str] = (".git", ".lake", "build", "vendor", "external")) -> Iterator[Path]:
-    excluded = set(exclude_dirs)
+DEFAULT_EXCLUDE_DIRS: tuple[str, ...] = (".git", ".lake", "build", "vendor", "external")
+
+
+@dataclass(frozen=True)
+class SourceScope:
+    """Which Lean files in a checkout are *this project's* source.
+
+    A formalization checkout is rarely only its own libraries.  It also carries
+    vendored donors, retired trees, submitted copies of itself, and reference
+    checkouts of other repositories.  Scanning those as project source does not
+    merely cost time: every duplicate-name, docstring, namespace, and import
+    audit reports the extra trees as findings, so the answer is wrong rather
+    than slow.
+
+    The project owns this decision, so it is read from ``formalization.yaml``:
+
+    .. code-block:: yaml
+
+        source_scope:
+          roots: ["MyLib", "MyPaper"]        # optional; default: whole checkout
+          exclude_dirs: [".lake", "retired"] # directory *names*, at any depth
+    """
+
+    roots: tuple[str, ...] = ()
+    exclude_dirs: tuple[str, ...] = DEFAULT_EXCLUDE_DIRS
+
+    @classmethod
+    def from_data(cls, data: Mapping[str, Any] | None) -> "SourceScope":
+        if not isinstance(data, Mapping):
+            return cls()
+        roots = data.get("roots", [])
+        excludes = data.get("exclude_dirs", list(DEFAULT_EXCLUDE_DIRS))
+        if isinstance(roots, str):
+            roots = [roots]
+        if isinstance(excludes, str):
+            excludes = [excludes]
+        if not isinstance(roots, list) or not all(isinstance(x, str) for x in roots):
+            raise ValueError("source_scope.roots must be a list of directory paths")
+        if not isinstance(excludes, list) or not all(isinstance(x, str) for x in excludes):
+            raise ValueError("source_scope.exclude_dirs must be a list of directory names")
+        return cls(tuple(r.strip("/") for r in roots if r.strip("/")), tuple(excludes))
+
+    @classmethod
+    def load(cls, root: str | pathlib.Path) -> "SourceScope":
+        manifest = Path(root).expanduser().resolve() / "formalization.yaml"
+        if not manifest.is_file():
+            return cls()
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, Mapping):
+            return cls()
+        return cls.from_data(data.get("source_scope"))
+
+    def includes(self, relative: pathlib.PurePath) -> bool:
+        if set(self.exclude_dirs).intersection(relative.parts):
+            return False
+        if not self.roots:
+            return True
+        posix = relative.as_posix()
+        return any(posix == r or posix.startswith(r + "/") for r in self.roots)
+
+
+def _resolve_scope(
+    root: Path,
+    scope: SourceScope | None,
+    exclude_dirs: Iterable[str] | None,
+) -> SourceScope:
+    if scope is not None:
+        return scope
+    if exclude_dirs is not None:
+        return SourceScope(exclude_dirs=tuple(exclude_dirs))
+    return SourceScope.load(root)
+
+
+def lean_files(
+    root: Path,
+    *,
+    exclude_dirs: Iterable[str] | None = None,
+    scope: SourceScope | None = None,
+) -> Iterator[Path]:
+    resolved = _resolve_scope(root, scope, exclude_dirs)
     for path in root.rglob("*.lean"):
-        rel = path.relative_to(root)
-        if excluded.intersection(rel.parts):
-            continue
-        yield path
+        if resolved.includes(path.relative_to(root)):
+            yield path
 
 
-def scan_lean_project(root: str | pathlib.Path | None = None, *, exclude_dirs: Iterable[str] = (".git", ".lake", "build", "vendor", "external")) -> LeanSourceIndex:
+def scan_lean_project(
+    root: str | pathlib.Path | None = None,
+    *,
+    exclude_dirs: Iterable[str] | None = None,
+    scope: SourceScope | None = None,
+) -> LeanSourceIndex:
     base = find_workspace_root(root)
+    resolved = _resolve_scope(base, scope, exclude_dirs)
     declarations: list[SourceDecl] = []
     imports: dict[str, set[str]] = {}
     modules: dict[str, Path] = {}
     admitted: set[str] = set()
-    for path in sorted(lean_files(base, exclude_dirs=exclude_dirs)):
+    for path in sorted(lean_files(base, scope=resolved)):
         rows, deps, has_admission = _scan_file(base, path)
         module = _module_name(base, path)
         modules[module] = path

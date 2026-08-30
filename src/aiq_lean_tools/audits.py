@@ -180,7 +180,7 @@ def declaration_snapshot(index: LeanSourceIndex) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "root": str(index.root),
-        "declarations": [row.to_json(index.root) for row in sorted(index.declarations, key=lambda r: (r.name, r.module, r.line)) if not row.private],
+        "declarations": [row.to_json(index.root) for row in sorted(index.named_declarations, key=lambda r: (r.name, r.module, r.line)) if not row.private],
     }
 
 
@@ -191,7 +191,7 @@ def write_declaration_snapshot(index: LeanSourceIndex, path: Path) -> None:
 def declaration_drift(index: LeanSourceIndex, baseline: Mapping[str, Any]) -> dict[str, Any]:
     old_rows = baseline.get("declarations", []) if isinstance(baseline, Mapping) else []
     old = {str(row.get("name")): row for row in old_rows if isinstance(row, Mapping) and row.get("name")}
-    new = {row.name: row for row in index.declarations if not row.private}
+    new = {row.name: row for row in index.named_declarations if not row.private}
     removed = sorted(set(old) - set(new))
     added = sorted(set(new) - set(old))
     moved = []

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.0 first-consumer pass
+
+Changes driven by migrating the `aiq-dkps-formalization` repository onto the package.
+
+- Parse Lean 4 module-system `public` / `private` / `meta` import modifiers. They
+  were silently unparsed, which dropped 902 real import edges in the first
+  repository migrated and made every import-derived view -- layer policy,
+  admission closure, module plans, coverage -- report a cleaner architecture than
+  the source has.
+- Add `source_scope` (`roots`, `exclude_dirs`) in `formalization.yaml`, honoured by
+  `scan_lean_project` and the candidate audits. Without it a checkout carrying
+  vendored donors, retired trees, or submitted copies of itself reports them as
+  findings; the first repository migrated produced 10,781 phantom duplicate names.
+- Inventory anonymous `instance : C α` declarations, which no name-keyed scan could
+  see, and keep them out of every name-keyed view.
+- Add accepted-finding baselines (`--baseline`, `--write-baseline`) to
+  `source duplicates`, `source docstrings`, and `source private-shadows`, with stale
+  entries reported as failures.
+- Let a gate suite declare gates as argv commands, not only discover `check_*.py`
+  scripts, so a project whose gates are package commands plus policy files does not
+  have to keep wrapper scripts alive for the runner to find.
+- Add `deny` to namespace rules, for "nothing here may declare into that namespace"
+  constraints that have no allow-list form.
+- Rewrite `strip_comments` as a token scanner: byte-identical output on 5,785 real
+  Lean files, and about six times faster over a whole tree. Cache the index name
+  tables, which were rebuilt on every declaration lookup.
+
 ## 0.1.0
 
 - Extract `leanq` 0.3-era semantic query and graph tooling into a standalone distribution.

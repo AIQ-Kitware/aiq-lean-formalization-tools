@@ -18,7 +18,7 @@ import yaml
 
 from .common import Finding, Path, find_workspace_root
 from .errors import ValidationError
-from .lean_source import LeanSourceIndex, scan_lean_project, strip_comments
+from .lean_source import LeanSourceIndex, lean_files, scan_lean_project, strip_comments
 
 
 @dataclass(frozen=True)
@@ -152,9 +152,8 @@ def check_grounding_policy(
 
     selected_paths = {
         path.resolve()
-        for path in base.rglob("*.lean")
-        if not {".git", ".lake", "build", "vendor", "external"}.intersection(path.relative_to(base).parts)
-        and _matches(path.relative_to(base).as_posix(), policy.include)
+        for path in lean_files(base)
+        if _matches(path.relative_to(base).as_posix(), policy.include)
     }
 
     if policy.forbid_admissions:

@@ -16,3 +16,13 @@ status:
   scope: "Describe what is and is not formalized without collapsing implementation, proof, and source-fidelity status."
   sorry_count: 0
   axioms: []
+
+# Which Lean files in this checkout are the project's own source.  Every
+# structural audit (duplicates, docstrings, namespaces, import layers, module
+# plans) reads it, so vendored donors, retired trees, reference checkouts, and
+# submitted copies of the project are excluded once, here, rather than by each
+# check.  Omit the section to scan the whole checkout minus the usual build
+# directories.
+source_scope:
+  roots: ["MyLibrary", "MyPaper"]
+  exclude_dirs: [".git", ".lake", "build", "vendor", "external", "submodules", "retired"]

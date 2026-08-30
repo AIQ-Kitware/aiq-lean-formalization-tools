@@ -4,3 +4,12 @@ rules:
     modules: ["Foundation", "Foundation.*"]
     allow: ["Foundation", "Foundation.*", "ContinuousLinearMap", "Submodule"]
     message: "foundation declarations must live in the package namespace or an explicitly reviewed upstream namespace"
+
+  # `deny` states what may not be declared where.  "Nothing may declare into a
+  # donor library's namespace" has no allow-list form that does not enumerate
+  # every namespace the project legitimately uses.  Prefix matching is exact on
+  # namespace components, so `Donor` does not match `DonorBridge`.
+  - id: no-donor-namespace
+    modules: ["MyLibrary", "MyPaper"]
+    deny: ["Donor"]
+    message: "file the declaration by what it is, not under a donor's name"

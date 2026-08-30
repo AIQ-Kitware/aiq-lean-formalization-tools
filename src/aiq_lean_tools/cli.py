@@ -33,6 +33,7 @@ from .history import history_summary, load_git_history, render_history_html
 from .import_graph import SourceImportGraph
 from .hygiene import conflict_markers, orphan_build_modules, remove_orphan_build_modules
 from .import_policy import ImportPolicy, check_import_policy
+from .baseline import Baseline
 from .lean_source import declaration_source_texts, scan_lean_project
 from .literature import load_literature
 from .manifest import load_manifest
@@ -469,18 +470,51 @@ def cmd_source_scan(args) -> int:
     return 0
 
 
+def _report_baseline(partition, *, label: str, describe) -> int:
+    """Print a baselined structural check and return its exit status."""
+    for key in partition.new:
+        print(f"NEW      {describe(key)}")
+    for key in partition.stale:
+        print(f"STALE    baseline entry no longer occurs: {key}")
+    print(
+        f"{label}: {len(partition.accepted) + len(partition.new)} finding(s), "
+        f"{len(partition.accepted)} accepted by baseline, "
+        f"{len(partition.new)} new, {len(partition.stale)} stale"
+    )
+    if partition.stale:
+        print("  Remove the stale entries: a baseline naming a finding that no longer")
+        print("  occurs silently pre-accepts whatever next takes that name.")
+    return 0 if partition.ok else 1
+
+
 def cmd_source_duplicates(args) -> int:
     index = scan_lean_project(args.root)
     found = index.duplicate_public_names()
+    baseline = Baseline.load(args.baseline)
+    partition = baseline.partition(found)
+    if args.write_baseline:
+        target = baseline.write(args.write_baseline, sorted(found))
+        print(f"baseline written: {len(found)} accepted -> {target}")
+        return 0
     if args.json:
-        _dump({name: [row.to_json(index.root) for row in rows] for name, rows in found.items()})
-    else:
-        for name, rows in sorted(found.items()):
-            print(f"DUPLICATE {name}")
-            for row in rows:
-                print(f"  {row.path.relative_to(index.root)}:{row.line} ({row.module})")
-        print(f"{len(found)} duplicate public qualified name(s)")
-    return 1 if args.check and found else 0
+        _dump({
+            "findings": {name: [row.to_json(index.root) for row in rows] for name, rows in found.items()},
+            "baseline": partition.to_json(),
+        })
+        return 0 if not args.check or partition.ok else 1
+    for name, rows in sorted(found.items()):
+        state = "NEW" if name in partition.new else "accepted"
+        print(f"DUPLICATE {name} [{state}]")
+        for row in rows:
+            print(f"  {row.path.relative_to(index.root)}:{row.line} ({row.module})")
+    status = _report_baseline(
+        partition,
+        label="duplicate public qualified names",
+        describe=lambda key: f"{key} is declared in {len(found[key])} modules",
+    )
+    if partition.new:
+        print("  A name declared in two modules compiles only while nothing imports both.")
+    return status if args.check else 0
 
 
 def cmd_source_admissions(args) -> int:
@@ -496,16 +530,35 @@ def cmd_source_admissions(args) -> int:
     return 0
 
 
+def _docstring_key(root, row) -> str:
+    return f"{row.path.relative_to(root).as_posix()}:{row.name}"
+
+
 def cmd_source_docstrings(args) -> int:
     index = scan_lean_project(args.root)
     rows = undocumented_public(index, roots=args.prefix)
+    keys = {_docstring_key(index.root, row): row for row in rows}
+    baseline = Baseline.load(args.baseline)
+    partition = baseline.partition(keys)
+    if args.write_baseline:
+        target = baseline.write(args.write_baseline, sorted(keys))
+        print(f"baseline written: {len(keys)} tolerated -> {target}")
+        return 0
     if args.json:
-        _dump([row.to_json(index.root) for row in rows])
-    else:
-        for row in rows:
-            print(f"{row.path.relative_to(index.root)}:{row.line} {row.kind} {row.name}")
-        print(f"{len(rows)} undocumented public declaration(s)")
-    return 1 if args.check and rows else 0
+        _dump({
+            "findings": [row.to_json(index.root) for row in rows],
+            "baseline": partition.to_json(),
+        })
+        return 0 if not args.check or partition.ok else 1
+    for key in (partition.new or sorted(keys)):
+        row = keys[key]
+        print(f"{row.path.relative_to(index.root)}:{row.line} {row.kind} {row.name}")
+    status = _report_baseline(
+        partition,
+        label="undocumented public declarations",
+        describe=lambda key: key,
+    )
+    return status if args.check else 0
 
 
 def cmd_source_proof_length(args) -> int:
@@ -648,19 +701,38 @@ def cmd_source_declaration(args) -> int:
 def cmd_source_private_shadows(args) -> int:
     index = scan_lean_project(args.root)
     rows = index.private_shadows_imported_public()
+    keys = {f"{row['module']}:{row['name']}": row for row in rows}
+    baseline = Baseline.load(args.baseline)
+    partition = baseline.partition(keys)
+    if args.write_baseline:
+        target = baseline.write(args.write_baseline, sorted(keys))
+        print(f"baseline written: {len(keys)} accepted -> {target}")
+        return 0
     if args.json:
-        _dump([{
-            "module": row["module"],
-            "name": row["name"],
-            "declaration": row["declaration"].to_json(index.root),
-            "providers": row["providers"],
-        } for row in rows])
-    else:
-        for row in rows:
-            decl = row["declaration"]
-            print(f"{decl.path.relative_to(index.root)}:{decl.line}: private `{row['name']}` is public in {', '.join(row['providers'])}")
-        print(f"{len(rows)} private-shadow finding(s)")
-    return 1 if args.check and rows else 0
+        _dump({
+            "findings": [{
+                "module": row["module"],
+                "name": row["name"],
+                "declaration": row["declaration"].to_json(index.root),
+                "providers": row["providers"],
+            } for row in rows],
+            "baseline": partition.to_json(),
+        })
+        return 0 if not args.check or partition.ok else 1
+    for key in (partition.new or sorted(keys)):
+        row = keys[key]
+        decl = row["declaration"]
+        print(f"{decl.path.relative_to(index.root)}:{decl.line}: private `{row['name']}` is public in {', '.join(row['providers'])}")
+    status = _report_baseline(
+        partition,
+        label="private declarations shadowing imported public names",
+        describe=lambda key: key,
+    )
+    if partition.new:
+        print("  If the copy exists because the imported declaration does not apply --")
+        print("  a universe, an instance, a variable order -- fix that rather than")
+        print("  restating it.  A one-line presentation wrapper belongs in the baseline.")
+    return status if args.check else 0
 
 
 
@@ -1397,9 +1469,9 @@ def build_parser() -> argparse.ArgumentParser:
     source = sub.add_parser("source", help="Python-only Lean source audits")
     ss = source.add_subparsers(dest="source_command", required=True)
     s = ss.add_parser("scan"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_scan)
-    s = ss.add_parser("duplicates"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_duplicates)
+    s = ss.add_parser("duplicates"); s.add_argument("--root"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_duplicates)
     s = ss.add_parser("admissions"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_admissions)
-    s = ss.add_parser("docstrings"); s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[]); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_docstrings)
+    s = ss.add_parser("docstrings"); s.add_argument("--root"); s.add_argument("--prefix", action="append", default=[]); s.add_argument("--baseline", help="JSON/YAML of tolerated undocumented declarations"); s.add_argument("--write-baseline", metavar="PATH"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_docstrings)
     s = ss.add_parser("proof-length"); s.add_argument("--root"); s.add_argument("--library", action="append", default=[]); s.add_argument("--min", type=int, default=50); s.add_argument("--scaffold-definition", choices=("published", "have-term", "have-all", "have-and-cases"), default="published"); s.add_argument("--extractable", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_proof_length)
     s = ss.add_parser("snapshot"); s.add_argument("--root"); s.add_argument("-o", "--out", required=True); s.set_defaults(func=cmd_source_snapshot)
     s = ss.add_parser("drift"); s.add_argument("baseline"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_drift)
@@ -1412,7 +1484,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = ss.add_parser("declaration", help="show human-written Lean declaration headers and relevant ambient binders")
     s.add_argument("names", nargs="+"); s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_declaration)
     s = ss.add_parser("private-shadows", help="find private declarations shadowing public imports")
-    s.add_argument("--root"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_private_shadows)
+    s.add_argument("--root"); s.add_argument("--baseline", help="JSON/YAML of accepted findings with reasons"); s.add_argument("--write-baseline", metavar="PATH", help="record the current findings as accepted"); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_private_shadows)
     s = ss.add_parser("similar", help="find normalized theorem-statement or definition-body duplicate candidates")
     s.add_argument("--root"); s.add_argument("--library", action="append", default=[]); s.add_argument("--definitions", action="store_true"); s.add_argument("--min-chars", type=int, default=60); s.add_argument("--include-forwarders", action="store_true"); s.add_argument("--all-files", action="store_true"); s.add_argument("--top", type=int, default=25); s.add_argument("--check", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_similar)
     s = ss.add_parser("large", help="rank declarations by statement and body length")
