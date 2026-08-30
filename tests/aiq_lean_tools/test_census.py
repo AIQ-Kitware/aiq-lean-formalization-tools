@@ -162,3 +162,25 @@ def test_headline_review_contract_survives_total_review_removal(tmp_path):
     doc = load_census(path, root=tmp_path)
     codes = {finding.code for finding in doc.validate()}
     assert "semantic-review" in codes
+
+
+def test_render_check_reports_a_stale_generated_file(tmp_path, capsys):
+    from aiq_lean_tools.cli import main
+
+    census = tmp_path / "census.json"
+    census.write_text(json.dumps({
+        "title": "Example",
+        "status_definitions": {"done": "done"},
+        "items": [{"id": "r1", "title": "Row", "status": "done", "lean_declarations": []}],
+    }))
+    out = tmp_path / "census.md"
+
+    assert main(["census", "render", str(census), "-o", str(out), "--check"]) == 1
+    assert "missing" in capsys.readouterr().out
+
+    assert main(["census", "render", str(census), "-o", str(out)]) == 0
+    assert main(["census", "render", str(census), "-o", str(out), "--check"]) == 0
+
+    out.write_text("hand-edited\n")
+    assert main(["census", "render", str(census), "-o", str(out), "--check"]) == 1
+    assert "stale" in capsys.readouterr().out

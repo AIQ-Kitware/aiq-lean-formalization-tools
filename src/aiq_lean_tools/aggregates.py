@@ -93,10 +93,18 @@ def aggregate_text(
     """Build the canonical aggregate text for one directory."""
     skip = set(skip_dirs)
     output = directory / aggregate_name
+    # A skipped subtree usually has a sibling root module -- `Experimental/` next
+    # to `Experimental.lean` -- and importing that root pulls the whole subtree
+    # back into the aggregate, defeating the skip while still compiling.
+    skipped_roots = {
+        child.name + ".lean"
+        for child in (directory.iterdir() if directory.is_dir() else [])
+        if child.is_dir() and _under_skipped(base, child, skip)
+    }
     own_modules = [
         module_of(repo_root, path)
         for path in directory.glob("*.lean")
-        if path.name != aggregate_name
+        if path.name != aggregate_name and path.name not in skipped_roots
     ]
     dangling: list[str] = []
     if preserve_foreign_reexports:

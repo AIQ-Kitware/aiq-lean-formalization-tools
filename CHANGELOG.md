@@ -32,6 +32,13 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   and its declaration when deciding whether a declaration is documented. Stopping at
   the first non-blank line called 237 documented declarations undocumented in the
   first repository migrated.
+- Add `--check` to every Markdown/LaTeX render command (`census`, `review`,
+  `coverage`, `literature`, `foundations`, `alignment`, `source module-plan`).
+  A generated file committed to Git and never verified goes stale silently and
+  then reads as a maintained document.
+- Do not import a skipped subtree's sibling root module into a generated
+  aggregate: `Experimental/` skipped but `Experimental.lean` imported puts the
+  whole subtree back in the aggregate, and it still compiles.
 - Honour the project source scope when discovering workspace ledgers, so a reference
   checkout's example census documents do not join this workspace's totals.
 - Let a gate suite declare gates as argv commands, not only discover `check_*.py`

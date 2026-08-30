@@ -163,15 +163,34 @@ def cmd_census_summary(args) -> int:
     return 0
 
 
+def _emit(text: str, out: str | None, check: bool = False) -> int:
+    """Write generated text, or verify a checked-in copy is current.
+
+    A generated file committed to Git and never verified goes stale silently,
+    and then reads as a maintained document.  ``--check`` is what makes the copy
+    a claim the suite can falsify.
+    """
+    if not out:
+        sys.stdout.write(text)
+        return 0
+    target = Path(out)
+    if check:
+        current = target.read_text(encoding="utf-8") if target.is_file() else None
+        if current == text:
+            print(f"{out}: up to date")
+            return 0
+        print(f"{out}: " + ("stale" if current is not None else "missing"))
+        print("  Regenerate it: rerun this command without --check.")
+        return 1
+    atomic_write_text(target, text)
+    print(out)
+    return 0
+
+
 def cmd_census_render(args) -> int:
     doc = load_census(args.path, root=args.root)
     text = doc.render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0
+    return _emit(text, args.out, getattr(args, "check", False))
 
 
 def cmd_census_html(args) -> int:
@@ -256,12 +275,7 @@ def cmd_review_summary(args) -> int:
 def cmd_review_render(args) -> int:
     doc = load_semantic_review(args.path, root=args.root)
     text = doc.render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0
+    return _emit(text, args.out, getattr(args, "check", False))
 
 
 def cmd_review_html(args) -> int:
@@ -350,12 +364,7 @@ def cmd_coverage_show(args) -> int:
 
 def cmd_coverage_render(args) -> int:
     text = load_coverage_bundle(args.path, root=args.root).render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0
+    return _emit(text, args.out, getattr(args, "check", False))
 
 
 def cmd_coverage_html(args) -> int:
@@ -470,6 +479,17 @@ def cmd_source_scan(args) -> int:
     return 0
 
 
+def _listed(partition, all_keys, *, baseline_used: bool) -> list:
+    """What to print: only the unaccepted findings once a baseline is in use.
+
+    Reprinting hundreds of accepted findings on every green run is how a gate's
+    output stops being read.
+    """
+    if baseline_used:
+        return list(partition.new)
+    return list(all_keys)
+
+
 def _report_baseline(partition, *, label: str, describe) -> int:
     """Print a baselined structural check and return its exit status."""
     for key in partition.new:
@@ -502,10 +522,10 @@ def cmd_source_duplicates(args) -> int:
             "baseline": partition.to_json(),
         })
         return 0 if not args.check or partition.ok else 1
-    for name, rows in sorted(found.items()):
+    for name in _listed(partition, sorted(found), baseline_used=bool(args.baseline)):
         state = "NEW" if name in partition.new else "accepted"
         print(f"DUPLICATE {name} [{state}]")
-        for row in rows:
+        for row in found[name]:
             print(f"  {row.path.relative_to(index.root)}:{row.line} ({row.module})")
     status = _report_baseline(
         partition,
@@ -550,7 +570,7 @@ def cmd_source_docstrings(args) -> int:
             "baseline": partition.to_json(),
         })
         return 0 if not args.check or partition.ok else 1
-    for key in (partition.new or sorted(keys)):
+    for key in _listed(partition, sorted(keys), baseline_used=bool(args.baseline)):
         row = keys[key]
         print(f"{row.path.relative_to(index.root)}:{row.line} {row.kind} {row.name}")
     status = _report_baseline(
@@ -722,7 +742,7 @@ def cmd_source_private_shadows(args) -> int:
             "baseline": partition.to_json(),
         })
         return 0 if not args.check or partition.ok else 1
-    for key in (partition.new or sorted(keys)):
+    for key in _listed(partition, sorted(keys), baseline_used=bool(args.baseline)):
         row = keys[key]
         decl = row["declaration"]
         print(f"{decl.path.relative_to(index.root)}:{decl.line}: private `{row['name']}` is public in {', '.join(row['providers'])}")
@@ -1178,13 +1198,10 @@ def cmd_alignment_render(args) -> int:
         timeout=args.timeout,
     )
     text = packet.render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
+    status = _emit(text, args.out, getattr(args, "check", False))
     unresolved = [row for row in packet.probes.values() if not row.resolved]
-    return 1 if unresolved else 0
+    return status or (1 if unresolved else 0)
+
 
 def cmd_manifest_validate(args) -> int:
     return _print_findings(load_manifest(args.path).validate(), json_mode=args.json)
@@ -1247,12 +1264,8 @@ def cmd_foundations_validate(args) -> int:
 def cmd_foundations_render(args) -> int:
     report = _foundation_report(args)
     text = report.render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0 if report.ok else 1
+    status = _emit(text, args.out, getattr(args, "check", False))
+    return status or (0 if report.ok else 1)
 
 
 def cmd_foundations_html(args) -> int:
@@ -1303,11 +1316,8 @@ def cmd_source_module_plan(args) -> int:
     report = check_module_plan(policy, root=args.root)
     if args.render:
         text = report.render_markdown()
-        if args.out:
-            atomic_write_text(Path(args.out), text)
-            print(args.out)
-        else:
-            sys.stdout.write(text)
+        status = _emit(text, args.out, getattr(args, "check", False))
+        return status or (0 if report.ok else 1)
     elif args.json:
         _dump(report.to_json())
     else:
@@ -1373,23 +1383,13 @@ def cmd_literature_show(args) -> int:
 def cmd_literature_render(args) -> int:
     doc = load_literature(args.path, root=args.root)
     text = doc.render_markdown()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0
+    return _emit(text, args.out, getattr(args, "check", False))
 
 
 def cmd_literature_latex(args) -> int:
     doc = load_literature(args.path, root=args.root)
     text = doc.render_latex()
-    if args.out:
-        atomic_write_text(Path(args.out), text)
-        print(args.out)
-    else:
-        sys.stdout.write(text)
-    return 0
+    return _emit(text, args.out, getattr(args, "check", False))
 
 
 def cmd_literature_html(args) -> int:
@@ -1436,7 +1436,7 @@ def build_parser() -> argparse.ArgumentParser:
     c = cs.add_parser("validate")
     c.add_argument("path"); c.add_argument("--root"); c.add_argument("--no-source-locations", action="store_true"); c.add_argument("--static-declarations", action="store_true"); c.add_argument("--json", action="store_true"); c.set_defaults(func=cmd_census_validate)
     c = cs.add_parser("summary"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("--json", action="store_true"); c.set_defaults(func=cmd_census_summary)
-    c = cs.add_parser("render"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("-o", "--out"); c.set_defaults(func=cmd_census_render)
+    c = cs.add_parser("render"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("-o", "--out"); c.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); c.set_defaults(func=cmd_census_render)
     c = cs.add_parser("html"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("-o", "--out"); c.set_defaults(func=cmd_census_html)
     c = cs.add_parser("patch"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("--id", required=True); c.add_argument("--set", action="append", default=[]); c.add_argument("--delete", action="append", default=[]); c.add_argument("--no-source-locations", action="store_true"); c.add_argument("--force", action="store_true"); c.set_defaults(func=cmd_census_patch)
     c = cs.add_parser("add"); c.add_argument("path"); c.add_argument("--root"); c.add_argument("--from-json", required=True); c.add_argument("--no-source-locations", action="store_true"); c.add_argument("--force", action="store_true"); c.set_defaults(func=cmd_census_add)
@@ -1448,7 +1448,7 @@ def build_parser() -> argparse.ArgumentParser:
     r = rs.add_parser("show", help="show one semantic-review row by stable id"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--id", required=True); r.add_argument("--json", action="store_true"); r.set_defaults(func=cmd_review_show)
     r = rs.add_parser("validate"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--json", action="store_true"); r.set_defaults(func=cmd_review_validate)
     r = rs.add_parser("summary"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--json", action="store_true"); r.set_defaults(func=cmd_review_summary)
-    r = rs.add_parser("render"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("-o", "--out"); r.set_defaults(func=cmd_review_render)
+    r = rs.add_parser("render"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("-o", "--out"); r.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); r.set_defaults(func=cmd_review_render)
     r = rs.add_parser("html"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("-o", "--out"); r.set_defaults(func=cmd_review_html)
     r = rs.add_parser("patch"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--id", required=True); r.add_argument("--set", action="append", default=[]); r.add_argument("--delete", action="append", default=[]); r.add_argument("--force", action="store_true"); r.set_defaults(func=cmd_review_patch)
     r = rs.add_parser("add"); r.add_argument("path"); r.add_argument("--root"); r.add_argument("--from-json", required=True); r.add_argument("--force", action="store_true"); r.set_defaults(func=cmd_review_add)
@@ -1458,7 +1458,7 @@ def build_parser() -> argparse.ArgumentParser:
     cv = cvs.add_parser("validate"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("--static-declarations", action="store_true"); cv.add_argument("--json", action="store_true"); cv.set_defaults(func=cmd_coverage_validate)
     cv = cvs.add_parser("summary"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("--json", action="store_true"); cv.set_defaults(func=cmd_coverage_summary)
     cv = cvs.add_parser("show"); cv.add_argument("path"); cv.add_argument("--root"); group=cv.add_mutually_exclusive_group(required=True); group.add_argument("--id"); group.add_argument("--atom"); cv.set_defaults(func=cmd_coverage_show)
-    cv = cvs.add_parser("render"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("-o", "--out"); cv.set_defaults(func=cmd_coverage_render)
+    cv = cvs.add_parser("render"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("-o", "--out"); cv.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); cv.set_defaults(func=cmd_coverage_render)
     cv = cvs.add_parser("html"); cv.add_argument("path"); cv.add_argument("--root"); cv.add_argument("-o", "--out"); cv.set_defaults(func=cmd_coverage_html)
     cv = cvs.add_parser("patch"); cv.add_argument("path"); cv.add_argument("--root"); group=cv.add_mutually_exclusive_group(required=True); group.add_argument("--id"); group.add_argument("--atom"); cv.add_argument("--set", action="append", default=[]); cv.add_argument("--delete", action="append", default=[]); cv.add_argument("--force", action="store_true"); cv.set_defaults(func=cmd_coverage_patch)
 
@@ -1523,7 +1523,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = ss.add_parser("export", help="check or write a manifest-driven Lean module promotion")
     s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--source-root"); s.add_argument("--target-root", required=True); s.add_argument("--cluster"); s.add_argument("--write", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_export)
     s = ss.add_parser("module-plan", help="validate an ordered module-topic partition and optional dependency-closed submission ladder")
-    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.add_argument("--render", action="store_true", help="render the report as Markdown"); s.add_argument("-o", "--out", help="write Markdown when --render is used"); s.set_defaults(func=cmd_source_module_plan)
+    s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.add_argument("--render", action="store_true", help="render the report as Markdown"); s.add_argument("-o", "--out", help="write Markdown when --render is used"); s.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); s.set_defaults(func=cmd_source_module_plan)
 
     signatures = sub.add_parser("signatures", help="compare exact Lean declaration interfaces across module pairs")
     sigs = signatures.add_subparsers(dest="signatures_command", required=True)
@@ -1532,15 +1532,15 @@ def build_parser() -> argparse.ArgumentParser:
     foundations = sub.add_parser("foundations", help="validate and visualize recursive foundation campaigns")
     fss = foundations.add_subparsers(dest="foundations_command", required=True)
     for name, func in (("validate", cmd_foundations_validate), ("render", cmd_foundations_render), ("html", cmd_foundations_html)):
-        f = fss.add_parser(name); f.add_argument("path"); f.add_argument("--root"); f.add_argument("--lean-probe", action="store_true"); f.add_argument("--timeout", type=int, default=600); f.add_argument("--json", action="store_true") if name == "validate" else None; f.add_argument("-o", "--out") if name in {"render", "html"} else None; f.set_defaults(func=func)
+        f = fss.add_parser(name); f.add_argument("path"); f.add_argument("--root"); f.add_argument("--lean-probe", action="store_true"); f.add_argument("--timeout", type=int, default=600); f.add_argument("--json", action="store_true") if name == "validate" else None; f.add_argument("-o", "--out") if name in {"render", "html"} else None; f.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it") if name == "render" else None; f.set_defaults(func=func)
 
     literature = sub.add_parser("literature", help="validate, edit, and render literature/source inventories")
     lss = literature.add_subparsers(dest="literature_command", required=True)
     l = lss.add_parser("validate"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--json", action="store_true"); l.set_defaults(func=cmd_literature_validate)
     l = lss.add_parser("summary"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--json", action="store_true"); l.set_defaults(func=cmd_literature_summary)
     l = lss.add_parser("show"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.set_defaults(func=cmd_literature_show)
-    l = lss.add_parser("render"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_render)
-    l = lss.add_parser("latex"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_latex)
+    l = lss.add_parser("render"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); l.set_defaults(func=cmd_literature_render)
+    l = lss.add_parser("latex"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); l.set_defaults(func=cmd_literature_latex)
     l = lss.add_parser("html"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("-o", "--out"); l.set_defaults(func=cmd_literature_html)
     l = lss.add_parser("patch"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.add_argument("--set", action="append", default=[]); l.add_argument("--delete", action="append", default=[]); l.add_argument("--force", action="store_true"); l.set_defaults(func=cmd_literature_patch)
     l = lss.add_parser("add"); l.add_argument("path"); l.add_argument("--root"); l.add_argument("--id", required=True); l.add_argument("--from-json", required=True); l.add_argument("--force", action="store_true"); l.set_defaults(func=cmd_literature_add)
@@ -1576,6 +1576,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--import", dest="imports", action="append", default=[])
     a.add_argument("--timeout", type=int, default=3600)
     a.add_argument("-o", "--out")
+    a.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it")
     a.set_defaults(func=cmd_alignment_render)
 
     history = sub.add_parser("history", help="summarize auditable Git and co-author provenance")

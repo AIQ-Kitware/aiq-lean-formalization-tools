@@ -25,3 +25,20 @@ def test_recursive_aggregates_and_foreign_reexport(tmp_path: Path):
 
     checked = generate_aggregates(tmp_path, "Lib", own_library="Lib", check=True)
     assert not any(row.changed for row in checked)
+
+
+def test_skipped_subtree_root_module_is_not_reimported(tmp_path):
+    from aiq_lean_tools.aggregates import generate_aggregates
+
+    lib = tmp_path / "Lib"
+    (lib / "Core").mkdir(parents=True)
+    (lib / "Core/Basic.lean").write_text("theorem a : True := by trivial\n")
+    (lib / "Staging").mkdir()
+    (lib / "Staging/Draft.lean").write_text("theorem b : True := by trivial\n")
+    # The sibling root module of the skipped subtree.
+    (lib / "Staging.lean").write_text("import Lib.Staging.Draft\n")
+
+    generate_aggregates(tmp_path, lib, own_library="Lib", skip_dirs={"Staging"})
+    text = (lib / "All.lean").read_text()
+    assert "import Lib.Core.All" in text
+    assert "Lib.Staging" not in text
