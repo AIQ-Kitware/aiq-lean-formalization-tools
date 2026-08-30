@@ -135,8 +135,31 @@ def aggregate_text(
     if normalized_header and not normalized_header.endswith("\n"):
         normalized_header += "\n"
     text = normalized_header + "".join(f"import {module}\n" for module in imports)
-    text += f"\n/-! # `{title}` -/\n"
+    text += "\n" + _trailer(output, title)
     return text, tuple(dangling)
+
+
+def _trailer(output: Path, title: str) -> str:
+    """The module docstring to end a generated aggregate with.
+
+    An aggregate is the natural place for a directory-level note, and the import
+    list is the only part of the file a generator can derive.  Overwriting the
+    whole trailer deletes such a note on the next regeneration -- silently,
+    because the file still compiles.  A trailer whose first line is the standard
+    heading is therefore preserved verbatim; anything else is replaced.
+    """
+    default = f"/-! # `{title}` -/\n"
+    if not output.exists():
+        return default
+    text = output.read_text(encoding="utf-8", errors="replace")
+    start = text.rfind("/-!")
+    if start == -1 or not text[start:].rstrip().endswith("-/"):
+        return default
+    block = text[start:].rstrip() + "\n"
+    first = block.splitlines()[0].strip()
+    if first not in {f"/-! # `{title}` -/", f"/-! # `{title}`"}:
+        return default
+    return block
 
 
 def generate_aggregates(

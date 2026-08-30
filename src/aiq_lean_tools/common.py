@@ -195,3 +195,45 @@ def compact_counter(mapping: Mapping[str, int]) -> str:
 
 def unique_in_order(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(values))
+
+
+def validate_source_locator(
+    locator: Any,
+    row_id: str,
+    root: "Path",
+    *,
+    check_source_locations: bool = True,
+) -> list["Finding"]:
+    """Validate a `{file, lines: [start, end]}` citation into prose.
+
+    Line-number citations rot silently when the cited file is edited, so the
+    range is checked against the file rather than only the path.  Matching the
+    anchor *text* against the range was tried in the source project and produced
+    false positives on LaTeX displays; a check people learn to ignore is worse
+    than no check.
+    """
+    if not isinstance(locator, dict):
+        return [Finding("error", "source-locator", "source_locator must be an object", row_id)]
+    file = locator.get("file")
+    lines = locator.get("lines")
+    if not isinstance(file, str) or not file:
+        return [Finding("error", "source-file", "source_locator.file must be a path", row_id)]
+    if not (
+        isinstance(lines, list)
+        and len(lines) == 2
+        and all(isinstance(x, int) and x > 0 for x in lines)
+        and lines[0] <= lines[1]
+    ):
+        return [Finding("error", "source-lines",
+                        "source_locator.lines must be [start, end] positive integers", row_id)]
+    if not check_source_locations:
+        return []
+    source = root / file
+    if not source.is_file():
+        return [Finding("error", "source-missing",
+                        f"source locator file does not exist: {file}", row_id)]
+    total = len(source.read_text(encoding="utf-8", errors="replace").splitlines())
+    if lines[1] > total:
+        return [Finding("error", "source-range",
+                        f"source range {lines[0]}-{lines[1]} exceeds {file} ({total} lines)", row_id)]
+    return []

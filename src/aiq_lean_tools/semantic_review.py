@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Any, Mapping, Sequence
 
-from .common import Finding, Path, atomic_write_json, infer_artifact_root, load_json, md_escape, dotted_set, dotted_delete
+from .common import (
+    Finding, Path, atomic_write_json, infer_artifact_root, load_json, md_escape,
+    dotted_set, dotted_delete, validate_source_locator,
+)
 from .errors import ValidationError
 
 
@@ -42,7 +45,7 @@ class SemanticReviewDocument:
             )
         return found[0]
 
-    def validate(self) -> list[Finding]:
+    def validate(self, *, check_companion: bool = True) -> list[Finding]:
         findings: list[Finding] = []
         raw_rows = self.data.get("rows")
         if not isinstance(raw_rows, list):
@@ -87,12 +90,56 @@ class SemanticReviewDocument:
                     findings.append(Finding("error", "relation", f"unknown relation {relation!r}", cloc))
             locator = row.get("source_locator")
             if locator:
-                if not isinstance(locator, dict) or not isinstance(locator.get("file"), str):
-                    findings.append(Finding("error", "source-locator", "malformed source_locator", rid))
-                else:
-                    source = self.root / locator["file"]
-                    if not source.is_file():
-                        findings.append(Finding("warning", "source-missing", f"source file not found: {locator['file']}", rid))
+                findings.extend(validate_source_locator(locator, rid, self.root))
+        if check_companion:
+            findings.extend(self._validate_against_companion())
+        return findings
+
+    def _validate_against_companion(self) -> list[Finding]:
+        """A review and its companion census must not drift apart.
+
+        The two documents answer different questions -- coverage and statement
+        agreement -- about the same rows, so a row present in one and absent from
+        the other, or citing a different locator or declaration list, means one of
+        them is describing something that is no longer there.
+        """
+        reference = self.data.get("companion_census")
+        if not isinstance(reference, str) or not reference:
+            return []
+        path = self.root / reference
+        if not path.is_file():
+            return [Finding("error", "companion-missing",
+                            f"companion_census does not exist: {reference}")]
+        try:
+            census = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as ex:
+            return [Finding("error", "companion-unreadable", f"{reference}: {ex}")]
+        rows = census.get("items")
+        if not isinstance(rows, list):
+            return [Finding("error", "companion-items", f"{reference} has no items list")]
+        by_id = {row.get("id"): row for row in rows if isinstance(row, dict)}
+        findings: list[Finding] = []
+        seen: set[str] = set()
+        for row in self.rows:
+            rid = row.get("id")
+            if not isinstance(rid, str):
+                continue
+            seen.add(rid)
+            companion = by_id.get(rid)
+            if companion is None:
+                findings.append(Finding("error", "companion-row",
+                                        f"row is absent from {reference}", rid))
+                continue
+            if "source_locator" in row and row.get("source_locator") != companion.get("source_locator"):
+                findings.append(Finding("error", "companion-locator",
+                                        f"source_locator differs from {reference}", rid))
+            if "lean_declarations" in row and row.get("lean_declarations") != companion.get("lean_declarations"):
+                findings.append(Finding("error", "companion-declarations",
+                                        f"lean_declarations differ from {reference}", rid))
+        for rid in sorted(set(by_id) - seen):
+            if isinstance(rid, str):
+                findings.append(Finding("error", "companion-unreviewed",
+                                        f"{reference} row is not reviewed here", rid))
         return findings
 
     def assert_valid(self) -> None:

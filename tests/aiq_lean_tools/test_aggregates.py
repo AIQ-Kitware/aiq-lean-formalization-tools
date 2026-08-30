@@ -42,3 +42,23 @@ def test_skipped_subtree_root_module_is_not_reimported(tmp_path):
     text = (lib / "All.lean").read_text()
     assert "import Lib.Core.All" in text
     assert "Lib.Staging" not in text
+
+
+def test_a_hand_written_directory_note_survives_regeneration(tmp_path):
+    from aiq_lean_tools.aggregates import generate_aggregates
+
+    lib = tmp_path / "Lib"
+    lib.mkdir()
+    (lib / "A.lean").write_text("theorem a : True := by trivial\n")
+    (lib / "All.lean").write_text(
+        "import Lib.A\n\n/-! # `Lib`\n\nWhy this directory exists, written by a human. -/\n"
+    )
+    generate_aggregates(tmp_path, lib, own_library="Lib")
+    text = (lib / "All.lean").read_text()
+    assert "written by a human" in text
+
+    # A trailer that is not this directory's heading is replaced, so a stale one
+    # left over from a move does not persist.
+    (lib / "All.lean").write_text("import Lib.A\n\n/-! # `Other` -/\n")
+    generate_aggregates(tmp_path, lib, own_library="Lib")
+    assert (lib / "All.lean").read_text().endswith("/-! # `Lib` -/\n")

@@ -19,6 +19,7 @@ from .common import (
     dotted_set,
     dotted_delete,
     unique_in_order,
+    validate_source_locator,
 )
 from .errors import ValidationError
 from .lean_backend import DeclarationProbe, LeanBackend, SubprocessLeanBackend
@@ -258,28 +259,9 @@ class CensusDocument:
         return findings
 
     def _validate_source_locator(self, locator: Any, row_id: str, check_source_locations: bool) -> list[Finding]:
-        findings: list[Finding] = []
-        if not isinstance(locator, dict):
-            return [Finding("error", "source-locator", "source_locator must be an object", row_id)]
-        file = locator.get("file")
-        lines = locator.get("lines")
-        if not isinstance(file, str) or not file:
-            findings.append(Finding("error", "source-file", "source_locator.file must be a path", row_id))
-            return findings
-        if not (
-            isinstance(lines, list) and len(lines) == 2 and all(isinstance(x, int) and x > 0 for x in lines) and lines[0] <= lines[1]
-        ):
-            findings.append(Finding("error", "source-lines", "source_locator.lines must be [start, end] positive integers", row_id))
-            return findings
-        if check_source_locations:
-            source = self.root / file
-            if not source.is_file():
-                findings.append(Finding("error", "source-missing", f"source locator file does not exist: {file}", row_id))
-            else:
-                total = len(source.read_text(encoding="utf-8", errors="replace").splitlines())
-                if lines[1] > total:
-                    findings.append(Finding("error", "source-range", f"source range {lines[0]}-{lines[1]} exceeds {file} ({total} lines)", row_id))
-        return findings
+        return validate_source_locator(
+            locator, row_id, self.root, check_source_locations=check_source_locations
+        )
 
     def assert_valid(self, *, check_source_locations: bool = True) -> None:
         errors = [f for f in self.validate(check_source_locations=check_source_locations) if f.level == "error"]

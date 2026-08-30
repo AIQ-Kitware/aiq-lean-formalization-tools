@@ -43,6 +43,16 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   `coverage`, `literature`, `foundations`, `alignment`, `source module-plan`).
   A generated file committed to Git and never verified goes stale silently and
   then reads as a maintained document.
+- Preserve a hand-written directory note in a generated aggregate. The import list
+  is the only part a generator can derive; overwriting the whole trailer deletes
+  the note silently, because the file still compiles.
+- Cross-validate a semantic review against its `companion_census`: unreviewed rows,
+  and locator or declaration-list drift, are errors. The two documents answer
+  different questions about the same rows, so drift means one of them describes
+  something that is no longer there.
+- Validate a review's `source_locator` line range against the file, as census
+  locators already were. Line citations into prose rot silently when that prose is
+  edited.
 - Do not import a skipped subtree's sibling root module into a generated
   aggregate: `Experimental/` skipped but `Experimental.lean` imported puts the
   whole subtree back in the aggregate, and it still compiles.
