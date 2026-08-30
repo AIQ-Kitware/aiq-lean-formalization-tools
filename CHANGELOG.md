@@ -19,6 +19,10 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   `scan_lean_project` and the candidate audits. Without it a checkout carrying
   vendored donors, retired trees, or submitted copies of itself reports them as
   findings; the first repository migrated produced 10,781 phantom duplicate names.
+- Treat a Lake library's root module as part of that library's scope. `Foo.lean`
+  sits beside `Foo/`, not inside it, so a scope listing only the directory drops
+  the one module every consumer of the library actually imports -- and with it
+  every reachability answer that starts from the library root.
 - Honour Lake `srcDir` libraries: a `source_scope` root may carry a `module_root`,
   without which every module in such a library is renamed and none of its imports
   resolve against the index. The reverse direction matters too -- `source

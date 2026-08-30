@@ -188,3 +188,15 @@ def test_structure_keywords_need_a_whole_line(tmp_path: Path):
     )
     index = scan_lean_project(tmp_path)
     assert [row.name for row in index.declarations] == ["N.x"]
+
+
+def test_a_library_root_module_beside_its_directory_is_in_scope(tmp_path: Path):
+    _write(tmp_path, "Lib/Core.lean", "theorem core : True := by trivial\n")
+    _write(tmp_path, "Lib.lean", "import Lib.Core\n")
+    _write(tmp_path, "reference/Other.lean", "theorem other : True := by trivial\n")
+    (tmp_path / "formalization.yaml").write_text(
+        "version: \"1\"\nsource_scope:\n  roots: [\"Lib\"]\n"
+    )
+    index = scan_lean_project(tmp_path)
+    assert set(index.modules) == {"Lib", "Lib.Core"}
+    assert index.imports["Lib"] == {"Lib.Core"}

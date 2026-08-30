@@ -462,9 +462,15 @@ class SourceRoot:
 
     def contains(self, relative: pathlib.PurePath) -> bool:
         posix = relative.as_posix()
-        return posix == self.path or posix.startswith(self.path + "/")
+        # A Lake library `Foo` is `Foo.lean` *and* `Foo/**`; the root module sits
+        # beside the directory, not inside it, and omitting it drops the module
+        # every consumer of the library actually imports.
+        return posix in {self.path, self.path + ".lean"} or posix.startswith(self.path + "/")
 
     def module_name(self, relative: pathlib.PurePath) -> str:
+        posix = relative.as_posix()
+        if posix == self.path + ".lean":
+            return self.module_root or pathlib.PurePosixPath(self.path).name
         inner = relative.relative_to(self.path).with_suffix("").parts
         return ".".join(([self.module_root] if self.module_root else []) + list(inner))
 
@@ -561,6 +567,8 @@ class SourceScope:
                 continue
             inner = parts[len(prefix):]
             if not inner:
+                # The library root module, which lives beside the directory.
+                out.append(pathlib.PurePosixPath(root.path + ".lean"))
                 continue
             out.append(pathlib.PurePosixPath(root.path).joinpath(*inner).with_suffix(".lean"))
         if not self.roots:
