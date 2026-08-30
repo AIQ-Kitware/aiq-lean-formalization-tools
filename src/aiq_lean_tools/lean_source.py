@@ -539,6 +539,53 @@ class SourceScope:
             return root.module_name(relative)
         return ".".join(relative.with_suffix("").parts)
 
+    def source_paths(self, module: str) -> list[pathlib.PurePath]:
+        """Where a module of this name could have its source, newest scope first.
+
+        Build products are named by module, so recovering the source path from an
+        artifact needs the same `srcDir` mapping the forward direction uses.
+        """
+        parts = module.split(".")
+        out: list[pathlib.PurePath] = []
+        for root in self.roots:
+            prefix = root.module_root.split(".") if root.module_root else []
+            if parts[:len(prefix)] != prefix:
+                continue
+            inner = parts[len(prefix):]
+            if not inner:
+                continue
+            out.append(pathlib.PurePosixPath(root.path).joinpath(*inner).with_suffix(".lean"))
+        if not self.roots:
+            out.append(pathlib.PurePosixPath(*parts).with_suffix(".lean"))
+        return out
+
+    def library_names(self, base: str | pathlib.Path) -> frozenset[str]:
+        """Top-level module names this project's roots can produce.
+
+        A root with a `module_root` contributes its first component.  A bare
+        Lake ``srcDir`` root has no prefix -- module names are relative to the
+        directory -- so its top-level names are read from the directory itself.
+        Without this a reverse lookup from a build artifact cannot tell a
+        project module from a dependency's.
+        """
+        if not self.roots:
+            return frozenset()
+        root_path = Path(base).expanduser().resolve()
+        names: set[str] = set()
+        for root in self.roots:
+            if root.module_root:
+                names.add(root.module_root.split(".")[0])
+                continue
+            directory = root_path / root.path
+            if not directory.is_dir():
+                continue
+            for entry in directory.iterdir():
+                if entry.is_file() and entry.suffix == ".lean":
+                    names.add(entry.stem)
+                elif entry.is_dir() and any(entry.rglob("*.lean")):
+                    names.add(entry.name)
+        return frozenset(names)
+
 
 def _resolve_scope(
     root: Path,

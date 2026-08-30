@@ -7,6 +7,8 @@ import re
 import subprocess
 from typing import Iterable
 
+from .lean_source import SourceScope
+
 
 _MARKER = re.compile(
     "^(?:" + "|".join(c * 7 + (r"(?: .*)?" if c != "=" else "") for c in "<=>") + ")$"
@@ -85,19 +87,27 @@ def orphan_build_modules(
     libraries: Iterable[str] | None = None,
     build_dir: str = ".lake/build/lib/lean",
 ) -> list[Path]:
-    """Return module stems with an ``.olean`` but no matching source file."""
+    """Return module stems with an ``.olean`` but no matching source file.
+
+    Only modules belonging to a configured project source root are judged: the
+    build tree also holds dependency artifacts, which are not ours to call
+    orphaned.  The source path is recovered through the project scope, because a
+    Lake library with ``srcDir`` does not store its source at the module path.
+    """
     base = Path(root).expanduser().resolve()
     artifact_root = base / build_dir
     if not artifact_root.is_dir():
         return []
-    allowed = set(libraries or ())
+    scope = SourceScope.load(base)
+    allowed = set(libraries or ()) or scope.library_names(base)
     out: list[Path] = []
     for olean in sorted(artifact_root.rglob("*.olean")):
         rel = olean.relative_to(artifact_root)
+        module = ".".join(rel.with_suffix("").parts)
         if allowed and (not rel.parts or rel.parts[0] not in allowed):
             continue
-        source = base / rel.with_suffix(".lean")
-        if not source.is_file():
+        candidates = scope.source_paths(module) or [rel.with_suffix(".lean")]
+        if not any((base / candidate).is_file() for candidate in candidates):
             out.append(rel.with_suffix(""))
     return out
 

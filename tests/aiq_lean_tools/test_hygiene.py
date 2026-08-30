@@ -27,3 +27,30 @@ def test_orphan_build_artifacts(tmp_path: Path):
     assert modules == [Path("Lib/Ghost")]
     removed = remove_orphan_build_modules(tmp_path, modules)
     assert set(removed) == {artifact, trace}
+
+
+def test_orphan_detection_follows_src_dir_libraries(tmp_path):
+    from aiq_lean_tools.hygiene import orphan_build_modules
+
+    (tmp_path / "formalization.yaml").write_text(
+        "version: \"1\"\n"
+        "source_scope:\n"
+        "  roots:\n"
+        "    - path: \"Paper\"\n"
+        "      module_root: \"\"\n"
+    )
+    src = tmp_path / "Paper/Paper/Core.lean"
+    src.parent.mkdir(parents=True)
+    src.write_text("theorem core : True := by trivial\n")
+    (tmp_path / "Paper/Paper.lean").write_text("import Paper.Core\n")
+
+    build = tmp_path / ".lake/build/lib/lean"
+    for rel in ("Paper.olean", "Paper/Core.olean", "Paper/Gone.olean", "Mathlib/Data.olean"):
+        target = build / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
+
+    orphans = [".".join(module.parts) for module in orphan_build_modules(tmp_path)]
+    # `Paper.olean` and `Paper/Core.olean` both have sources through the srcDir
+    # mapping; `Mathlib/Data.olean` is a dependency's and not ours to judge.
+    assert orphans == ["Paper.Gone"]

@@ -15,7 +15,10 @@ Changes driven by migrating the `aiq-dkps-formalization` repository onto the pac
   findings; the first repository migrated produced 10,781 phantom duplicate names.
 - Honour Lake `srcDir` libraries: a `source_scope` root may carry a `module_root`,
   without which every module in such a library is renamed and none of its imports
-  resolve against the index.
+  resolve against the index. The reverse direction matters too -- `source
+  orphan-artifacts` recovers a build product's source path through the same
+  mapping, and derives which top-level module names are the project's rather than
+  a dependency's.
 - Inventory anonymous `instance : C α` declarations, which no name-keyed scan could
   see, and keep them out of every name-keyed view.
 - Add accepted-finding baselines (`--baseline`, `--write-baseline`) to
