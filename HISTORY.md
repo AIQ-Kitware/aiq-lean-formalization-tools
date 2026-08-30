@@ -830,3 +830,51 @@ full-paper sine-theta adjudication, named Palomar/TauCeti submission gates,
 external comparator installation, manuscript cost/token analysis, and
 paper-specific result-selection rules. Those scripts should become thin callers
 of this package where possible, but their policy should not become defaults here.
+
+## 32. Outcome of the first migration (2026-08-30)
+
+`aiq-dkps-formalization` completed the sequence above.  Recording what it cost
+and what it found, because the next repository to adopt this package will hit the
+same class of problems.
+
+**What moved.**  51 Python scripts totalling 15,379 lines and a vendored 6,515-line
+`tools/leanq` became 22 scripts totalling 6,319 lines, none of which contains a
+parser, renderer, schema validator, graph engine, or source scanner.  Architecture
+and threshold decisions moved to `dev/policy/*.yaml`; source-paper facts stayed in
+`dev/*.json`.  Its gate suite is now mostly `gates:` entries naming `aiq-lean`
+commands, with the remaining `scripts/check_*.py` being Davis--Kahan, Tau Ceti and
+Palomar policy compositions.
+
+**What the migration found in this package.**  Every one of these was a wrong
+answer rather than a missing feature, and none was visible from the package's own
+tests:
+
+- `import` parsing ignored the Lean 4 `public` / `private` / `meta` modifiers, so
+  902 real edges were invisible;
+- `\s` in the `namespace` / `section` / `end` patterns spans a newline, so `end`
+  followed by `section` parsed as `end section` and mis-qualified every subsequent
+  declaration in the file;
+- there was no notion of project scope, so vendored donors, retired trees and the
+  repository's own submitted copies were read as project source (10,781 phantom
+  duplicate names);
+- a Lake library's root module `Foo.lean` sits beside `Foo/` and was outside every
+  scope that named the directory, so reachability from a library root was wrong;
+- Lake `srcDir` libraries had every module renamed, in both directions;
+- a docstring was only recognised on the line immediately above a declaration, so
+  237 documented declarations read as undocumented;
+- a generated aggregate imported the sibling root module of a skipped subtree, and
+  placed a module in the aggregate it depends on, which Lake rejects as a build
+  cycle.
+
+**What it exposed in the repository.**  Two defects the repository's own checkers
+had been hiding: 217 undocumented public declarations invisible to a regex that
+omitted `alias` and `local`, and a foundation-map node naming a declaration that
+does not exist, which short-name matching reported as present.
+
+**What was added for it.**  Declared command gates; accepted-finding baselines
+with stale-entry detection; module-prefix scoping on the name-based checks;
+`--check` on every render command; companion-census cross-validation for semantic
+reviews; a probe canary; private-versus-missing declaration reporting; and
+per-module batching of signature evidence, which took one repository's comparator
+preflight from nine minutes for one config to under five minutes for all
+seventeen.
