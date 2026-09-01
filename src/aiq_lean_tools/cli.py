@@ -7,10 +7,11 @@ import re
 import sys
 
 import yaml
-from typing import Any, Sequence
+from typing import Mapping, Any, Sequence
 
 from . import __version__
 from .alignment import build_alignment_packet
+from .common import unique_in_order
 from .aggregates import generate_aggregates
 from .audits import (
     admission_report,
@@ -1206,11 +1207,79 @@ def cmd_alignment_render(args) -> int:
         probe=args.probe,
         imports=args.imports,
         timeout=args.timeout,
+        statements=args.statements,
+        sidecar=args.sidecar,
+        library=args.lib,
+        refresh=args.refresh,
     )
     text = packet.render_markdown()
     status = _emit(text, args.out, getattr(args, "check", False))
     unresolved = [row for row in packet.probes.values() if not row.resolved]
     return status or (1 if unresolved else 0)
+
+
+def _load_pin_document(path: str, root: str | None):
+    """A census (items) or a standalone review (rows), told apart by shape."""
+    from .statement_pins import census_pin_targets, review_pin_targets
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(raw, dict) and isinstance(raw.get("rows"), list) and "items" not in raw:
+        from .semantic_review import load_semantic_review
+
+        doc = load_semantic_review(path, root=root)
+        return doc, review_pin_targets
+    doc = load_census(path, root=root)
+    return doc, census_pin_targets
+
+
+def _pin_targets_and_records(args):
+    from .statement_pins import statement_records
+
+    doc, target_fn = _load_pin_document(args.document, args.root)
+    targets = target_fn(doc, row_ids=args.id or ())
+    if not targets:
+        raise SystemExit("no reviewed rows with declarations to pin in " + args.document)
+    seeds = [name for target in targets for name in target.declarations]
+    for target in targets:
+        seeds.extend(
+            str(p.get("declaration")) for p in target.pins if isinstance(p, Mapping)
+        )
+    records, meta = statement_records(
+        doc.root, unique_in_order(seeds), sidecar=args.sidecar, library=args.lib,
+        refresh=getattr(args, "refresh", False),
+    )
+    return doc, targets, records, meta
+
+
+def cmd_alignment_pin(args) -> int:
+    from .statement_pins import pin_targets
+
+    doc, targets, records, meta = _pin_targets_and_records(args)
+    written, findings = pin_targets(
+        targets, records, toolchain=str(meta.get("toolchain", "")), note=args.note or "",
+    )
+    for finding in findings:
+        print(finding)
+    doc.write()
+    print(f"pinned {written} statement(s) on {len(targets)} row(s) in {doc.path}")
+    return 1 if any(f.level == "error" for f in findings) else 0
+
+
+def cmd_alignment_check(args) -> int:
+    from .statement_pins import check_pins
+
+    _, targets, records, _ = _pin_targets_and_records(args)
+    findings = check_pins(targets, records)
+    for finding in findings:
+        print(finding)
+    errors = [f for f in findings if f.level == "error"]
+    warnings = [f for f in findings if f.level == "warning"]
+    pinned = sum(len(t.pins) for t in targets)
+    print(
+        f"{pinned} statement pin(s) on {len(targets)} row(s): "
+        f"{len(errors)} drifted or gone, {len(warnings)} warning(s)"
+    )
+    return 1 if errors else 0
 
 
 def cmd_manifest_validate(args) -> int:
@@ -1587,7 +1656,27 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--timeout", type=int, default=3600)
     a.add_argument("-o", "--out")
     a.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it")
+    a.add_argument("--statements", action="store_true", help="add elaborated signatures, statement closures and pin status from a leanq statement sidecar (invokes Lean unless --sidecar is given)")
+    a.add_argument("--sidecar", help="read statement records from this leanq sidecar JSONL instead of building one")
+    a.add_argument("--lib", help="library label for the statement sidecar")
+    a.add_argument("--refresh", action="store_true", help="rebuild the statement sidecar first")
     a.set_defaults(func=cmd_alignment_render)
+
+    def add_pin_args(sp) -> None:
+        sp.add_argument("document", help="a source census with embedded reviews, or a standalone semantic review")
+        sp.add_argument("--root")
+        sp.add_argument("--id", action="append", help="restrict to these row ids (repeatable)")
+        sp.add_argument("--sidecar", help="read statement records from this leanq sidecar JSONL instead of invoking Lean")
+        sp.add_argument("--lib", help="library label for the statement sidecar")
+        sp.add_argument("--refresh", action="store_true", help="rebuild the statement sidecar first")
+
+    a = als.add_parser("pin", help="record the elaborated-type hashes of each reviewed declaration on its review row")
+    add_pin_args(a)
+    a.add_argument("--note", help="free-text note stored with every pin written")
+    a.set_defaults(func=cmd_alignment_pin)
+    a = als.add_parser("check", help="fail when a pinned declaration's elaborated type differs from what the review accepted")
+    add_pin_args(a)
+    a.set_defaults(func=cmd_alignment_check)
 
     history = sub.add_parser("history", help="summarize auditable Git and co-author provenance")
     hs = history.add_subparsers(dest="history_command", required=True)

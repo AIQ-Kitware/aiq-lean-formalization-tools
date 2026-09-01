@@ -44,6 +44,44 @@ leanq --lib MyLibrary axioms MyLibrary.mainTheorem
 
 `deps --local` answers the extraction question: which declarations from the selected local library would have to move with this declaration? `rdeps` answers the consumer question: which declarations depend on this result?
 
+## Statement closures
+
+A proof graph answers what a theorem *uses*.  A source-to-Lean audit needs a
+different question answered: what does the theorem's statement *mean*?  Compact
+predicates hide hypotheses behind a name, and the hand-written dictionary that
+explains each name is exactly what an auditor cannot take on trust.
+
+```bash
+leanq statement MyLibrary.mainTheorem
+leanq statement MyLibrary.mainTheorem --hide-boundary --docstrings
+leanq statement MyLibrary.mainTheorem MyLibrary.otherTheorem --json
+leanq statement --lib MyLibrary --all          # whole-library sidecar; slow
+```
+
+The exporter's `statement` mode walks the constants a statement means: a
+definition is unfolded through its body, a structure or class through its
+constructor fields, and a theorem is a leaf (its value is a proof, not part of
+what it says).  Constants in a boundary library -- Mathlib and the Lean core by
+default, `--boundary` overrides the prefix list -- are emitted with their type
+and docstring but never unfolded.  Every record carries:
+
+- `signature`, the `#check`-style form a reader compares with the paper;
+- `type`, the elaborated type as a term, and `typeExprHash`, the elaborator's
+  structural hash of it, which ignores binder names and notation;
+- `typeTextSha256`, a hash of the printed type, which moves whenever what a
+  reader sees moves;
+- `typeDeps` and `bodyDeps`, so each closure edge is labelled `type` or `body`;
+- `docstring`, and for structures the projection type of every field.
+
+The sidecar lives next to the ordinary index under `.leanq/` and is keyed by its
+seeds, so several reviewed sets coexist.  It is rebuilt when the imported sources,
+the seeds, or the boundary change.  Pretty-printing is the expensive part, which is
+why this is a separate optional artifact rather than a column of the index.
+
+Every index mode now also records `typeDeps` beside the merged `deps`, so a graph
+consumer can tell an edge that shapes a statement from one that only supports a
+proof (`Decl.dependency_role`).
+
 ## Reusable semantic graph
 
 For a holistic formalization, export one broad semantic index and derive multiple views from that file:

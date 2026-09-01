@@ -25,6 +25,7 @@ from .lean_source import (
     scan_lean_project,
 )
 from .semantic_surface import IMPORTANCE_ORDER
+from .statement_pins import PIN_FIELD, pin_status, statement_records
 
 
 def _canonical(review: Mapping[str, Any], row: Mapping[str, Any]) -> list[str]:
@@ -122,6 +123,86 @@ class AlignmentPacket:
     imports: list[str]
     variants: list[AlignmentVariant] = field(default_factory=list)
     source_declarations: dict[str, list[SourceDeclarationText]] = field(default_factory=dict)
+    statements: dict[str, Any] = field(default_factory=dict)
+    statement_meta: dict[str, Any] = field(default_factory=dict)
+
+    def _render_statement(
+        self, name: str, review: Mapping[str, Any], context: Sequence[Mapping[str, Any]]
+    ) -> list[str]:
+        """Elaborator evidence for one canonical declaration.
+
+        The signature is what the reviewer compares with the paper.  The closure
+        report then answers the question the hand-written dictionary cannot be
+        trusted to answer: which project constants does this statement actually
+        depend on, and does the dictionary disclose every one of them?
+        """
+        from leanq.statement import closure_summary, render_closure_text
+
+        record = self.statements.get(name)
+        if record is None:
+            return ["**Statement sidecar has no record for this declaration.**", ""]
+        if record.missing:
+            return ["**Declaration is not in the elaborated environment.**", ""]
+        pins = review.get(PIN_FIELD) or []
+        pin = next(
+            (p for p in pins if isinstance(p, Mapping) and p.get("declaration") == name), None
+        )
+        status = pin_status(pin, record)
+        out = [f"**Elaborated signature** (statement pin: {status})", ""]
+        out += ["~~~~lean", record.signature or record.type, "~~~~", ""]
+        out.append(
+            f"Structural type hash `{record.type_expr_hash}`, printed-type hash "
+            f"`{record.type_text_sha256[:16]}`."
+        )
+        if pin is not None and status != "current":
+            out.append(
+                f"Pinned `{pin.get('type_expr_hash')}` / `{str(pin.get('type_text_sha256', ''))[:16]}` "
+                f"on {pin.get('pinned_on', '?')}."
+            )
+        out.append("")
+
+        summary = closure_summary(self.statements, name)
+        disclosed = {str(item["name"]) for item in context}
+        project_constants = [*summary["unfolded"], *summary["leaves"]]
+        undisclosed = [n for n in project_constants if n not in disclosed]
+        # A dictionary entry that is a lemma *about* a definition (an `_iff`
+        # characterization, say) is explanatory and never appears in a statement.
+        # A definition or structure in the dictionary that the statement never
+        # reaches is a different matter: the dictionary is describing something
+        # this theorem does not say.
+        unreachable = [
+            n for n in disclosed
+            if n not in summary["reached"] and n != name
+            and n in self.statements and self.statements[n].kind in {"def", "inductive"}
+        ]
+        out.append(
+            f"Statement closure: {len(summary['unfolded'])} project constant(s) unfolded, "
+            f"{len(summary['leaves'])} project leaf/leaves, "
+            f"{len(summary['boundary'])} boundary constant(s)."
+        )
+        if undisclosed:
+            out.append(
+                "**Project constants in the statement closure that the local semantic "
+                "dictionary does not disclose:** " + ", ".join(f"`{n}`" for n in undisclosed)
+            )
+        else:
+            out.append("Every project constant in the statement closure is in the dictionary.")
+        if unreachable:
+            out.append(
+                "Dictionary definitions this statement never reaches: "
+                + ", ".join(f"`{n}`" for n in unreachable)
+            )
+        if summary["boundary"]:
+            out.append("Boundary vocabulary: " + ", ".join(f"`{n}`" for n in summary["boundary"]))
+        if summary["unknown"]:
+            out.append("Unknown constants: " + ", ".join(f"`{n}`" for n in summary["unknown"]))
+        out.append("")
+        out += [
+            "<details><summary>Statement closure tree</summary>", "", "~~~~text",
+            render_closure_text(self.statements, name, show_boundary=False).rstrip(),
+            "~~~~", "", "</details>", "",
+        ]
+        return out
 
     def _render_source_declaration(self, name: str) -> list[str]:
         rows = self.source_declarations.get(name, [])
@@ -164,9 +245,13 @@ class AlignmentPacket:
             for name in canonical:
                 out += [f"#### `{name}`", ""]
                 out += self._render_source_declaration(name)
+                if self.statements:
+                    out += self._render_statement(name, review, context)
                 probe = self.probes.get(("check", name))
-                if probe is None:
+                if probe is None and not self.statements:
                     out += ["Compiler probe not requested.", ""]
+                elif probe is None:
+                    pass
                 elif probe.resolved:
                     out += ["**Compiler-resolved type**", "", "~~~~lean", probe.output, "~~~~", ""]
                 else:
@@ -177,6 +262,12 @@ class AlignmentPacket:
             for name in supporting:
                 probe = self.probes.get(("check", name))
                 status = "resolved" if probe and probe.resolved else ("unresolved" if probe else "not probed")
+                if self.statements:
+                    record = self.statements.get(name)
+                    status = (
+                        "elaborated" if record is not None and not record.missing
+                        else "not in environment"
+                    )
                 source_rows = self.source_declarations.get(name, [])
                 source_status = "source located" if source_rows else "source not located"
                 out.append(f"- `{name}` — {status}; {source_status}")
@@ -233,6 +324,16 @@ class AlignmentPacket:
         ]
         if self.imports:
             out += ["**Compiler imports:** " + ", ".join(f"`{x}`" for x in self.imports), ""]
+        if self.statements:
+            meta = self.statement_meta
+            out += [
+                "**Elaborator evidence:** statement sidecar with "
+                f"{len(self.statements)} record(s)"
+                + (f", toolchain `{meta['toolchain']}`" if meta.get("toolchain") else "")
+                + ". Signatures, hashes and closures below are read from the elaborated "
+                "environment, not from source text.",
+                "",
+            ]
         for (paper, group), entries in grouped.items():
             first = entries[0]
             out += [f"## {paper}: {first.title}", ""]
@@ -372,6 +473,10 @@ def build_alignment_packet(
     imports: Sequence[str] = (),
     backend: LeanBackend | None = None,
     timeout: int = 3600,
+    statements: bool = False,
+    sidecar: str | pathlib.Path | None = None,
+    library: str | None = None,
+    refresh: bool = False,
 ) -> AlignmentPacket:
     censuses = [load_census(path, root=root) for path in census_paths]
     if not censuses:
@@ -397,6 +502,21 @@ def build_alignment_packet(
         runner = backend or SubprocessLeanBackend()
         results = runner.probe_queries(base, queries, import_list, timeout=timeout)
         probe_map = {(row.mode, row.name): row for row in results}
+    statement_map: dict[str, Any] = {}
+    statement_meta: dict[str, Any] = {}
+    if statements or sidecar is not None:
+        seeds: list[str] = []
+        for entry in entries:
+            seeds.extend(entry.canonical)
+            seeds.extend(entry.supporting)
+            seeds.extend(str(item["name"]) for item in entry.context)
+        for variant in variants:
+            seeds.extend(variant.canonical)
+            seeds.extend(variant.supporting)
+            seeds.extend(str(item["name"]) for item in variant.context)
+        statement_map, statement_meta = statement_records(
+            base, unique_in_order(seeds), sidecar=sidecar, library=library, refresh=refresh,
+        )
     return AlignmentPacket(
         base,
         entries,
@@ -404,4 +524,6 @@ def build_alignment_packet(
         import_list,
         variants=variants,
         source_declarations=source_declarations,
+        statements=statement_map,
+        statement_meta=statement_meta,
     )

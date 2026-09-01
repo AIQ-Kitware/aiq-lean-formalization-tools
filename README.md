@@ -58,7 +58,11 @@ aiq-lean review html dev/paper-result-semantic-review.json
 
 # Curated source-to-Lean review packet from embedded semantic-review data
 aiq-lean alignment render dev/paper-full-source-census.json --importance headline
-aiq-lean alignment render dev/paper-full-source-census.json --probe
+aiq-lean alignment render dev/paper-full-source-census.json --statements
+# Pin the elaborated statement each review accepted, and fail when it moves
+aiq-lean alignment pin dev/paper-full-source-census.json --id theorem-2
+aiq-lean alignment check dev/paper-full-source-census.json
+aiq-lean alignment check dev/paper-result-semantic-review.json --sidecar .leanq/MyLibrary.statements-v1.jsonl
 
 # Python-only source audits
 aiq-lean source scan --root .
@@ -143,6 +147,7 @@ leanq stats
 leanq query --name SinTheta --json
 leanq axioms MyLibrary.someTheorem
 leanq deps MyLibrary.someTheorem --local
+leanq statement MyLibrary.someTheorem --hide-boundary
 leanq graph-index --out build/leanq/project-semantic-graph.json
 leanq graph-headlines build/leanq/project-semantic-graph.json \
     --view consumption --target MyApplication.mainTheorem \

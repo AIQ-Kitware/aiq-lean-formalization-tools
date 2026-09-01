@@ -16,7 +16,7 @@ from ._profile import profile
 from .project import LeanProject, ProjectError
 
 LEAN_SCRIPT = Path(__file__).with_name("lean") / "decl_index.lean"
-GRAPH_CACHE_VERSION = 3
+GRAPH_CACHE_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ class Decl:
     deps: tuple[str, ...]
     library: str | None = None
     internal: bool = False
+    type_deps: tuple[str, ...] | None = None
 
     @classmethod
     def from_json(cls, obj: dict) -> "Decl":
@@ -51,6 +52,9 @@ class Decl:
             deps=tuple(obj.get("deps", ())),
             library=obj.get("library"),
             internal=bool(obj.get("internal", False)),
+            type_deps=(
+                None if obj.get("typeDeps") is None else tuple(obj.get("typeDeps", ()))
+            ),
         )
 
     def to_json(self) -> dict:
@@ -66,7 +70,15 @@ class Decl:
             "deps": list(self.deps),
             "library": self.library,
             "internal": self.internal,
+            "typeDeps": None if self.type_deps is None else list(self.type_deps),
         }
+
+    def dependency_role(self, dep: str) -> str:
+        """``"type"`` when ``dep`` shapes this declaration's statement, ``"proof"`` when it
+        only supports the value, ``"unknown"`` for an index that predates the split."""
+        if self.type_deps is None:
+            return "unknown"
+        return "type" if dep in self.type_deps else "proof"
 
     @property
     def short_name(self) -> str:

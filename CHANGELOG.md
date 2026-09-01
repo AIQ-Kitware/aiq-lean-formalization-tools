@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+- Record `typeDeps` -- the constants a declaration's *type* uses -- in every
+  `leanq` index mode beside the merged `deps` list, and bump the graph cache
+  version. A dependency graph that cannot tell a statement edge from a proof
+  edge cannot say which hypotheses a theorem imposes, only what its proof used.
+- Add `leanq statement`, an optional statement-closure sidecar. It unfolds a
+  declaration's type through project definitions and structure fields down to a
+  boundary library, and records the `#check`-style signature, the printed type,
+  the elaborator's structural type hash, a text hash, docstrings, and structure
+  fields. The first repository to use it had a hand-curated "local semantic
+  dictionary" of what each compact predicate meant; that list was the one thing
+  an auditor could not verify.
+- Add statement pins: `aiq-lean alignment pin` records the structural and
+  printed-type hashes of every declaration a semantic review claims, `alignment
+  check` fails when a pinned elaborated type has changed, and both review
+  validators reject a pin that names a declaration the review does not claim.
+  A review is a claim about a type on the day it was read; nothing in a green
+  build noticed when that type changed afterwards.
+- `aiq-lean alignment render --statements` reads the statement sidecar instead
+  of ad-hoc `#check` probes: elaborated signatures, pin status, and for each
+  canonical declaration the project constants in its statement closure that the
+  hand-written local semantic dictionary does not disclose.
+- Load environment extensions when the exporter pretty-prints. Without
+  `loadExts` no notation unexpander runs, so `z + w` prints as
+  `instHAdd.hAdd z w` and `ℂ` as `Complex`.
+
 ## 0.1.0 first-consumer pass
 
 Changes driven by migrating the `aiq-dkps-formalization` repository onto the package.

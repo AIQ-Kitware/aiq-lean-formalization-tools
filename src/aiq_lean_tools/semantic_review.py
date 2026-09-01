@@ -13,6 +13,7 @@ from .common import (
     dotted_set, dotted_delete, validate_source_locator,
 )
 from .errors import ValidationError
+from .statement_pins import validate_pins
 
 
 class SemanticReviewValidationError(ValidationError):
@@ -91,6 +92,13 @@ class SemanticReviewDocument:
             locator = row.get("source_locator")
             if locator:
                 findings.extend(validate_source_locator(locator, rid, self.root))
+            findings.extend(
+                validate_pins(
+                    row,
+                    claimed=[str(x) for x in decls] if isinstance(decls, list) else [],
+                    location=rid,
+                )
+            )
         if check_companion:
             findings.extend(self._validate_against_companion())
         return findings

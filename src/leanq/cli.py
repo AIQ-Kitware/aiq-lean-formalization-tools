@@ -39,6 +39,14 @@ from .headlines import analyze_headlines, parse_consumption_landmark, prepare_pr
 from .viewer import write_comparison_html, write_graph_html
 from .project import ProjectError, find_project
 from .promotion import DEFAULT_TAGS, promotion_report
+from .statement import (
+    DEFAULT_BOUNDARY,
+    by_name as statements_by_name,
+    closure_payload,
+    ensure_statement_sidecar,
+    load_sidecar_meta,
+    render_closure_text,
+)
 
 
 def _tristate(args, flag: str) -> bool | None:
@@ -812,6 +820,100 @@ def cmd_axioms(args) -> int:
     return 0
 
 
+def cmd_statement(args) -> int:
+    """What a declaration's statement means: its type, unfolded through project definitions."""
+    project = find_project(Path(args.project) if args.project else None)
+    seeds = list(dict.fromkeys(args.decl or ()))
+    if not seeds and not args.all:
+        raise ProjectError("statement needs at least one declaration, or --all for a whole library")
+    if seeds and args.all:
+        raise ProjectError("pass declarations or --all, not both")
+    boundary = (
+        tuple(p for p in args.boundary.split(",") if p) if args.boundary else DEFAULT_BOUNDARY
+    )
+
+    def single_library() -> str:
+        if args.lib:
+            return args.lib
+        libs = project.libraries()
+        if len(libs) != 1:
+            raise ProjectError(
+                f"{project.root} builds {len(libs)} libraries ({', '.join(libs) or 'none'}); "
+                f"pass --lib"
+            )
+        return libs[0]
+
+    if args.all:
+        library = single_library()
+        modules = None
+        sidecar_seeds = None
+    else:
+        sidecar_seeds = seeds
+        modules = list(dict.fromkeys(args.root_module or ()))
+        if not modules:
+            try:
+                modules = project.declaration_modules(seeds)
+            except ProjectError:
+                # A seed declared outside the project's own sources (a Lake package
+                # constant, say) cannot be located by the source scan; import the
+                # whole library so the elaborated environment can still resolve it.
+                modules = None
+        if args.lib:
+            library = args.lib
+        elif modules:
+            library = project.library_for_module(modules[0]) or single_library()
+        else:
+            library = single_library()
+        if modules is None:
+            modules = project.modules(library)
+
+    path, records = ensure_statement_sidecar(
+        project,
+        library,
+        seeds=sidecar_seeds,
+        modules=modules,
+        boundary=boundary,
+        refresh=args.refresh,
+        verbose=not args.json,
+    )
+    table = statements_by_name(records)
+    if not seeds:
+        seeds = [record.name for record in records if record.role == "seed"]
+    missing = [seed for seed in seeds if seed not in table or table[seed].missing]
+    if missing and not args.json:
+        print(
+            "leanq: no statement record for "
+            + ", ".join(missing)
+            + " (pass the fully qualified constant name)",
+            file=sys.stderr,
+        )
+
+    if args.json or args.out:
+        payload = closure_payload(table, seeds, meta=load_sidecar_meta(path))
+        if args.out:
+            out = Path(args.out)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            if not args.json:
+                print(out)
+        if args.json:
+            json.dump(payload, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+        return 1 if missing else 0
+
+    for seed in seeds:
+        sys.stdout.write(
+            render_closure_text(
+                table,
+                seed,
+                show_boundary=not args.hide_boundary,
+                show_docstrings=args.docstrings,
+            )
+        )
+        sys.stdout.write("\n")
+    return 1 if missing else 0
+
+
 def cmd_libs(args) -> int:
     project = find_project(Path(args.project) if args.project else None)
     for library in project.built_roots():
@@ -1204,6 +1306,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--title", help="override the viewer/presentation title")
     p.add_argument("--subtitle", help="override the viewer/presentation subtitle")
     p.set_defaults(func=cmd_graph)
+
+    p = sub.add_parser(
+        "statement",
+        help=(
+            "what a declaration's statement means: its type and signature, unfolded through "
+            "project definitions and structure fields down to the Mathlib boundary"
+        ),
+    )
+    add_common(p)
+    p.add_argument("decl", nargs="*", help="fully qualified declaration name(s)")
+    p.add_argument(
+        "--all", action="store_true",
+        help="build the whole-library sidecar instead (every public declaration is a seed; slow)",
+    )
+    p.add_argument("--refresh", action="store_true", help="rebuild the sidecar first")
+    p.add_argument(
+        "--root-module", action="append",
+        help="import exactly these modules instead of locating the seeds by source scan",
+    )
+    p.add_argument(
+        "--boundary",
+        help=(
+            "comma-separated module prefixes that are emitted but never unfolded "
+            f"(default: {','.join(DEFAULT_BOUNDARY)})"
+        ),
+    )
+    p.add_argument("--out", help="write the closure payload JSON here")
+    p.add_argument("--docstrings", action="store_true", help="show docstrings in the tree")
+    p.add_argument(
+        "--hide-boundary", action="store_true",
+        help="omit boundary constants from the tree (the summary still counts them)",
+    )
+    p.set_defaults(func=cmd_statement)
 
     p = sub.add_parser("axioms", help="axiom closure of one declaration")
     add_common(p)

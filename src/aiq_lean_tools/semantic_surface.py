@@ -199,6 +199,11 @@ def validate_embedded_review(
         location=f"{row_location}.clause_map",
         findings=findings,
     )
+    from .statement_pins import validate_pins
+
+    findings.extend(
+        validate_pins(review, claimed=[*canonical, *supporting], location=row_location)
+    )
 
 
 def validate_embedded_surface(
