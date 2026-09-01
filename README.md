@@ -59,6 +59,10 @@ aiq-lean review html dev/paper-result-semantic-review.json
 # Curated source-to-Lean review packet from embedded semantic-review data
 aiq-lean alignment render dev/paper-full-source-census.json --importance headline
 aiq-lean alignment render dev/paper-full-source-census.json --statements
+# One self-contained review page per census: source statement, clauses, elaborated
+# signatures, pin status, statement closures, and proof dependencies
+aiq-lean alignment html dev/paper-full-source-census.json --statements \
+    --graph build/leanq/project-semantic-graph.json -o build/paper-alignment.html
 # Pin the elaborated statement each review accepted, and fail when it moves
 aiq-lean alignment pin dev/paper-full-source-census.json --id theorem-2
 aiq-lean alignment check dev/paper-full-source-census.json

@@ -1218,6 +1218,27 @@ def cmd_alignment_render(args) -> int:
     return status or (1 if unresolved else 0)
 
 
+def cmd_alignment_html(args) -> int:
+    from .alignment import alignment_payload, load_graph_table, render_alignment_html
+
+    packet = build_alignment_packet(
+        args.census,
+        root=args.root,
+        importance=args.importance,
+        statements=args.statements,
+        sidecar=args.sidecar,
+        library=args.lib,
+        refresh=args.refresh,
+    )
+    graph = load_graph_table(args.graph) if args.graph else None
+    payload = alignment_payload(packet, graph=graph, title=args.title)
+    if args.json:
+        text = json.dumps(payload, indent=2) + "\n"
+    else:
+        text = render_alignment_html(payload)
+    return _emit(text, args.out, getattr(args, "check", False))
+
+
 def _load_pin_document(path: str, root: str | None):
     """A census (items) or a standalone review (rows), told apart by shape."""
     from .statement_pins import census_pin_targets, review_pin_targets
@@ -1661,6 +1682,21 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--lib", help="library label for the statement sidecar")
     a.add_argument("--refresh", action="store_true", help="rebuild the statement sidecar first")
     a.set_defaults(func=cmd_alignment_render)
+
+    a = als.add_parser("html", help="one self-contained review page: source statement, clauses, elaborated signatures, pin status, statement closures, and proof dependencies")
+    a.add_argument("census", nargs="+")
+    a.add_argument("--root")
+    a.add_argument("--importance", choices=("headline", "major", "supporting", "technical"), default="headline")
+    a.add_argument("--statements", action="store_true", help="build/refresh a leanq statement sidecar (invokes Lean)")
+    a.add_argument("--sidecar", help="read statement records from this leanq sidecar JSONL")
+    a.add_argument("--lib", help="library label for the statement sidecar")
+    a.add_argument("--refresh", action="store_true")
+    a.add_argument("--graph", help="a saved `leanq graph-index` JSON for the proof-dependency panel")
+    a.add_argument("--title", default="Semantic alignment review")
+    a.add_argument("--json", action="store_true", help="write the page payload instead of HTML")
+    a.add_argument("-o", "--out")
+    a.add_argument("--check", action="store_true")
+    a.set_defaults(func=cmd_alignment_html)
 
     def add_pin_args(sp) -> None:
         sp.add_argument("document", help="a source census with embedded reviews, or a standalone semantic review")

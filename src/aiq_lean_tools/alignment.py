@@ -373,6 +373,223 @@ class AlignmentPacket:
         return "\n".join(out).rstrip() + "\n"
 
 
+def _declaration_payload(
+    packet: AlignmentPacket,
+    name: str,
+    review: Mapping[str, Any],
+    context: Sequence[Mapping[str, Any]],
+    graph: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    from leanq.statement import closure_edges, closure_summary
+
+    out: dict[str, Any] = {"name": name, "pinStatus": "n/a"}
+    rows = packet.source_declarations.get(name, [])
+    if rows:
+        row = rows[0]
+        try:
+            rel = row.declaration.path.relative_to(packet.root)
+        except ValueError:
+            rel = row.declaration.path
+        out["source"] = {"path": rel.as_posix(), "line": row.declaration.line, "text": row.render()}
+    record = packet.statements.get(name)
+    if record is not None and not record.missing:
+        pins = review.get(PIN_FIELD) or []
+        pin = next(
+            (p for p in pins if isinstance(p, Mapping) and p.get("declaration") == name), None
+        )
+        out.update(
+            signature=record.signature or record.type,
+            docstring=record.docstring,
+            hashes={"expr": record.type_expr_hash, "text": record.type_text_sha256},
+            pin=dict(pin) if pin else None,
+            pinStatus=pin_status(pin, record),
+        )
+        summary = closure_summary(packet.statements, name)
+        disclosed = {str(item["name"]) for item in context}
+        out["closure"] = {
+            "summary": summary,
+            "edges": [
+                {"source": a, "target": b, "via": via}
+                for a, b, via in closure_edges(packet.statements, name)
+            ],
+        }
+        out["hasDictionary"] = bool(disclosed)
+        out["undisclosed"] = [
+            n for n in [*summary["unfolded"], *summary["leaves"]] if n not in disclosed
+        ]
+        out["unreachableDictionary"] = [
+            n for n in disclosed
+            if n not in summary["reached"] and n != name
+            and n in packet.statements and packet.statements[n].kind in {"def", "inductive"}
+        ]
+    elif record is not None:
+        out["pinStatus"] = "gone"
+    if graph is not None:
+        out["proof"] = _proof_payload(graph, name)
+    return out
+
+
+def _proof_payload(graph: Mapping[str, Any], name: str) -> dict[str, Any] | None:
+    """Project-local proof dependencies of ``name`` from a saved leanq graph index."""
+    from leanq.graph import target_dependency_graph
+
+    table = graph["table"]
+    if name not in table:
+        return None
+    dep_graph = target_dependency_graph(table.values(), [name])
+    by_library = collections.Counter(
+        str(d.library or d.module.split(".", 1)[0]) for d in dep_graph.nodes.values()
+    )
+    by_module = collections.Counter(d.module for d in dep_graph.nodes.values())
+    decl = table[name]
+    direct = []
+    for dep in decl.deps:
+        target = table.get(dep)
+        if target is None:
+            continue
+        direct.append(
+            {"name": dep, "role": decl.dependency_role(dep), "kind": target.kind,
+             "module": target.module}
+        )
+    direct.sort(key=lambda d: (d["role"] != "type", d["name"]))
+    return {
+        "nodeCount": len(dep_graph.nodes),
+        "edgeCount": len(dep_graph.edges),
+        "byLibrary": dict(sorted(by_library.items(), key=lambda kv: -kv[1])),
+        "byModule": sorted(by_module.items(), key=lambda kv: (-kv[1], kv[0])),
+        "direct": direct,
+        "unresolvedCount": len(dep_graph.unresolved),
+        "axioms": list(decl.axioms) if decl.axioms is not None else None,
+    }
+
+
+def load_graph_table(path: str | pathlib.Path) -> dict[str, Any]:
+    """A saved ``leanq graph-index`` payload, indexed by declaration name."""
+    import json as _json
+
+    from leanq.graph import declarations_from_graph_payload
+
+    payload = _json.loads(Path(path).read_text(encoding="utf-8"))
+    decls = declarations_from_graph_payload(payload)
+    return {"table": {d.name: d for d in decls}, "nodeCount": len(decls), "path": str(path)}
+
+
+def alignment_payload(
+    packet: AlignmentPacket,
+    *,
+    graph: Mapping[str, Any] | None = None,
+    title: str = "Semantic alignment review",
+) -> dict[str, Any]:
+    """Everything the HTML page shows, as one JSON object.
+
+    Records of the statement sidecar are embedded once, keyed by name, and every
+    closure refers to them; plumbing is left in so a viewer can collapse it
+    rather than lose it.
+    """
+    papers: collections.OrderedDict[str, dict[str, Any]] = collections.OrderedDict()
+    used_records: set[str] = set()
+    for entry in packet.entries:
+        paper = papers.setdefault(
+            entry.census.title, {"title": entry.census.title, "path": str(entry.census.path), "rows": []}
+        )
+        row, review = entry.row, entry.review
+        canonical = [
+            _declaration_payload(packet, name, review, entry.context, graph)
+            for name in entry.canonical
+        ]
+        variants = []
+        for variant in packet.variants:
+            if variant.parent_row is row:
+                variants.append({
+                    "title": variant.title,
+                    "claim": variant.review.get("claim"),
+                    "canonical": [
+                        _declaration_payload(packet, name, variant.review, variant.context, graph)
+                        for name in variant.canonical
+                    ],
+                })
+        reached: set[str] = set()
+        for decl in canonical:
+            if decl.get("closure"):
+                reached.update(decl["closure"]["summary"]["reached"])
+                reached.add(decl["name"])
+                used_records.update(reached)
+        statuses = [d["pinStatus"] for d in canonical]
+        if not statuses or all(s == "n/a" for s in statuses):
+            pin_summary = None
+        elif any(s in {"drift", "gone"} for s in statuses):
+            pin_summary = "drift"
+        elif any(s == "text-drift" for s in statuses):
+            pin_summary = "text-drift"
+        elif any(s == "unpinned" for s in statuses):
+            pin_summary = "unpinned"
+        else:
+            pin_summary = "current"
+        context_rows = []
+        for item in entry.context:
+            name = str(item["name"])
+            record = packet.statements.get(name)
+            context_rows.append({
+                "name": name,
+                "role": str(item.get("mathematical_role", "")),
+                "kind": record.kind if record is not None and not record.missing else None,
+                "reachable": (name in reached) if packet.statements else None,
+            })
+        supporting = []
+        for name in entry.supporting:
+            record = packet.statements.get(name)
+            if packet.statements:
+                status = "elaborated" if record is not None and not record.missing else "not in environment"
+            else:
+                status = "source located" if packet.source_declarations.get(name) else "source not located"
+            supporting.append({"name": name, "status": status})
+        paper["rows"].append({
+            "id": str(row.get("id")),
+            "anchor": f"{len(papers)}-{row.get('id')}",
+            "paper": entry.census.title,
+            "title": entry.title,
+            "group": entry.group,
+            "claim": review.get("claim") or row.get("summary") or row.get("source_claim"),
+            "importance": row.get("importance"),
+            "status": row.get("status"),
+            "verification": row.get("verification"),
+            "sourceAnchor": row.get("source_anchor"),
+            "sourceStatement": review.get("source_statement"),
+            "clauses": review.get("clause_map") or [],
+            "note": review.get("note"),
+            "nextAction": row.get("next_action"),
+            "canonical": canonical,
+            "supporting": supporting,
+            "context": context_rows,
+            "variants": variants,
+            "pinSummary": pin_summary,
+        })
+    records = {
+        name: packet.statements[name].to_json()
+        for name in sorted(used_records) if name in packet.statements
+    }
+    return {
+        "schemaVersion": 1,
+        "payloadKind": "alignment-review",
+        "title": title,
+        "statementMeta": dict(packet.statement_meta),
+        "graph": {"nodeCount": graph["nodeCount"], "path": graph.get("path")} if graph else None,
+        "papers": list(papers.values()),
+        "records": records,
+    }
+
+
+def render_alignment_html(payload: Mapping[str, Any]) -> str:
+    from importlib import resources
+    import html as _html
+    import json as _json
+
+    template = resources.files("aiq_lean_tools").joinpath("assets/alignment_viewer.html").read_text(encoding="utf-8")
+    text = _json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    text = text.replace("<", r"\u003c").replace(">", r"\u003e").replace("&", r"\u0026")
+    return template.replace("__TITLE__", _html.escape(str(payload.get("title", "")))).replace("__PAYLOAD__", text)
+
+
 def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:
     decls = list(row.get("lean_declarations", []) or [])
     summary = str(row.get("summary") or row.get("source_claim") or row.get("title") or row.get("id") or "")

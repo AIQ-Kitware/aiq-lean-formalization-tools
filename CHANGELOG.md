@@ -23,6 +23,12 @@
   of ad-hoc `#check` probes: elaborated signatures, pin status, and for each
   canonical declaration the project constants in its statement closure that the
   hand-written local semantic dictionary does not disclose.
+- Add `aiq-lean alignment html`: one self-contained page per review surface
+  with the normalized source statement, the clause map, each canonical
+  declaration's elaborated signature and pin status, its statement closure as a
+  collapsible tree with the undisclosed constants called out, and -- given a
+  saved `leanq graph-index` -- its project-local proof dependencies with every
+  direct edge labelled `type` or `proof`.
 - Load environment extensions when the exporter pretty-prints. Without
   `loadExts` no notation unexpander runs, so `z + w` prints as
   `instHAdd.hAdd z w` and `ℂ` as `Complex`.

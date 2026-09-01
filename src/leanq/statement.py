@@ -394,7 +394,9 @@ def closure_summary(records: Mapping[str, StatementRecord], seed: str) -> dict:
     """What a reviewer needs at a glance: unfolded project constants and boundary leaves."""
     edges = closure_edges(records, seed)
     reached = list(dict.fromkeys(child for _, child, _ in edges))
-    unfolded = [n for n in reached if n in records and records[n].expands]
+    unfolded = [
+        n for n in reached if n in records and records[n].expands and not records[n].plumbing
+    ]
     boundary = [
         n for n in reached
         if n in records and records[n].boundary and not records[n].plumbing

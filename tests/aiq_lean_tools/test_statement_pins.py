@@ -190,3 +190,53 @@ def test_render_with_sidecar_reports_undisclosed_constants(tmp_path: Path):
     assert "Dictionary definitions this statement never reaches: `Paper.Stale`" in text
     assert "Paper.isGood_iff" not in text.split("Dictionary definitions")[1].split("\n")[0]
     assert "elaborated" in text  # supporting declaration status
+
+
+def test_html_page_embeds_closure_and_proof_panel(tmp_path: Path):
+    from leanq.index import Decl
+
+    census_path = tmp_path / "paper-full-source-census.json"
+    census_path.write_text(json.dumps(_census_data()))
+    main_rec = StatementRecord(
+        name="Paper.main", module="Paper.Main", kind="theorem", library="Paper", role="seed",
+        type_deps=("Paper.IsGood", "Paper.Hidden"), type="T",
+        signature="Paper.main (x : ℝ) (h : Paper.Hidden x) : Paper.IsGood x", type_expr_hash="7",
+    )
+    good = StatementRecord(name="Paper.IsGood", module="Paper.Defs", kind="def", library="Paper",
+                           type="ℝ → Prop", signature="Paper.IsGood (x : ℝ) : Prop", type_expr_hash="8")
+    hidden = StatementRecord(name="Paper.Hidden", module="Paper.Defs", kind="def", library="Paper",
+                             type="ℝ → Prop", signature="Paper.Hidden (x : ℝ) : Prop", type_expr_hash="9",
+                             docstring="A <hidden> hypothesis & more")
+    sidecar = _sidecar(tmp_path, [main_rec, good, hidden])
+    graph = {"nodes": [
+        Decl(name="Paper.main", module="Paper.Main", kind="theorem", is_prop=None, prop_valued=None,
+             sorried=None, line=3, axioms=None, deps=("Paper.IsGood", "Paper.lemma", "Mathlib.x"),
+             library="Paper", type_deps=("Paper.IsGood",)).to_json(),
+        Decl(name="Paper.IsGood", module="Paper.Defs", kind="def", is_prop=None, prop_valued=None,
+             sorried=None, line=1, axioms=None, deps=(), library="Paper").to_json(),
+        Decl(name="Paper.lemma", module="Paper.Lemmas", kind="theorem", is_prop=None, prop_valued=None,
+             sorried=None, line=1, axioms=None, deps=("Paper.IsGood",), library="Paper").to_json(),
+    ]}
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(json.dumps(graph))
+    payload_path = tmp_path / "page.json"
+    assert main(["alignment", "html", str(census_path), "--sidecar", str(sidecar), "--graph",
+                 str(graph_path), "--json", "-o", str(payload_path)]) == 0
+    payload = json.loads(payload_path.read_text())
+    row = payload["papers"][0]["rows"][0]
+    decl = row["canonical"][0]
+    assert decl["undisclosed"] == ["Paper.Hidden"]
+    assert decl["pinStatus"] == "unpinned" and row["pinSummary"] == "unpinned"
+    assert decl["proof"]["nodeCount"] == 3
+    assert [d["role"] for d in decl["proof"]["direct"]] == ["type", "proof"]
+    assert decl["proof"]["byLibrary"] == {"Paper": 3}
+    assert "Paper.Hidden" in payload["records"]
+    assert row["context"][0]["name"] == "Paper.IsGood" and row["context"][0]["reachable"] is True
+
+    html_path = tmp_path / "page.html"
+    assert main(["alignment", "html", str(census_path), "--sidecar", str(sidecar), "-o", str(html_path)]) == 0
+    text = html_path.read_text()
+    embedded = text.split('id="payload">')[1].split("</script>")[0]
+    assert "<" not in embedded and ">" not in embedded  # angle brackets are escaped in the payload
+    assert "\\u003chidden\\u003e" in embedded
+    assert main(["alignment", "html", str(census_path), "--sidecar", str(sidecar), "-o", str(html_path), "--check"]) == 0

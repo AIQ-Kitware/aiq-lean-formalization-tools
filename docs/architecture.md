@@ -8,7 +8,7 @@
 
 `census.py`, `coverage.py`, `semantic_review.py`, and `literature.py` own maintained tracking documents, validation, mutation, summaries, and generated views. `coverage.py` keeps the hard formalization denominator separate from the finer source-fidelity atom inventory and validates their cross-links without hard-coding a paper-specific terminality policy. Validation is definition-driven: a census may define its own status, verification, completion, importance, gap, blocker, and semantic-alignment vocabularies.
 
-`alignment.py` builds a reviewer-oriented packet from curated `semantic_review` material embedded in census rows. It can add compiler evidence without mixing compiler success with source-equivalence judgments.
+`alignment.py` builds a reviewer-oriented packet from curated `semantic_review` material embedded in census rows. It can add compiler evidence without mixing compiler success with source-equivalence judgments. With a `leanq` statement sidecar it also shows each canonical declaration's elaborated signature and statement closure, and names the project constants that closure reaches which the review's hand-written dictionary does not disclose. `statement_pins.py` records the elaborated-type hashes a review accepted and reports drift; the review validators check the pins structurally, and `alignment check` checks them against the compiler.
 
 ### Lean execution seam
 

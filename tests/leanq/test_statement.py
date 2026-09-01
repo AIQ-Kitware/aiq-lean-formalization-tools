@@ -34,7 +34,7 @@ def sample():
         rec("Pkg.IsGood", kind="def", type_deps=("Pkg.GoodData",),
             body_deps=("Pkg.GoodData", "Pkg.helper_lemma", "Dense"),
             type="Prop", docstring="Compact predicate."),
-        rec("Pkg.GoodData", kind="inductive", type_deps=(), body_deps=("Dense", "Pkg.helper_lemma"),
+        rec("Pkg.GoodData", kind="inductive", type_deps=(), body_deps=("Dense", "Pkg.helper_lemma", "Pkg.GoodData.mk"),
             type="Type", fields=({"name": "dense", "projection": "Pkg.GoodData.dense",
                                    "type": "Dense s"},)),
         rec("Pkg.helper_lemma", kind="theorem"),
@@ -46,6 +46,7 @@ def sample():
             module="Mathlib.Topology.Basic", library="Mathlib", body_deps=("closure",)),
         rec("Real.instLE", kind="def", boundary=True, role="boundary", flags=("instance",),
             module="Mathlib.Data.Real.Basic", library="Mathlib"),
+        rec("Pkg.GoodData.mk", kind="ctor", type_deps=("Pkg.GoodData",)),
     ])
 
 
@@ -67,7 +68,7 @@ class ClosureTests(unittest.TestCase):
         summary = closure_summary(sample(), "Pkg.main")
         self.assertEqual(summary["unfolded"], ["Pkg.IsGood", "Pkg.GoodData"])
         self.assertEqual(summary["boundary"], ["IsSelfAdjoint", "Dense"])
-        self.assertEqual(summary["plumbing"], ["Real.instLE"])
+        self.assertEqual(summary["plumbing"], ["Real.instLE", "Pkg.GoodData.mk"])
         self.assertEqual(summary["leaves"], ["Pkg.helper_lemma"])
         self.assertEqual(summary["unknown"], [])
 
@@ -94,7 +95,7 @@ class ClosureTests(unittest.TestCase):
         self.assertNotIn("[type] Real.instLE", text)
         self.assertIn(
             "2 project constant(s) unfolded, 1 project leaf/leaves, 2 boundary constant(s), "
-            "1 instance/projection constant(s)", text)
+            "2 instance/projection constant(s)", text)
         hidden = render_closure_text(sample(), "Pkg.main", show_boundary=False)
         self.assertNotIn("IsSelfAdjoint  (def", hidden)
         self.assertNotIn("Dense  (above)", hidden)
