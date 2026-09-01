@@ -160,9 +160,14 @@ def test_render_with_sidecar_reports_undisclosed_constants(tmp_path: Path):
     census_path.write_text(json.dumps(_census_data()))
     main_rec = StatementRecord(
         name="Paper.main", module="Paper.Main", kind="theorem", library="Paper", role="seed",
-        type_deps=("Paper.IsGood", "Paper.Hidden", "IsSelfAdjoint"), type="T",
+        type_deps=("Paper.IsGood", "Paper.Hidden", "Paper.Other", "IsSelfAdjoint"), type="T",
         signature="Paper.main (x : ℝ) (h : Paper.Hidden x) : Paper.IsGood x", type_expr_hash="7",
     )
+    other = StatementRecord(name="Paper.Other", module="Paper.Defs", kind="def", library="Paper",
+                            type="ℝ → Prop", signature="Paper.Other (x : ℝ) : Prop", type_expr_hash="12")
+    other_iff = StatementRecord(name="Paper.other_iff", module="Paper.Defs", kind="theorem",
+                                library="Paper", type_deps=("Paper.Other",), type="Prop",
+                                type_expr_hash="13")
     good = StatementRecord(name="Paper.IsGood", module="Paper.Defs", kind="def", library="Paper",
                            type="ℝ → Prop", signature="Paper.IsGood (x : ℝ) : Prop", type_expr_hash="8")
     hidden = StatementRecord(name="Paper.Hidden", module="Paper.Defs", kind="def", library="Paper",
@@ -173,11 +178,12 @@ def test_render_with_sidecar_reports_undisclosed_constants(tmp_path: Path):
                             type="Prop", type_expr_hash="10")
     explain = StatementRecord(name="Paper.isGood_iff", module="Paper.Defs", kind="theorem",
                               library="Paper", type="Prop", type_expr_hash="11")
-    sidecar = _sidecar(tmp_path, [main_rec, good, hidden, sa, stale, explain])
+    sidecar = _sidecar(tmp_path, [main_rec, good, hidden, sa, stale, explain, other, other_iff])
     data = json.loads(census_path.read_text())
     data["items"][0]["semantic_review"]["context_declarations"] += [
         {"name": "Paper.Stale", "mathematical_role": "no longer used"},
         {"name": "Paper.isGood_iff", "mathematical_role": "unfolds IsGood"},
+        {"name": "Paper.other_iff", "mathematical_role": "characterizes Other, disclosing it"},
     ]
     census_path.write_text(json.dumps(data))
     out = tmp_path / "packet.md"
@@ -240,3 +246,25 @@ def test_html_page_embeds_closure_and_proof_panel(tmp_path: Path):
     assert "<" not in embedded and ">" not in embedded  # angle brackets are escaped in the payload
     assert "\\u003chidden\\u003e" in embedded
     assert main(["alignment", "html", str(census_path), "--sidecar", str(sidecar), "-o", str(html_path), "--check"]) == 0
+
+
+def test_seed_modules_keep_ambiguous_candidates_and_report_unplaced(tmp_path: Path):
+    from leanq.project import LeanProject
+    from aiq_lean_tools.statement_pins import _seed_modules
+
+    (tmp_path / "lakefile.toml").write_text('name = "demo"\n\n[[lean_lib]]\nname = "Lib"\n')
+    (tmp_path / "Lib").mkdir()
+    (tmp_path / "Lib" / "A.lean").write_text("namespace Lib.A\ntheorem twin : True := trivial\nend Lib.A\n")
+    (tmp_path / "Lib" / "B.lean").write_text("namespace Lib.B\ntheorem twin : True := trivial\nend Lib.B\n")
+    built = tmp_path / ".lake" / "build" / "lib" / "lean" / "Lib"
+    built.mkdir(parents=True)
+    (built / "A.olean").write_bytes(b"")
+    (built / "B.olean").write_bytes(b"")
+    project = LeanProject(tmp_path)
+    modules, unplaced = _seed_modules(project, ["Lib.A.twin", "TauCeti.packageConstant"])
+    assert modules == ["Lib.A", "Lib.B"]
+    assert unplaced == ["TauCeti.packageConstant"]
+    # a module with source but no artifact would abort the whole import: leave it out
+    (built / "B.olean").unlink()
+    modules, _ = _seed_modules(project, ["Lib.A.twin"])
+    assert modules == ["Lib.A"]

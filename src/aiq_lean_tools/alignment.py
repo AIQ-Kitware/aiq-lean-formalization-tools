@@ -162,7 +162,7 @@ class AlignmentPacket:
         out.append("")
 
         summary = closure_summary(self.statements, name)
-        disclosed = {str(item["name"]) for item in context}
+        disclosed = _disclosed_constants(self.statements, context)
         project_constants = [*summary["unfolded"], *summary["leaves"]]
         undisclosed = [n for n in project_constants if n not in disclosed]
         # A dictionary entry that is a lemma *about* a definition (an `_iff`
@@ -373,6 +373,27 @@ class AlignmentPacket:
         return "\n".join(out).rstrip() + "\n"
 
 
+def _disclosed_constants(
+    statements: Mapping[str, Any], context: Sequence[Mapping[str, Any]]
+) -> set[str]:
+    """What a review's dictionary discloses: the entries themselves, and the project
+    constants named in the *type* of any entry that is a lemma.
+
+    A dictionary usually explains a compact predicate through its characteristic
+    lemma (`isTrialResidual_iff`) rather than by naming the predicate; the lemma's
+    statement mentions the predicate, so the predicate is disclosed.
+    """
+    disclosed = {str(item["name"]) for item in context}
+    for name in list(disclosed):
+        record = statements.get(name)
+        if record is not None and not record.missing and record.kind == "theorem":
+            disclosed.update(
+                dep for dep in record.type_deps
+                if dep in statements and not statements[dep].boundary
+            )
+    return disclosed
+
+
 def _declaration_payload(
     packet: AlignmentPacket,
     name: str,
@@ -405,7 +426,7 @@ def _declaration_payload(
             pinStatus=pin_status(pin, record),
         )
         summary = closure_summary(packet.statements, name)
-        disclosed = {str(item["name"]) for item in context}
+        disclosed = _disclosed_constants(packet.statements, context)
         out["closure"] = {
             "summary": summary,
             "edges": [

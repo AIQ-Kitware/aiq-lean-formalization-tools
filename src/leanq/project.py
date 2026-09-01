@@ -393,6 +393,28 @@ class LeanProject:
             )
         return [lib for lib in declared if lib in used]
 
+    def candidate_declaration_modules(self, target: str) -> list[str]:
+        """Every project source module whose text declares ``target``'s short name.
+
+        A source scan cannot tell two declarations with the same short name apart,
+        so this returns all of them; :meth:`declaration_modules` insists on one,
+        and a caller that only needs the declaration *present* in the environment
+        can import them all.
+        """
+        declared = self.declared_libraries()
+        short = target.rsplit(".", 1)[-1]
+        first = target.split(".", 1)[0]
+        candidate_libs = [first] if first in declared else declared
+        pattern = re.compile(_DECL_RE_TEMPLATE.replace("{name}", re.escape(short)))
+        matches: list[str] = []
+        for library in candidate_libs:
+            for module in self.source_modules(library):
+                path = self.source_of(module)
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if pattern.search(text):
+                    matches.append(module)
+        return list(dict.fromkeys(matches))
+
     def declaration_modules(self, targets: Sequence[str]) -> list[str]:
         """Locate source modules defining requested graph target declarations.
 
@@ -401,20 +423,8 @@ class LeanProject:
         dependencies from the elaborated environment.
         """
         result: list[str] = []
-        declared = self.declared_libraries()
         for target in targets:
-            short = target.rsplit(".", 1)[-1]
-            first = target.split(".", 1)[0]
-            candidate_libs = [first] if first in declared else declared
-            pattern = re.compile(_DECL_RE_TEMPLATE.replace("{name}", re.escape(short)))
-            matches: list[str] = []
-            for library in candidate_libs:
-                for module in self.source_modules(library):
-                    path = self.source_of(module)
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                    if pattern.search(text):
-                        matches.append(module)
-            matches = list(dict.fromkeys(matches))
+            matches = self.candidate_declaration_modules(target)
             if not matches:
                 raise ProjectError(
                     f"cannot locate source declaration {target!r}; "

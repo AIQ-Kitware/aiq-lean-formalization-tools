@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import pathlib
+import sys
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -149,16 +150,37 @@ def validate_pins(
 # Sidecar access
 
 
-def _seed_modules(project: LeanProject, seeds: Sequence[str]) -> list[str] | None:
-    """Modules to import for ``seeds``: their own source modules when the source scan
-    can find them, otherwise ``None`` for a whole-library import."""
+def _seed_modules(project: LeanProject, seeds: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Modules to import for ``seeds``, and the seeds the source scan could not place.
+
+    Every candidate module for an ambiguous short name is kept: the environment
+    only has to *contain* the declaration, and the elaborator resolves the full
+    name exactly.  A seed with no source module at all -- a Lake package constant
+    such as ``TauCeti.LinearPMap.realSpectrum`` cited as review context -- is
+    normally in the transitive imports of the seeds that were placed; if it is
+    not, its record comes back ``missing`` and the report says so.
+    """
     modules: list[str] = []
+    unplaced: list[str] = []
     for seed in seeds:
-        try:
-            modules.extend(project.declaration_modules([seed]))
-        except ProjectError:
-            return None
-    return list(dict.fromkeys(modules))
+        found = project.candidate_declaration_modules(seed)
+        if found:
+            modules.extend(found)
+        else:
+            unplaced.append(seed)
+    modules = list(dict.fromkeys(modules))
+    # A module with source but no build artifact -- a Challenge library kept out
+    # of the default targets, say -- cannot be imported, and one such module
+    # would abort the whole import.  Leave it out; a seed that only lived there
+    # comes back `missing`, which is the truthful answer about the build.
+    unbuilt = set(project.unavailable_import_roots(modules))
+    if unbuilt:
+        print(
+            f"leanq: skipping {len(unbuilt)} unbuilt module(s) a seed is declared in, "
+            f"e.g. {sorted(unbuilt)[0]}",
+            file=sys.stderr,
+        )
+    return [m for m in modules if m not in unbuilt], unplaced
 
 
 def statement_records(
@@ -181,7 +203,7 @@ def statement_records(
         return _statements_by_name(records), load_sidecar_meta(path)
     project = find_project(Path(root))
     seeds = list(dict.fromkeys(seeds))
-    modules = _seed_modules(project, seeds)
+    modules, unplaced = _seed_modules(project, seeds)
     if library is None:
         if modules:
             library = project.library_for_module(modules[0])
@@ -192,8 +214,14 @@ def statement_records(
                     "cannot infer the library for the statement sidecar; pass --lib"
                 )
             library = libs[0]
-    if modules is None:
+    if not modules:
         modules = project.modules(library)
+    if unplaced and verbose:
+        print(
+            f"leanq: {len(unplaced)} seed(s) have no project source module and are expected "
+            f"in the imports of the placed ones, e.g. {unplaced[0]}",
+            file=sys.stderr,
+        )
     path, records = ensure_statement_sidecar(
         project, library, seeds=seeds, modules=modules, refresh=refresh, verbose=verbose,
     )
