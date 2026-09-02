@@ -108,6 +108,25 @@ pre.lean .k{color:var(--k)} pre.lean .s{color:var(--s)} pre.lean .n{color:var(--
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
 .chips code{background:var(--line-soft);border:1px solid var(--line);border-radius:14px;padding:1px 8px;font-size:11px;cursor:pointer}
 .chips code:hover{border-color:var(--accent);color:var(--accent)}
+/* readiness */
+.ready{display:flex;align-items:center;gap:9px;padding:4px 12px;background:var(--accent-soft);color:var(--accent);
+  font-size:11.5px;border-bottom:1px solid var(--line);flex:none}
+.ready .track{flex:1;max-width:220px;height:4px;border-radius:3px;background:var(--line);overflow:hidden}
+.ready .fill{height:100%;background:var(--accent);transition:width .3s ease}
+.ready button{padding:1px 8px;font-size:11px;border-color:transparent;background:transparent;color:inherit}
+.spinner{width:11px;height:11px;border:2px solid var(--line);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .7s linear infinite;flex:none;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{display:flex;align-items:center;gap:9px;color:var(--muted);padding:24px 4px;font-size:13px}
+.skel{height:11px;border-radius:5px;background:linear-gradient(90deg,var(--line-soft),var(--line),var(--line-soft));
+  background-size:200% 100%;animation:sh 1.2s linear infinite;margin:7px 0}
+@keyframes sh{to{background-position:-200% 0}}
+.notready{border:1px dashed var(--line);border-radius:9px;padding:12px 14px;color:var(--muted);font-size:12.5px}
+.notready b{color:var(--ink)}
+#frameWrap{flex:1;position:relative;min-height:0;display:flex}
+#frameLoad{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  gap:10px;background:var(--bg);color:var(--muted);font-size:13px;z-index:2}
+#frameLoad.on{display:flex}
 </style>
 
 <header>
@@ -122,11 +141,20 @@ pre.lean .k{color:var(--k)} pre.lean .s{color:var(--s)} pre.lean .n{color:var(--
   <button id="reloadBtn" title="Rescan the repository for ledgers">Rescan</button>
 </header>
 <div class="bar" id="bar"></div>
+<div class="ready" id="ready" hidden>
+  <span class="spinner"></span><span id="readyText">Preparing…</span>
+  <span class="track"><span class="fill" id="readyFill" style="width:0%"></span></span>
+  <span id="readyCount" style="font-variant-numeric:tabular-nums"></span>
+  <button id="readyDetail">details</button>
+</div>
 <main>
   <nav id="nav"></nav>
   <section class="main">
     <div class="crumb" id="crumb"><span class="empty" style="padding:0">Loading…</span></div>
-    <iframe id="frame" title="view"></iframe>
+    <div id="frameWrap">
+      <iframe id="frame" title="view"></iframe>
+      <div id="frameLoad"><span class="spinner"></span><span id="frameLoadText">Loading…</span></div>
+    </div>
     <div class="pane" id="pane"></div>
   </section>
   <aside id="side"></aside>
@@ -175,7 +203,8 @@ function markNav(route_){
 function showPane(html){ frame.classList.add('hide'); pane.classList.add('show'); pane.innerHTML=html; pane.scrollTop=0; }
 function themedUrl(url){ return url + (url.includes('?')?'&':'?') + 'theme=' + (theme==='system'?systemTheme():theme); }
 function systemTheme(){ return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
-function showFrame(url){ pane.classList.remove('show'); frame.classList.remove('hide'); frame.src=themedUrl(url); }
+function showFrame(url, label){ pane.classList.remove('show'); frame.classList.remove('hide');
+  frameLoading(true, label); frame.src=themedUrl(url); }
 function pushTheme(){ try{ frame.contentWindow.postMessage({aiq:'theme', value: theme==='system'?systemTheme():theme}, '*'); }catch(_){} }
 
 /* ---- views ----------------------------------------------------------- */
@@ -183,7 +212,8 @@ async function showView(view, slug){
   const r = view==='workspace' ? 'view/workspace' : `view/${view}/${slug}`;
   markNav(r);
   current = {view, slug};
-  showFrame('/' + r);
+  const doc0=(catalog.documents||[]).find(d=>d.view===view&&d.slug===slug);
+  showFrame('/' + r, view==='workspace' ? 'Building the workspace summary…' : `Loading ${doc0?doc0.title:view}…`);
   const doc = (catalog.documents||[]).find(d=>d.view===view&&d.slug===slug);
   crumb.innerHTML = `<b>${e(doc?doc.title:view)}</b>`
     + (doc?`<span class="chip">${e(doc.view)}</span><code style="color:var(--muted)">${e(doc.path)}</code>`:'')
@@ -246,6 +276,72 @@ async function showJournal(){
     + '</table>');
 }
 
+/* ---- readiness ------------------------------------------------------- */
+/* The expensive preparation is visible rather than hidden behind a spinner
+   that cannot say what it is waiting for: each stage names what it provides,
+   so a panel that is not available yet can explain itself in those terms. */
+let readiness = null, readyTimer = null;
+
+function stage(name){ return (readiness?.stages||[]).find(s=>s.name===name); }
+function stageReady(name){ const s=stage(name); return !s || s.state==='ready'; }
+
+function renderReadiness(){
+  const strip=$('#ready');
+  if(!readiness){ strip.hidden=true; return; }
+  if(readiness.ready){
+    // Leave the last frame up briefly so a fast start is still legible.
+    $('#readyText').textContent='Ready';
+    $('#readyFill').style.width='100%';
+    setTimeout(()=>{ if(readiness?.ready) strip.hidden=true; }, 900);
+    return;
+  }
+  strip.hidden=false;
+  $('#readyText').textContent = readiness.working || 'Preparing…';
+  $('#readyFill').style.width = Math.round(100*readiness.done/readiness.total)+'%';
+  $('#readyCount').textContent = `${readiness.done}/${readiness.total}`;
+}
+
+async function pollReadiness(){
+  try{
+    readiness = await api('/api/ready');
+    renderReadiness();
+    if(!readiness.ready){ clearTimeout(readyTimer); readyTimer=setTimeout(pollReadiness, 700); }
+    else if(pendingRefresh){ pendingRefresh=false; route(); }
+  }catch(_){ clearTimeout(readyTimer); readyTimer=setTimeout(pollReadiness, 2000); }
+}
+let pendingRefresh=false;
+
+$('#readyDetail').onclick=()=>{
+  if(!readiness) return;
+  showPane('<div class="audit"><h2 style="font-family:var(--sans)">Preparation</h2>'
+    + '<p style="color:var(--muted)">A server pays these costs once. Everything already finished is usable now.</p>'
+    + '<table><tr><th>stage</th><th>state</th><th>provides</th><th>time</th><th>detail</th></tr>'
+    + readiness.stages.map(s=>`<tr>
+        <td>${e(s.label)}</td>
+        <td>${s.state==='working'?'<span class="spinner"></span> ':''}${e(s.state)}</td>
+        <td>${e(s.provides)}</td>
+        <td>${s.seconds?s.seconds+'s':''}</td>
+        <td>${e(s.detail||'')}</td></tr>`).join('')
+    + '</table></div>');
+};
+
+/* A panel whose data is not prepared yet says which stage it is waiting on. */
+function notReady(name, what){
+  const s=stage(name);
+  if(!s || s.state==='ready') return '';
+  if(s.state==='failed')
+    return `<div class="notready"><b>${e(what)} is unavailable.</b><br>${e(s.label)} failed: <code>${e(s.detail||'')}</code></div>`;
+  return `<div class="notready"><span class="spinner"></span> <b>${e(what)} is still loading.</b><br>
+          ${e(s.label)} — this is prepared once per server start.</div>`;
+}
+
+/* ---- frame loading state --------------------------------------------- */
+function frameLoading(on, text){
+  $('#frameLoadText').textContent = text || 'Loading…';
+  $('#frameLoad').classList.toggle('on', !!on);
+}
+frame.addEventListener('load', ()=>frameLoading(false));
+
 /* ---- Lean highlighting ------------------------------------------------ */
 /* Small on purpose: keywords, comments, strings and sorts. Enough to read a
    proof at a glance, and no CDN or grammar file to keep in step with Lean. */
@@ -292,7 +388,9 @@ function wireChips(){
 async function showAudit(name){
   markNav('');
   crumb.innerHTML=`<b>Audit</b><code style="color:var(--muted)">${e(name)}</code>`;
-  showPane('<div class="empty">Gathering source, elaboration and dependencies…</div>');
+  showPane('<div class="audit"><div class="loading"><span class="spinner"></span> Gathering source, elaboration and dependencies…</div>'
+    + '<div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div>'
+    + '<div class="skel" style="width:75%"></div><div class="skel" style="width:40%"></div></div>');
   let d;
   try{ d = await api('/api/declaration/'+encodeURIComponent(name)); }
   catch(_){ return showPane(`<div class="empty">Nothing known about <code>${e(name)}</code>.</div>`); }
@@ -314,10 +412,14 @@ async function showAudit(name){
     + `<dl class="kv"><dt>structural hash</dt><dd>${e(el.hashes.expr||'—')}</dd>`
     + `<dt>printed-type hash</dt><dd>${e((el.hashes.text||'').slice(0,32)||'—')}</dd>`
     + `<dt>is a Prop</dt><dd>${el.isProp===null?'—':el.isProp}</dd></dl>`, true);
-  else h+=sec('Elaborated signature', `<div class="empty" style="padding:6px 0">${e(d.elaboratedHint||'Not elaborated.')}</div>`);
+  else h+=sec('Elaborated signature',
+      notReady('statements','The elaborated signature')
+      || `<div class="empty" style="padding:6px 0">${e(d.elaboratedHint||'Not elaborated.')}</div>`);
 
   if(src) h+=sec('Source as written — statement and proof',
       `<pre class="lean">${leanHl(src.full || src.header || '')}</pre>`, true);
+  else h+=sec('Source as written', notReady('sources','The source snippet')
+      || '<div class="empty" style="padding:6px 0">No source location found for this name.</div>', true);
 
   if(d.closure){
     const c=d.closure;
@@ -342,7 +444,9 @@ async function showAudit(name){
           + pr.direct.map(x=>`<tr><td>${e(x.role)}</td><td><a class="name" data-n="${e(x.name)}">${e(x.name)}</a></td><td>${e(x.kind||'')}</td></tr>`).join('')+'</table>'
         : '<span class="empty" style="padding:0">none in project</span>'));
   } else {
-    h+=sec('Proof dependencies', `<div class="empty" style="padding:6px 0">${e(d.proofHint||'No dependency information.')}</div>`);
+    h+=sec('Proof dependencies',
+      notReady('graph','Proof dependencies')
+      || `<div class="empty" style="padding:6px 0">${e(d.proofHint||'No dependency information.')}</div>`);
   }
 
   const occ=d.occurrences||[];
@@ -485,5 +589,5 @@ function connect(){
 }
 frame.addEventListener('load', pushTheme);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(theme==='system') pushTheme(); });
-loadCatalog(false).then(connect);
+loadCatalog(false).then(()=>{ connect(); pollReadiness(); });
 </script>

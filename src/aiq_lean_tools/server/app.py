@@ -21,6 +21,7 @@ from typing import Any
 from ..viewer import read_asset, viewer_html
 from .edits import EditRefused, apply_edit, read_journal
 from .registry import Catalog
+from .warmup import Readiness
 from .declaration import DeclarationService
 from .xref import Xref
 
@@ -31,6 +32,7 @@ from .xref import Xref
 # a required query parameter instead of the request body.
 try:
     from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.gzip import GZipMiddleware
     from fastapi.responses import HTMLResponse, JSONResponse
 
     HAVE_FASTAPI = True
@@ -68,6 +70,51 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     app.state.xref = xref
     decls = DeclarationService(root)
     app.state.declarations = decls
+
+    # Pages are large -- the workspace view is 1.6 MB of JSON in a script tag --
+    # and highly compressible.
+    app.add_middleware(GZipMiddleware, minimum_size=2048)
+
+    ready = Readiness()
+    app.state.readiness = ready
+    ready.declare("catalog", "Finding ledgers", "the ledger list")
+    ready.declare("payloads", "Reading ledgers", "ledger views and text search")
+    ready.declare("xref", "Cross-referencing declarations", "declaration links and shared declarations")
+    ready.declare("sources", "Scanning Lean sources", "source snippets on the audit page")
+    ready.declare("statements", "Loading elaborated statements", "elaborated signatures and closures")
+    ready.declare("graph", "Loading the dependency graph", "proof dependencies and axioms")
+    ready.declare("workspace", "Building the workspace summary", "the workspace view")
+
+    # The workspace view rebuilds from every ledger in the repository, which
+    # takes half a minute; it was doing that on each request. Cached against the
+    # ledger stats, so an edit still invalidates it.
+    workspace_cache: dict[bool, tuple[Any, dict, str]] = {}
+
+    def ledger_fingerprint() -> Any:
+        out = []
+        for doc in catalog.documents():
+            try:
+                st = doc.path.stat()
+            except OSError:
+                continue
+            out.append((doc.path.name, st.st_mtime_ns, st.st_size))
+        return tuple(out)
+
+    def workspace_payload(source_audit: bool) -> tuple[dict, str]:
+        from ..workspace import FormalizationWorkspace
+
+        stamp = ledger_fingerprint()
+        hit = workspace_cache.get(source_audit)
+        if hit and hit[0] == stamp:
+            return hit[1], hit[2]
+        ws = FormalizationWorkspace.discover(root)
+        data = ws.payload(include_source_audit=source_audit)
+        title = ws.payload_title(data)
+        workspace_cache[source_audit] = (stamp, data, title)
+        return data, title
+
+    # Rendered viewer pages, keyed by what they are made of.
+    page_cache: dict[tuple, str] = {}
 
     def refresh_xref() -> Xref:
         """Keep the index in step with the files, cheaply.
@@ -108,10 +155,7 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
 
     @app.get("/api/payload/workspace")
     def api_workspace(source_audit: bool = False) -> JSONResponse:
-        from ..workspace import FormalizationWorkspace
-
-        ws = FormalizationWorkspace.discover(root)
-        return JSONResponse(ws.payload(include_source_audit=source_audit))
+        return JSONResponse(workspace_payload(source_audit)[0])
 
     # -- rendered viewers, identical to the static files ------------------
 
@@ -124,15 +168,27 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
             payload, doc_title = catalog.payload(view, slug)
         except KeyError:
             raise HTTPException(404, f"no {view} document named {slug}")
-        return HTMLResponse(_with_bridge(viewer_html(spec.asset, doc_title, payload), theme))
+        doc = catalog.get(view, slug)
+        st = doc.path.stat() if doc else None
+        key = (view, slug, st.st_mtime_ns if st else 0, theme)
+        page = page_cache.get(key)
+        if page is None:
+            page = _with_bridge(viewer_html(spec.asset, doc_title, payload), theme)
+            if len(page_cache) > 24:
+                page_cache.clear()
+            page_cache[key] = page
+        return HTMLResponse(page)
 
     @app.get("/view/workspace", response_class=HTMLResponse)
     def workspace_page(source_audit: bool = False, theme: str | None = None) -> HTMLResponse:
-        from ..workspace import FormalizationWorkspace
-
-        ws = FormalizationWorkspace.discover(root)
-        data = ws.payload(include_source_audit=source_audit)
-        return HTMLResponse(_with_bridge(viewer_html("workspace_viewer.html", ws.payload_title(data), data), theme))
+        data, title = workspace_payload(source_audit)
+        key = ("workspace", source_audit, ledger_fingerprint(), theme)
+        page = page_cache.get(key)
+        if page is None:
+            page = _with_bridge(viewer_html("workspace_viewer.html", title, data), theme)
+            page_cache.clear()
+            page_cache[key] = page
+        return HTMLResponse(page)
 
     # -- search across every ledger at once -------------------------------
 
@@ -244,6 +300,10 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     def api_journal(limit: int = 200) -> JSONResponse:
         return JSONResponse({"entries": read_journal(root, limit=limit)})
 
+    @app.get("/api/ready")
+    def api_ready() -> JSONResponse:
+        return JSONResponse(ready.as_json())
+
     @app.get("/api/writable")
     def api_writable() -> JSONResponse:
         from .edits import WRITABLE
@@ -268,9 +328,35 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
         finally:
             app.state.sockets.discard(ws)
 
+    def _warm() -> None:
+        """Pay the expensive costs once, at startup, in dependency order."""
+        ready.run("catalog", catalog.documents, describe=lambda d: f"{len(d)} ledger(s)")
+        def read_all():
+            n = 0
+            for doc in catalog.documents():
+                try:
+                    catalog.payload(doc.view, doc.slug)
+                    n += 1
+                except Exception:
+                    pass
+            return n
+        ready.run("payloads", read_all, describe=lambda n: f"{n} ledger(s) read")
+        ready.run("xref", refresh_xref, describe=lambda x: f"{x.stats()['declarations']} declarations")
+        ready.run("sources", decls.source_index, describe=lambda _: "Lean sources indexed")
+        ready.run("statements", decls.statements, describe=lambda m: f"{len(m)} elaborated statement(s)")
+        ready.run("workspace", lambda: workspace_payload(False),
+                  describe=lambda r: f"{len(r[0].get('census_rows', []))} census document(s)")
+        ready.run("graph", decls.graph_status,
+                  describe=lambda g: (f"{g['declarations']} declarations"
+                                      + (" (stale)" if g.get("stale") else "")) if g and g.get("present")
+                                     else "no saved graph")
+
     @app.on_event("startup")
     async def _watch() -> None:
         app.state.watch_task = asyncio.create_task(_watch_files(app, catalog))
+        # In a worker thread: these are blocking, and the server must answer
+        # while they run so the UI can show what is still coming.
+        app.state.warm_task = asyncio.create_task(asyncio.to_thread(_warm))
 
     @app.on_event("shutdown")
     async def _stop_watch() -> None:

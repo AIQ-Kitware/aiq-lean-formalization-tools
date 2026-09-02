@@ -24,6 +24,7 @@ stat, so an edit to a Lean file shows up on the next request.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,12 @@ class DeclarationService:
         self._statement_stamp: tuple | None = None
         self._graph: Any = None
         self._graph_stamp: tuple | None = None
+        self._newest: tuple[float, int, str] | None = None
+        # Proof closures only. Walking the dependency graph for one target costs
+        # about three seconds; everything else in a detail() is fast and is left
+        # uncached so a source edit shows immediately.
+        self._proofs: dict[str, Any] = {}
+        self._proofs_stamp: tuple | None = None
 
     # -- lazily built inputs ----------------------------------------------
 
@@ -94,6 +101,8 @@ class DeclarationService:
         stamp = (path.stat().st_mtime_ns, path.stat().st_size)
         if self._graph is not None and stamp == self._graph_stamp:
             return self._graph
+        # A rebuilt graph is exactly the event that can clear staleness.
+        self._newest = None
         try:
             # `leanq graph-index` writes nodes/edges; the proof panel wants it
             # indexed by declaration name. load_graph_table does that -- reading
@@ -118,17 +127,7 @@ class DeclarationService:
         if not path.is_file():
             return {"present": False, "path": GRAPH_PATH}
         graph_ns = path.stat().st_mtime_ns
-        newest = 0
-        newest_file = ""
-        for lean in self.root.glob("*/**/*.lean"):
-            if any(part in {".lake", "build", ".leanq"} for part in lean.parts):
-                continue
-            try:
-                ns = lean.stat().st_mtime_ns
-            except OSError:
-                continue
-            if ns > newest:
-                newest, newest_file = ns, lean.name
+        newest, newest_file = self._newest_source()
         table = (self.graph() or {}).get("table") or {}
         return {
             "present": True,
@@ -138,6 +137,51 @@ class DeclarationService:
             "newerSource": newest_file if newest > graph_ns else "",
             "rebuild": f"leanq graph-index --out {GRAPH_PATH}",
         }
+
+    def _newest_source(self, ttl: float = 180.0) -> tuple[int, str]:
+        """Timestamp of the most recently edited Lean file, cached.
+
+        Walking the source tree costs two and a half seconds, and this ran on
+        every declaration request -- it was the entire cost of opening an audit
+        page. A short TTL was not enough either: it expired between clicks, so
+        every few requests paid the walk again.
+
+        Staleness is a slow-moving property, so the window is minutes, and the
+        cache is dropped immediately when the graph file itself changes -- which
+        is the event that can make a stale index current.
+        """
+        now = time.monotonic()
+        if self._newest is not None and now - self._newest[0] < ttl:
+            return self._newest[1], self._newest[2]
+        newest, newest_file = 0, ""
+        for lean in self.root.glob("*/**/*.lean"):
+            if any(part in {".lake", "build", ".leanq"} for part in lean.parts):
+                continue
+            try:
+                ns = lean.stat().st_mtime_ns
+            except OSError:
+                continue
+            if ns > newest:
+                newest, newest_file = ns, lean.name
+        self._newest = (now, newest, newest_file)
+        return newest, newest_file
+
+    def _proof_for(self, graph: Any, resolved: str) -> Any:
+        if self._proofs_stamp != self._graph_stamp:
+            self._proofs.clear()
+            self._proofs_stamp = self._graph_stamp
+        if resolved in self._proofs:
+            return self._proofs[resolved]
+        try:
+            from ..alignment import _proof_payload
+
+            value = _proof_payload(graph, resolved)
+        except Exception:
+            value = None
+        if len(self._proofs) > 256:
+            self._proofs.clear()
+        self._proofs[resolved] = value
+        return value
 
     def resolve_graph_name(self, name: str) -> str | None:
         """The graph's spelling of ``name``.
@@ -236,12 +280,7 @@ class DeclarationService:
                        f"`{status['rebuild']}`." if status.get("stale") else "")
                 )
             else:
-                try:
-                    from ..alignment import _proof_payload
-
-                    out["proof"] = _proof_payload(graph, resolved)
-                except Exception:
-                    out["proof"] = None
+                out["proof"] = self._proof_for(graph, resolved)
         else:
             out["proof"] = None
             out["proofHint"] = (

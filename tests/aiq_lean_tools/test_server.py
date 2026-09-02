@@ -208,3 +208,76 @@ def test_theme_is_injected_before_the_viewer_stylesheet():
     # The viewer's own rules must still come last so it keeps what it styled.
     assert out.index('id="aiq-theme"') < out.index("body{color:red}")
     assert "color-scheme" in out
+
+
+# -- readiness and caching ----------------------------------------------
+
+def test_readiness_reports_progress_and_keeps_failures():
+    from aiq_lean_tools.server.warmup import Readiness
+
+    r = Readiness()
+    r.declare("a", "Stage A", "the A view")
+    r.declare("b", "Stage B", "the B view")
+
+    assert r.as_json()["ready"] is False
+    assert r.as_json()["done"] == 0
+
+    r.run("a", lambda: [1, 2, 3], describe=lambda v: f"{len(v)} things")
+    assert r.is_ready("a")
+    assert r.stages["a"].detail == "3 things"
+    assert r.as_json()["done"] == 1
+    assert r.as_json()["ready"] is False
+
+    # A failing stage must not take the server down, and must say why.
+    def boom():
+        raise RuntimeError("no graph on disk")
+
+    r.run("b", boom)
+    assert r.stages["b"].state == "failed"
+    assert "no graph on disk" in r.stages["b"].detail
+    assert r.is_ready("b") is False
+    # Failed still counts as finished: the UI stops waiting on it.
+    assert r.as_json()["ready"] is True
+
+
+def test_readiness_names_the_stage_in_flight():
+    from aiq_lean_tools.server.warmup import Readiness
+
+    r = Readiness()
+    r.declare("slow", "Scanning Lean sources", "source snippets")
+    seen = {}
+
+    def work():
+        seen["working"] = r.as_json()["working"]
+        return 1
+
+    r.run("slow", work)
+    assert seen["working"] == "Scanning Lean sources"
+
+
+def test_proof_closure_is_cached_per_declaration(tmp_path):
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    svc = DeclarationService(tmp_path)
+    calls = []
+
+    def fake_payload(graph, name):
+        calls.append(name)
+        return {"nodeCount": 1}
+
+    import aiq_lean_tools.alignment as alignment
+
+    original = alignment._proof_payload
+    alignment._proof_payload = fake_payload
+    try:
+        svc._graph_stamp = ("stamp",)
+        assert svc._proof_for({}, "A.thing")["nodeCount"] == 1
+        assert svc._proof_for({}, "A.thing")["nodeCount"] == 1
+        assert calls == ["A.thing"], "walking the graph twice for one target is the cost being avoided"
+
+        # A rebuilt graph must invalidate: a stale closure is worse than a slow one.
+        svc._graph_stamp = ("newer",)
+        svc._proof_for({}, "A.thing")
+        assert calls == ["A.thing", "A.thing"]
+    finally:
+        alignment._proof_payload = original
