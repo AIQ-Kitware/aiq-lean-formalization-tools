@@ -1,141 +1,489 @@
 <title>__TITLE__</title>
 <style>
 :root{
-  --bg:#fbfbf9; --panel:#fff; --ink:#1a1c1a; --muted:#6b6f6b; --line:#e0e2dd;
-  --accent:#2f6f4f; --accent-soft:#eaf2ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
+  --bg:#fbfbf9; --panel:#fff; --ink:#1a1c1a; --muted:#6b6f6b; --line:#e2e4df; --line-soft:#eeefea;
+  --accent:#2f6f4f; --accent-soft:#eaf2ec; --warn:#8a5a00; --warn-soft:#fdf3e0; --sel:#dce9e0;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;
+  --shadow:0 1px 2px rgba(20,25,20,.05),0 6px 18px rgba(20,25,20,.06);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#14161a; --panel:#1b1e23; --ink:#e6e8e6; --muted:#9aa0a0; --line:#2b2f36;
-  --accent:#6fbf8f; --accent-soft:#1e2a24; --warn:#e0b060; --warn-soft:#2a2418;
+  --bg:#131519; --panel:#1a1d22; --ink:#e7e9e6; --muted:#969c9b; --line:#2a2e35; --line-soft:#22262c;
+  --accent:#74c495; --accent-soft:#1d2a23; --warn:#e2b467; --warn-soft:#2a2418; --sel:#22392c;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28);
 }}
 :root[data-theme="dark"]{
-  --bg:#14161a; --panel:#1b1e23; --ink:#e6e8e6; --muted:#9aa0a0; --line:#2b2f36;
-  --accent:#6fbf8f; --accent-soft:#1e2a24; --warn:#e0b060; --warn-soft:#2a2418;
+  --bg:#131519; --panel:#1a1d22; --ink:#e7e9e6; --muted:#969c9b; --line:#2a2e35; --line-soft:#22262c;
+  --accent:#74c495; --accent-soft:#1d2a23; --warn:#e2b467; --warn-soft:#2a2418; --sel:#22392c;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28);
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);height:100vh;display:flex;flex-direction:column}
-header{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
-h1{font-size:14px;font-weight:620;margin:0;letter-spacing:-.01em;white-space:nowrap}
-.dot{width:7px;height:7px;border-radius:50%;background:#bbb;flex:none}
-.dot.on{background:var(--accent)}
-input[type=search]{flex:1;min-width:150px;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:13px var(--sans)}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:13.5px/1.55 var(--sans);display:flex;flex-direction:column;overflow:hidden}
+
+header{display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);flex:none}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.dot{width:7px;height:7px;border-radius:50%;background:#b9bcb9;flex:none;transition:background .25s}
+.dot.on{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+h1{font-size:13.5px;font-weight:640;margin:0;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34ch}
+.spacer{flex:1}
+.searchwrap{position:relative;flex:1;max-width:620px}
+input[type=search]{width:100%;padding:6px 30px 6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:13px var(--sans)}
+input[type=search]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:10.5px var(--mono);color:var(--muted);pointer-events:none}
+button{font:12.5px var(--sans);padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
 main{flex:1;display:flex;min-height:0}
-nav{width:280px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:8px}
-nav h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:14px 6px 5px}
-nav a{display:block;padding:5px 8px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.35}
-nav a:hover{background:var(--accent-soft)}
-nav a.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
-nav a small{display:block;color:var(--muted);font-size:11px;font-weight:400}
-section{flex:1;min-width:0;display:flex;flex-direction:column}
+nav{width:274px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:6px 8px 24px}
+nav h2{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:14px 6px 4px;font-weight:650}
+nav a{display:block;padding:5px 8px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.35;border:1px solid transparent}
+nav a:hover{background:var(--line-soft)}
+nav a.sel{background:var(--sel);border-color:var(--accent);font-weight:600}
+nav a small{display:block;color:var(--muted);font-size:10.5px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+nav .filter{width:100%;padding:5px 9px;margin:4px 0 2px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:12px var(--sans)}
+
+section.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.crumb{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px;color:var(--muted);flex:none;min-height:31px}
+.crumb b{color:var(--ink);font-weight:600}
+.crumb .rowsel{margin-left:auto;display:flex;gap:6px;align-items:center}
+select{font:12px var(--sans);padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);max-width:340px}
 iframe{flex:1;border:0;width:100%;background:var(--bg)}
-.pane{flex:1;overflow:auto;padding:16px 20px}
-.hit{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;background:var(--panel);cursor:pointer}
-.hit:hover{border-color:var(--accent)}
-.hit b{color:var(--accent);font-weight:600}
-.hit .f{font-family:var(--mono);font-size:11px;color:var(--muted)}
-.empty{color:var(--muted);padding:20px}
-.bar{padding:5px 14px;background:var(--warn-soft);color:var(--warn);font-size:12px;border-bottom:1px solid var(--line);display:none}
+.pane{flex:1;overflow:auto;padding:18px 22px;display:none}
+.pane.show{display:block}
+iframe.hide{display:none}
+
+aside{width:340px;flex:none;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 14px 30px;display:none}
+aside.show{display:block}
+aside h3{margin:0 0 2px;font-size:13px;font-family:var(--mono);word-break:break-all;line-height:1.4}
+aside .sub{color:var(--muted);font-size:11.5px;margin-bottom:12px}
+aside .occ{display:block;width:100%;text-align:left;padding:7px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:var(--bg);cursor:pointer}
+aside .occ:hover{border-color:var(--accent)}
+aside .occ .d{font-weight:600;font-size:12px}
+aside .occ .m{color:var(--muted);font-size:11px;font-family:var(--mono)}
+.close{float:right;border:0;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 2px;line-height:1}
+
+.hit{padding:8px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--panel);cursor:pointer}
+.hit:hover,.hit.cur{border-color:var(--accent);background:var(--accent-soft)}
+.hit .d{font-weight:600;color:var(--accent);font-size:12.5px}
+.hit .f{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.hit .x{margin-top:2px}
+mark{background:var(--sel);color:inherit;border-radius:2px;padding:0 1px}
+.group{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:14px 0 5px;font-weight:650}
+.empty{color:var(--muted);padding:26px 4px}
+.bar{padding:5px 12px;background:var(--warn-soft);color:var(--warn);font-size:12px;border-bottom:1px solid var(--line);display:none;flex:none}
 table{border-collapse:collapse;width:100%;font-size:12.5px}
 th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+th{color:var(--muted);font-weight:650;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em}
 code{font-family:var(--mono);font-size:12px}
-button{font:12px var(--sans);padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
-button:hover{border-color:var(--accent);color:var(--accent)}
+.chip{display:inline-block;padding:1px 7px;border-radius:20px;background:var(--line-soft);color:var(--muted);font-size:10.5px;margin-left:6px}
+.chip.a{background:var(--accent-soft);color:var(--accent)}
+a.name{color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+.audit{max-width:1180px}
+.audit h2{font-size:15px;margin:0 0 2px;font-family:var(--mono);word-break:break-all;line-height:1.4}
+.audit .where{color:var(--muted);font-size:12px;margin-bottom:14px}
+.sec{border:1px solid var(--line);border-radius:10px;margin:0 0 12px;background:var(--panel);overflow:hidden}
+.sec>summary{padding:8px 12px;cursor:pointer;font-weight:600;font-size:12.5px;list-style:none;display:flex;align-items:center;gap:8px}
+.sec>summary::-webkit-details-marker{display:none}
+.sec>summary:before{content:'▸';color:var(--muted);font-size:11px;transition:transform .15s}
+.sec[open]>summary:before{transform:rotate(90deg)}
+.sec>summary:hover{background:var(--line-soft)}
+.sec .body{padding:2px 12px 12px;border-top:1px solid var(--line-soft)}
+pre.lean{background:var(--line-soft);border:1px solid var(--line);border-radius:8px;padding:11px 13px;overflow:auto;font:12px/1.65 var(--mono);max-height:60vh;white-space:pre;tab-size:2}
+pre.lean .k{color:#8250b5;font-weight:600}
+pre.lean .c{color:var(--muted);font-style:italic}
+pre.lean .s{color:#a05a2c}
+pre.lean .n{color:#2f6f4f}
+pre.lean .t{color:#2b6cb0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) pre.lean{
+  --k:#c792ea; --s:#e2b467; --n:#74c495; --t:#79b8ff;}}
+:root[data-theme="dark"] pre.lean{--k:#c792ea; --s:#e2b467; --n:#74c495; --t:#79b8ff;}
+pre.lean{--k:#8250b5; --s:#a05a2c; --n:#2f6f4f; --t:#2b6cb0}
+pre.lean .k{color:var(--k)} pre.lean .s{color:var(--s)} pre.lean .n{color:var(--n)} pre.lean .t{color:var(--t)}
+.stale{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:8px 11px;font-size:12px;margin:0 0 10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:12.5px;margin:6px 0}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--mono);word-break:break-all}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.chips code{background:var(--line-soft);border:1px solid var(--line);border-radius:14px;padding:1px 8px;font-size:11px;cursor:pointer}
+.chips code:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 
 <header>
-  <span class="dot" id="live"></span>
-  <h1>__TITLE__</h1>
-  <input type="search" id="q" placeholder="Search every ledger — declarations, clauses, notes…">
-  <button id="journal">Journal</button>
-  <button id="reload">Rescan</button>
+  <div class="brand"><span class="dot" id="live" title="live connection"></span><h1>__TITLE__</h1></div>
+  <div class="searchwrap">
+    <input type="search" id="q" placeholder="Search ledgers and declarations…" autocomplete="off">
+    <span class="kbd">/</span>
+  </div>
+  <button id="sharedBtn" title="Declarations named by more than one ledger">Shared</button>
+  <button id="journalBtn">Journal</button>
+  <button id="themeBtn" title="Toggle theme">Theme</button>
+  <button id="reloadBtn" title="Rescan the repository for ledgers">Rescan</button>
 </header>
 <div class="bar" id="bar"></div>
 <main>
   <nav id="nav"></nav>
-  <section>
+  <section class="main">
+    <div class="crumb" id="crumb"><span class="empty" style="padding:0">Loading…</span></div>
     <iframe id="frame" title="view"></iframe>
-    <div class="pane" id="pane" hidden></div>
+    <div class="pane" id="pane"></div>
   </section>
+  <aside id="side"></aside>
 </main>
 
 <script>
 const $ = s => document.querySelector(s);
-const nav = $('#nav'), frame = $('#frame'), pane = $('#pane'), bar = $('#bar');
-let catalog = null, current = null;
-
+const nav=$('#nav'), frame=$('#frame'), pane=$('#pane'), side=$('#side'), bar=$('#bar'),
+      crumb=$('#crumb'), qIn=$('#q');
 const e = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api = async u => (await fetch(u)).json();
 
-function showFrame(url){ pane.hidden = true; frame.hidden = false; frame.src = url; }
-function showPane(html){ frame.hidden = true; pane.hidden = false; pane.innerHTML = html; }
+let catalog=null, current=null, hits=[], cursor=-1;
 
-async function loadCatalog(refresh){
-  catalog = await (await fetch('/api/catalog' + (refresh ? '?refresh=true' : ''))).json();
-  const byView = {};
-  for (const d of catalog.documents) (byView[d.view] ||= []).push(d);
-  let h = '<h2>Workspace</h2><a href="#" data-url="/view/workspace" class="w">Everything at once<small>all ledgers, one summary</small></a>';
-  for (const v of catalog.views){
-    const docs = byView[v.name];
-    if (!docs || !docs.length) continue;
-    h += `<h2>${e(v.label)}</h2>`;
-    for (const d of docs)
-      h += `<a href="#" data-url="/view/${e(d.view)}/${e(d.slug)}" data-key="${e(d.view)}/${e(d.slug)}">${e(d.title)}<small>${e(d.path)}</small></a>`;
-  }
-  nav.innerHTML = h;
-  nav.querySelectorAll('a').forEach(a => a.onclick = ev => {
-    ev.preventDefault();
-    nav.querySelectorAll('a').forEach(x => x.classList.remove('sel'));
-    a.classList.add('sel');
-    current = a.dataset.key || null;
-    showFrame(a.dataset.url);
-  });
-  const first = nav.querySelector('a');
-  if (first) first.click();
+/* ---- theme ---------------------------------------------------------- */
+const THEMES=['system','light','dark'];
+let theme = localStorage.getItem('aiq.theme') || 'system';
+function applyTheme(){
+  if(theme==='system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
+  $('#themeBtn').textContent = 'Theme: ' + theme;
+}
+$('#themeBtn').onclick=()=>{ theme=THEMES[(THEMES.indexOf(theme)+1)%3]; localStorage.setItem('aiq.theme',theme); applyTheme(); pushTheme(); };
+applyTheme();
+
+/* ---- routing --------------------------------------------------------- */
+/* #view/census/slug  ·  #decl/Some.Name  ·  #journal  ·  #shared          */
+function go(hash, push=true){ if(push && location.hash!==('#'+hash)) location.hash=hash; else route(); }
+
+function route(){
+  const h = decodeURIComponent(location.hash.replace(/^#/,''));
+  if(!h){ const a=nav.querySelector('a'); if(a) go(a.dataset.route); return; }
+  const [kind,...rest]=h.split('/');
+  if(kind==='view'){ showView(rest[0], rest.slice(1).join('/')); }
+  else if(kind==='decl'){ showDeclaration(rest.join('/')); }
+  else if(kind==='audit'){ showAudit(rest.join('/')); }
+  else if(kind==='deps'){ showDeps(rest.join('/')); }
+  else if(kind==='journal'){ showJournal(); }
+  else if(kind==='shared'){ showShared(); }
+}
+addEventListener('hashchange', route);
+
+function markNav(route_){
+  nav.querySelectorAll('a').forEach(a=>a.classList.toggle('sel', a.dataset.route===route_));
+}
+function showPane(html){ frame.classList.add('hide'); pane.classList.add('show'); pane.innerHTML=html; pane.scrollTop=0; }
+function themedUrl(url){ return url + (url.includes('?')?'&':'?') + 'theme=' + (theme==='system'?systemTheme():theme); }
+function systemTheme(){ return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+function showFrame(url){ pane.classList.remove('show'); frame.classList.remove('hide'); frame.src=themedUrl(url); }
+function pushTheme(){ try{ frame.contentWindow.postMessage({aiq:'theme', value: theme==='system'?systemTheme():theme}, '*'); }catch(_){} }
+
+/* ---- views ----------------------------------------------------------- */
+async function showView(view, slug){
+  const r = view==='workspace' ? 'view/workspace' : `view/${view}/${slug}`;
+  markNav(r);
+  current = {view, slug};
+  showFrame('/' + r);
+  const doc = (catalog.documents||[]).find(d=>d.view===view&&d.slug===slug);
+  crumb.innerHTML = `<b>${e(doc?doc.title:view)}</b>`
+    + (doc?`<span class="chip">${e(doc.view)}</span><code style="color:var(--muted)">${e(doc.path)}</code>`:'')
+    + `<span class="rowsel"><select id="rowjump"><option>Jump to row…</option></select></span>`;
+  if(view==='workspace') return;
+  try{
+    const rows=(await api(`/api/rows/${view}/${slug}`)).rows||[];
+    const sel=$('#rowjump');
+    if(!sel) return;
+    rows.forEach(x=>{ const o=document.createElement('option'); o.value=x.id;
+      o.textContent=`${x.id} — ${x.title}`.slice(0,110); sel.appendChild(o); });
+    sel.onchange=()=>{ if(sel.selectedIndex>0) frame.contentWindow.postMessage({aiq:'scroll-to', id:sel.value},'*'); };
+  }catch(_){}
 }
 
-let timer = null;
-$('#q').oninput = ev => {
-  clearTimeout(timer);
-  const q = ev.target.value.trim();
-  if (q.length < 2) { if (current) showFrame('/view/' + current); return; }
-  timer = setTimeout(async () => {
-    const r = await (await fetch('/api/search?q=' + encodeURIComponent(q))).json();
-    if (!r.hits.length) return showPane('<div class="empty">No match for <code>' + e(q) + '</code> in any ledger.</div>');
-    showPane(`<p style="color:var(--muted)">${r.hits.length}${r.truncated ? '+' : ''} match(es) for <code>${e(q)}</code></p>` +
-      r.hits.map(h => `<div class="hit" data-url="/view/${e(h.view)}/${e(h.slug)}">
-        <b>${e(h.document)}</b> <span class="f">${e(h.field)}</span>
-        <div>${e(h.excerpt)}</div></div>`).join(''));
-    pane.querySelectorAll('.hit').forEach(d => d.onclick = () => showFrame(d.dataset.url));
-  }, 220);
-};
+async function showDeclaration(name){
+  side.classList.add('show');
+  side.innerHTML = `<button class="close" title="Close">&times;</button><h3>${e(name)}</h3><div class="sub">looking up…</div>`;
+  side.querySelector('.close').onclick=()=>side.classList.remove('show');
+  const r = await api('/api/xref/'+encodeURIComponent(name));
+  const occ = r.occurrences||[];
+  const docs = new Set(occ.map(o=>o.view+'/'+o.slug));
+  side.innerHTML = `<button class="close" title="Close">&times;</button><h3>${e(name)}</h3>`
+    + `<div class="sub">${occ.length} mention(s) in ${docs.size} ledger(s)</div>`
+    + `<button style="width:100%;margin-bottom:10px" id="auditBtn">Open full audit →</button>`
+    + (occ.length ? occ.map(o=>`<button class="occ" data-v="${e(o.view)}" data-s="${e(o.slug)}" data-r="${e(o.row)}">
+         <div class="d">${e(o.document)}</div>
+         <div class="m">${e(o.view)} · ${e(o.field)}${o.row?' · '+e(o.row):''}</div>
+         ${o.row_title&&o.row_title!==o.row?`<div style="font-size:11.5px;color:var(--muted)">${e(o.row_title.slice(0,120))}</div>`:''}
+       </button>`).join('')
+      : '<div class="empty">No ledger registers this declaration.</div>');
+  side.querySelector('.close').onclick=()=>side.classList.remove('show');
+  const ab=side.querySelector('#auditBtn'); if(ab) ab.onclick=()=>go('audit/'+encodeURIComponent(name));
+  side.querySelectorAll('.occ').forEach(b=>b.onclick=()=>{
+    go(`view/${b.dataset.v}/${b.dataset.s}`);
+    if(b.dataset.r) setTimeout(()=>frame.contentWindow.postMessage({aiq:'scroll-to', id:b.dataset.r},'*'), 700);
+  });
+}
 
-$('#journal').onclick = async () => {
-  const r = await (await fetch('/api/journal')).json();
-  if (!r.entries.length) return showPane('<div class="empty">No annotations recorded yet.</div>');
-  showPane('<table><tr><th>when</th><th>who</th><th>document</th><th>field</th><th>before</th><th>after</th></tr>' +
-    r.entries.map(x => `<tr><td>${e(x.at)}</td><td>${e(x.author)}</td><td>${e(x.document)}</td>
-      <td><code>${e(x.pointer)}</code></td><td>${e(String(x.before).slice(0,90))}</td>
-      <td>${e(String(x.after).slice(0,90))}</td></tr>`).join('') + '</table>');
-};
+async function showShared(){
+  markNav('shared');
+  crumb.innerHTML='<b>Shared declarations</b><span class="chip">join points between ledgers</span>';
+  const r=await api('/api/xref?shared=true&limit=300');
+  showPane(`<p style="color:var(--muted)">${r.stats.declarations} declarations indexed, ${r.stats.shared} named by more than one ledger.</p>`
+    + '<table><tr><th>declaration</th><th>ledgers</th><th>mentions</th></tr>'
+    + r.shared.map(x=>`<tr><td><a class="name" data-n="${e(x.name)}">${e(x.name)}</a></td>
+        <td>${x.documents}</td><td>${x.occurrences}</td></tr>`).join('')+'</table>');
+  pane.querySelectorAll('a.name').forEach(a=>a.onclick=()=>go('decl/'+encodeURIComponent(a.dataset.n)));
+}
 
-$('#reload').onclick = () => loadCatalog(true);
+async function showJournal(){
+  markNav('journal');
+  crumb.innerHTML='<b>Annotation journal</b><span class="chip">every browser write, in order</span>';
+  const r=await api('/api/journal');
+  if(!r.entries.length) return showPane('<div class="empty">No annotations recorded yet. Edits made in a viewer are journaled here with the value before and after.</div>');
+  showPane('<table><tr><th>when</th><th>who</th><th>document</th><th>field</th><th>before</th><th>after</th></tr>'
+    + r.entries.map(x=>`<tr><td style="white-space:nowrap">${e(x.at)}</td><td>${e(x.author)}</td>
+        <td>${e(x.document)}</td><td><code>${e(x.pointer)}</code></td>
+        <td>${e(String(x.before).slice(0,80))}</td><td>${e(String(x.after).slice(0,80))}</td></tr>`).join('')
+    + '</table>');
+}
+
+/* ---- Lean highlighting ------------------------------------------------ */
+/* Small on purpose: keywords, comments, strings and sorts. Enough to read a
+   proof at a glance, and no CDN or grammar file to keep in step with Lean. */
+const LEAN_KW = new RegExp('\\b(' + [
+ 'theorem','lemma','def','abbrev','instance','structure','class','inductive','where','example',
+ 'by','fun','let','have','show','from','calc','match','with','do','if','then','else','at','in',
+ 'variable','universe','namespace','end','section','open','import','export','attribute','deriving',
+ 'noncomputable','private','protected','partial','unsafe','mutual','omit','include','set_option',
+ 'exact','apply','intro','intros','refine','simp','simpa','rw','rwa','constructor','cases','rcases',
+ 'obtain','use','induction','ring','linarith','nlinarith','positivity','norm_num','field_simp',
+ 'unfold','change','convert','congr','ext','funext','subst','specialize','gcongr','bound','trans',
+ 'this','sorry','admit','all_goals','any_goals','first','try','repeat','focus','conv','push_cast'
+].join('|') + ')\\b','g');
+
+function leanHl(src){
+  const out=[]; let i=0;
+  const push=(cls,txt)=>out.push(cls?`<span class="${cls}">${e(txt)}</span>`:e(txt));
+  while(i<src.length){
+    if(src.startsWith('/-',i)){ const j=src.indexOf('-/',i+2); const end=j<0?src.length:j+2; push('c',src.slice(i,end)); i=end; continue; }
+    if(src.startsWith('--',i)){ const j=src.indexOf('\n',i); const end=j<0?src.length:j; push('c',src.slice(i,end)); i=end; continue; }
+    if(src[i]==='"'){ let j=i+1; while(j<src.length&&!(src[j]==='"'&&src[j-1]!=='\\')) j++; push('s',src.slice(i,j+1)); i=j+1; continue; }
+    let j=i; while(j<src.length && !src.startsWith('/-',j) && !src.startsWith('--',j) && src[j]!=='"') j++;
+    const chunk=src.slice(i,j);
+    out.push(e(chunk)
+      .replace(/\b(Prop|Type|Sort)\b/g,'<span class="t">$1</span>')
+      .replace(LEAN_KW,'<span class="k">$1</span>'));
+    i=j;
+  }
+  return out.join('');
+}
+
+function sec(title, bodyHtml, open){
+  return `<details class="sec"${open?' open':''}><summary>${e(title)}</summary><div class="body">${bodyHtml}</div></details>`;
+}
+function chips(names, cls){
+  if(!names || !names.length) return '<span class="empty" style="padding:0">none</span>';
+  return '<div class="chips">'+names.map(n=>`<code class="${cls||'jump'}" data-n="${e(n)}">${e(n)}</code>`).join('')+'</div>';
+}
+function wireChips(){
+  pane.querySelectorAll('.chips code').forEach(c=>c.onclick=()=>go('audit/'+encodeURIComponent(c.dataset.n)));
+}
+
+/* ---- the theorem audit page ------------------------------------------ */
+async function showAudit(name){
+  markNav('');
+  crumb.innerHTML=`<b>Audit</b><code style="color:var(--muted)">${e(name)}</code>`;
+  showPane('<div class="empty">Gathering source, elaboration and dependencies…</div>');
+  let d;
+  try{ d = await api('/api/declaration/'+encodeURIComponent(name)); }
+  catch(_){ return showPane(`<div class="empty">Nothing known about <code>${e(name)}</code>.</div>`); }
+  if(d.detail) return showPane(`<div class="empty">${e(d.detail)}</div>`);
+
+  const src=d.source, el=d.elaborated, gs=d.graphStatus||{};
+  let h='<div class="audit">';
+  h+=`<h2>${e(d.name)}</h2><div class="where">`
+   + (src?`<code>${e(src.path)}:${src.line}</code>`:'<em>no source location found</em>')
+   + (el&&el.kind?` · ${e(el.kind)}`:'') + (el&&el.module?` · <code>${e(el.module)}</code>`:'')
+   + `</div>`;
+
+  if(gs.stale) h+=`<div class="stale"><b>The dependency graph is out of date.</b> ${e(gs.newerSource||'A source file')} is newer than the saved index, so proof dependencies below may name declarations that have since changed. Rebuild with <code>${e(gs.rebuild||'')}</code>.</div>`;
+
+  if(el&&el.docstring) h+=sec('Docstring', `<div style="white-space:pre-wrap;font-size:13px">${e(el.docstring)}</div>`, true);
+
+  if(el) h+=sec('Elaborated signature — what the compiler sees',
+      `<pre class="lean">${leanHl(el.signature||el.type||'')}</pre>`
+    + `<dl class="kv"><dt>structural hash</dt><dd>${e(el.hashes.expr||'—')}</dd>`
+    + `<dt>printed-type hash</dt><dd>${e((el.hashes.text||'').slice(0,32)||'—')}</dd>`
+    + `<dt>is a Prop</dt><dd>${el.isProp===null?'—':el.isProp}</dd></dl>`, true);
+  else h+=sec('Elaborated signature', `<div class="empty" style="padding:6px 0">${e(d.elaboratedHint||'Not elaborated.')}</div>`);
+
+  if(src) h+=sec('Source as written — statement and proof',
+      `<pre class="lean">${leanHl(src.full || src.header || '')}</pre>`, true);
+
+  if(d.closure){
+    const c=d.closure;
+    h+=sec(`Statement closure — the vocabulary this theorem is stated in (${(c.unfolded||[]).length} unfolded, ${(c.leaves||[]).length} leaf)`,
+      `<p style="color:var(--muted);font-size:12px">What the <em>statement</em> depends on. This is what decides whether a theorem is phrased in the paper's vocabulary or in a private one.</p>`
+      + `<b style="font-size:12px">Boundary vocabulary</b>${chips(c.boundary)}`
+      + `<b style="font-size:12px;display:block;margin-top:10px">Unfolded project constants</b>${chips(c.unfolded)}`
+      + `<b style="font-size:12px;display:block;margin-top:10px">Leaves</b>${chips(c.leaves)}`);
+  }
+
+  if(el && el.typeDeps && el.typeDeps.length)
+    h+=sec(`Type dependencies (${el.typeDeps.length})`, chips(el.typeDeps));
+
+  const pr=d.proof;
+  if(pr){
+    h+=sec(`Proof dependencies — ${pr.nodeCount} declaration(s), ${pr.edgeCount} edge(s)`,
+      (pr.axioms?`<b style="font-size:12px">Axioms</b>${chips(pr.axioms)}<div style="height:10px"></div>`:'')
+      + `<b style="font-size:12px">By library</b><table><tr><th>library</th><th>declarations</th></tr>`
+      + Object.entries(pr.byLibrary||{}).map(([k,v])=>`<tr><td>${e(k)}</td><td>${v}</td></tr>`).join('')+'</table>'
+      + `<b style="font-size:12px;display:block;margin-top:10px">Direct dependencies</b>`
+      + ((pr.direct||[]).length?`<table><tr><th>role</th><th>declaration</th><th>kind</th></tr>`
+          + pr.direct.map(x=>`<tr><td>${e(x.role)}</td><td><a class="name" data-n="${e(x.name)}">${e(x.name)}</a></td><td>${e(x.kind||'')}</td></tr>`).join('')+'</table>'
+        : '<span class="empty" style="padding:0">none in project</span>'));
+  } else {
+    h+=sec('Proof dependencies', `<div class="empty" style="padding:6px 0">${e(d.proofHint||'No dependency information.')}</div>`);
+  }
+
+  const occ=d.occurrences||[];
+  h+=sec(`Registered in ${new Set(occ.map(o=>o.view+'/'+o.slug)).size} ledger(s) — ${occ.length} mention(s)`,
+    occ.length?`<table><tr><th>ledger</th><th>view</th><th>row</th><th>field</th></tr>`
+      + occ.map(o=>`<tr><td><a class="name" data-v="${e(o.view)}" data-s="${e(o.slug)}" data-r="${e(o.row)}">${e(o.document)}</a></td>
+          <td>${e(o.view)}</td><td>${e(o.row)}</td><td><code>${e(o.field)}</code></td></tr>`).join('')+'</table>'
+    : '<span class="empty" style="padding:0">No ledger registers this declaration.</span>', true);
+
+  h+='</div>';
+  showPane(h);
+  wireChips();
+  pane.querySelectorAll('a.name[data-n]').forEach(a=>a.onclick=()=>go('audit/'+encodeURIComponent(a.dataset.n)));
+  pane.querySelectorAll('a.name[data-v]').forEach(a=>a.onclick=()=>{
+    go(`view/${a.dataset.v}/${a.dataset.s}`);
+    if(a.dataset.r) setTimeout(()=>frame.contentWindow.postMessage({aiq:'scroll-to',id:a.dataset.r},'*'),700);
+  });
+}
+
+/* ---- dependency overview --------------------------------------------- */
+async function showDeps(name){
+  markNav('deps');
+  const st = await api('/api/graph/status');
+  crumb.innerHTML='<b>Dependencies</b><span class="chip">proof structure</span>';
+  if(!st.present) return showPane(`<div class="empty">No saved dependency graph.<br><br>Build one with <code>${e(st.rebuild||'leanq graph-index --out build/leanq/project-semantic-graph.json')}</code>, or run <code>./viz-proof-structure.sh</code>.</div>`);
+  let h='<div class="audit">';
+  if(st.stale) h+=`<div class="stale"><b>Out of date.</b> ${e(st.newerSource||'A source file')} is newer than the index. Rebuild with <code>${e(st.rebuild)}</code>.</div>`;
+  h+=`<dl class="kv"><dt>index</dt><dd>${e(st.path)}</dd><dt>declarations</dt><dd>${st.declarations}</dd>
+      <dt>status</dt><dd>${st.stale?'stale':'current'}</dd></dl>
+      <p style="color:var(--muted)">Pick any declaration to see its proof dependencies, axioms and statement closure. Search above, or open one from a census row.</p>`;
+  const shared=await api('/api/xref?shared=true&limit=40');
+  h+='<b style="font-size:12px">Declarations several ledgers depend on</b><table><tr><th>declaration</th><th>ledgers</th></tr>'
+   + shared.shared.map(x=>`<tr><td><a class="name" data-n="${e(x.name)}">${e(x.name)}</a></td><td>${x.documents}</td></tr>`).join('')+'</table></div>';
+  showPane(h);
+  pane.querySelectorAll('a.name').forEach(a=>a.onclick=()=>go('audit/'+encodeURIComponent(a.dataset.n)));
+}
+
+/* ---- catalog + sidebar ---------------------------------------------- */
+async function loadCatalog(refresh){
+  catalog = await api('/api/catalog'+(refresh?'?refresh=true':''));
+  const byView={};
+  for(const d of catalog.documents) (byView[d.view] ||= []).push(d);
+  let h = '<input class="filter" id="navfilter" placeholder="Filter ledgers…" autocomplete="off">';
+  h += '<h2>Overview</h2>'
+     + '<a data-route="view/workspace" data-t="workspace everything">Workspace<small>every ledger, one summary</small></a>'
+     + '<a data-route="shared" data-t="shared declarations">Shared declarations<small>what the ledgers agree on</small></a>'
+     + '<a data-route="deps" data-t="dependencies proof graph">Dependencies<small>proof structure and axioms</small></a>'
+     + '<a data-route="journal" data-t="journal annotations">Journal<small>annotation history</small></a>';
+  for(const v of catalog.views){
+    const docs=byView[v.name]; if(!docs||!docs.length) continue;
+    h += `<h2>${e(v.label)}</h2>`;
+    for(const d of docs)
+      h += `<a data-route="view/${e(d.view)}/${e(d.slug)}" data-t="${e((d.title+' '+d.path).toLowerCase())}">${e(d.title)}<small>${e(d.path)}</small></a>`;
+  }
+  nav.innerHTML=h;
+  nav.querySelectorAll('a').forEach(a=>a.onclick=ev=>{ev.preventDefault(); go(a.dataset.route);});
+  $('#navfilter').oninput=ev=>{
+    const t=ev.target.value.toLowerCase();
+    nav.querySelectorAll('a').forEach(a=>a.style.display=(!t||a.dataset.t.includes(t))?'':'none');
+    nav.querySelectorAll('h2').forEach(x=>x.style.display=t?'none':'');
+  };
+  route();
+}
+
+/* ---- search ---------------------------------------------------------- */
+let timer=null;
+qIn.oninput=()=>{ clearTimeout(timer); const q=qIn.value.trim();
+  if(q.length<2){ if(current) showFrame(`/view/${current.view}${current.slug?'/'+current.slug:''}`); return; }
+  timer=setTimeout(()=>runSearch(q),200); };
+
+function hl(text,q){ const i=text.toLowerCase().indexOf(q.toLowerCase());
+  return i<0?e(text):e(text.slice(0,i))+'<mark>'+e(text.slice(i,i+q.length))+'</mark>'+e(text.slice(i+q.length)); }
+
+async function runSearch(q){
+  const [decls, text] = await Promise.all([
+    api('/api/xref?q='+encodeURIComponent(q)+'&limit=12'),
+    api('/api/search?q='+encodeURIComponent(q)+'&limit=40')
+  ]);
+  hits=[]; let h='';
+  if(decls.names && decls.names.length){
+    h+='<div class="group">Declarations</div>';
+    decls.names.forEach(n=>{ hits.push({kind:'decl', name:n.name});
+      h+=`<div class="hit" data-i="${hits.length-1}"><div class="d"><code>${hl(n.name,q)}</code></div>
+          <div class="f">${n.occurrences} mention(s) in ${n.documents} ledger(s)</div></div>`; });
+  }
+  if(text.hits && text.hits.length){
+    h+=`<div class="group">In ledger text${text.truncated?' (first '+text.hits.length+')':''}</div>`;
+    text.hits.forEach(x=>{ hits.push({kind:'row', view:x.view, slug:x.slug});
+      h+=`<div class="hit" data-i="${hits.length-1}"><div class="d">${e(x.document)}</div>
+          <div class="f">${e(x.field)}</div><div class="x">${hl(x.excerpt,q)}</div></div>`; });
+  }
+  if(!hits.length) return showPane(`<div class="empty">Nothing matches <code>${e(q)}</code>.</div>`);
+  crumb.innerHTML=`<b>Search</b><span class="chip a">${hits.length} result(s) for “${e(q)}”</span><span class="chip">↑↓ then Enter</span>`;
+  showPane(h);
+  cursor=-1;
+  pane.querySelectorAll('.hit').forEach(d=>d.onclick=()=>open_(+d.dataset.i));
+}
+function open_(i){ const x=hits[i]; if(!x) return;
+  if(x.kind==='decl') go('audit/'+encodeURIComponent(x.name)); else go(`view/${x.view}/${x.slug}`); }
+function moveCursor(d){ const els=[...pane.querySelectorAll('.hit')]; if(!els.length) return;
+  cursor=Math.max(0,Math.min(els.length-1,cursor+d));
+  els.forEach(x=>x.classList.remove('cur')); els[cursor].classList.add('cur');
+  els[cursor].scrollIntoView({block:'nearest'}); }
+
+/* ---- keyboard -------------------------------------------------------- */
+addEventListener('keydown', ev=>{
+  if(ev.key==='/' && document.activeElement!==qIn){ ev.preventDefault(); qIn.focus(); qIn.select(); return; }
+  if(ev.key==='Escape'){ if(side.classList.contains('show')) side.classList.remove('show');
+    else if(pane.classList.contains('show')&&current){ qIn.value=''; showFrame(`/view/${current.view}${current.slug?'/'+current.slug:''}`);} return; }
+  if(!pane.classList.contains('show')) return;
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); moveCursor(1); }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); moveCursor(-1); }
+  else if(ev.key==='Enter'&&cursor>=0){ ev.preventDefault(); open_(+pane.querySelectorAll('.hit')[cursor].dataset.i); }
+});
+
+/* ---- messages from a viewer frame ------------------------------------ */
+addEventListener('message', ev=>{
+  const m=ev.data||{};
+  if(m.aiq==='declaration') go('decl/'+encodeURIComponent(m.name));
+  else if(m.aiq==='focus-search'){ qIn.focus(); qIn.select(); }
+});
+
+/* ---- buttons + live -------------------------------------------------- */
+$('#sharedBtn').onclick=()=>go('shared');
+$('#journalBtn').onclick=()=>go('journal');
+$('#reloadBtn').onclick=()=>loadCatalog(true);
 
 function connect(){
-  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/live');
-  ws.onopen = () => $('#live').classList.add('on');
-  ws.onclose = () => { $('#live').classList.remove('on'); setTimeout(connect, 2000); };
-  ws.onmessage = ev => {
-    const m = JSON.parse(ev.data);
-    bar.style.display = 'block';
-    bar.textContent = m.kind === 'edited'
-      ? 'Annotation written — reloading the view.'
-      : 'Changed on disk: ' + (m.files || []).join(', ');
-    setTimeout(() => bar.style.display = 'none', 4000);
-    if (current) frame.src = '/view/' + current + '?t=' + Date.now();
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live');
+  ws.onopen=()=>$('#live').classList.add('on');
+  ws.onclose=()=>{ $('#live').classList.remove('on'); setTimeout(connect,2000); };
+  ws.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    bar.style.display='block';
+    bar.textContent = m.kind==='edited' ? 'Annotation written — reloading.' : 'Changed on disk: '+(m.files||[]).join(', ');
+    setTimeout(()=>bar.style.display='none',4000);
+    if(current && !pane.classList.contains('show'))
+      frame.src=themedUrl(`/view/${current.view}${current.slug?'/'+current.slug:''}`)+`&t=${Date.now()}`;
   };
 }
-
+frame.addEventListener('load', pushTheme);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(theme==='system') pushTheme(); });
 loadCatalog(false).then(connect);
 </script>

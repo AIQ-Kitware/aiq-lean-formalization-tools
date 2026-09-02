@@ -1,0 +1,120 @@
+/* Shared theme for every viewer.
+ *
+ * Six of the seven viewers were written with no colour scheme at all: no
+ * `color-scheme`, no background, a couple of hardcoded greys. A browser in dark
+ * mode rendered them white, which is wrong on its own and worse inside the dark
+ * shell. This supplies the tokens and the base element styling they never had.
+ *
+ * It is injected *before* each viewer's own <style>, so a viewer that has
+ * already styled something keeps its own rules; this only fills in what was
+ * never specified. The alignment viewer defines the same token names later and
+ * therefore continues to win.
+ *
+ * Three theme states, matching the shell: an explicit data-theme on the root
+ * wins in both directions, and the unset default follows prefers-color-scheme.
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #fbfbf9;
+  --panel: #ffffff;
+  --ink: #1a1c1a;
+  --muted: #6b6f6b;
+  --line: #e2e4df;
+  --line-soft: #eeefea;
+  --accent: #2f6f4f;
+  --accent-soft: #eaf2ec;
+  --warn: #8a5a00;
+  --warn-soft: #fdf3e0;
+  --bad: #a33a2a;
+  --bad-soft: #fbeae6;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131519;
+    --panel: #1a1d22;
+    --ink: #e7e9e6;
+    --muted: #969c9b;
+    --line: #2a2e35;
+    --line-soft: #22262c;
+    --accent: #74c495;
+    --accent-soft: #1d2a23;
+    --warn: #e2b467;
+    --warn-soft: #2a2418;
+    --bad: #e08a76;
+    --bad-soft: #2e1d19;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131519;
+  --panel: #1a1d22;
+  --ink: #e7e9e6;
+  --muted: #969c9b;
+  --line: #2a2e35;
+  --line-soft: #22262c;
+  --accent: #74c495;
+  --accent-soft: #1d2a23;
+  --warn: #e2b467;
+  --warn-soft: #2a2418;
+  --bad: #e08a76;
+  --bad-soft: #2e1d19;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* The containers these viewers actually use. Borders were `#8885` -- a
+ * translucent grey that survives either theme but reads as unfinished; the
+ * token tracks the rest of the page instead. */
+article,
+section.row,
+.decl,
+.card,
+fieldset {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+table { border-collapse: collapse; }
+th, td { border-color: var(--line); }
+th { color: var(--muted); }
+thead th { background: var(--line-soft); }
+
+code, pre, kbd, samp { font-family: var(--mono); }
+pre {
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+code { color: inherit; }
+
+.meta, .empty, small { color: var(--muted); }
+
+a { color: var(--accent); }
+
+input, select, textarea, button {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 9px;
+  font: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+
+::selection { background: var(--accent-soft); }

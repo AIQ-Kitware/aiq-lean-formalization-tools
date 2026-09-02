@@ -21,6 +21,8 @@ from typing import Any
 from ..viewer import read_asset, viewer_html
 from .edits import EditRefused, apply_edit, read_journal
 from .registry import Catalog
+from .declaration import DeclarationService
+from .xref import Xref
 
 # Imported at module scope, not inside create_app: this module uses
 # ``from __future__ import annotations``, so FastAPI resolves a route's
@@ -62,6 +64,25 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     app.state.root = root
     app.state.catalog = catalog
     app.state.sockets: set[Any] = set()
+    xref = Xref()
+    app.state.xref = xref
+    decls = DeclarationService(root)
+    app.state.declarations = decls
+
+    def refresh_xref() -> Xref:
+        """Keep the index in step with the files, cheaply.
+
+        Documents are re-indexed only when their stat changes, so this is a
+        no-op on every request but the first after an edit.
+        """
+        for doc in catalog.documents():
+            try:
+                st = doc.path.stat()
+                payload, title = catalog.payload(doc.view, doc.slug)
+            except Exception:
+                continue
+            xref.add_document(doc.view, doc.slug, title, payload, (st.st_mtime_ns, st.st_size))
+        return xref
 
     # -- catalog and payloads ---------------------------------------------
 
@@ -95,7 +116,7 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     # -- rendered viewers, identical to the static files ------------------
 
     @app.get("/view/{view}/{slug}", response_class=HTMLResponse)
-    def view_page(view: str, slug: str) -> HTMLResponse:
+    def view_page(view: str, slug: str, theme: str | None = None) -> HTMLResponse:
         spec = catalog.spec(view)
         if spec is None:
             raise HTTPException(404, f"unknown view {view}")
@@ -103,15 +124,15 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
             payload, doc_title = catalog.payload(view, slug)
         except KeyError:
             raise HTTPException(404, f"no {view} document named {slug}")
-        return HTMLResponse(viewer_html(spec.asset, doc_title, payload))
+        return HTMLResponse(_with_bridge(viewer_html(spec.asset, doc_title, payload), theme))
 
     @app.get("/view/workspace", response_class=HTMLResponse)
-    def workspace_page(source_audit: bool = False) -> HTMLResponse:
+    def workspace_page(source_audit: bool = False, theme: str | None = None) -> HTMLResponse:
         from ..workspace import FormalizationWorkspace
 
         ws = FormalizationWorkspace.discover(root)
         data = ws.payload(include_source_audit=source_audit)
-        return HTMLResponse(viewer_html("workspace_viewer.html", ws.payload_title(data), data))
+        return HTMLResponse(_with_bridge(viewer_html("workspace_viewer.html", ws.payload_title(data), data), theme))
 
     # -- search across every ledger at once -------------------------------
 
@@ -140,6 +161,59 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
                     if len(hits) >= limit:
                         return JSONResponse({"query": q, "hits": hits, "truncated": True})
         return JSONResponse({"query": q, "hits": hits, "truncated": False})
+
+    # -- cross references --------------------------------------------------
+
+    @app.get("/api/xref")
+    def api_xref(q: str | None = None, shared: bool = False, limit: int = 40) -> JSONResponse:
+        idx = refresh_xref()
+        if q:
+            return JSONResponse({"query": q, "names": idx.search(q, limit=limit)})
+        if shared:
+            return JSONResponse({"shared": idx.shared()[:limit], "stats": idx.stats()})
+        return JSONResponse(idx.stats())
+
+    @app.get("/api/xref/{name:path}")
+    def api_xref_name(name: str) -> JSONResponse:
+        idx = refresh_xref()
+        return JSONResponse({"name": name, "occurrences": idx.occurrences(name)})
+
+    @app.get("/api/rows/{view}/{slug}")
+    def api_rows(view: str, slug: str) -> JSONResponse:
+        """The navigable rows of one document, for a jump-to list."""
+        try:
+            payload, _ = catalog.payload(view, slug)
+        except KeyError:
+            raise HTTPException(404, f"no {view} document named {slug}")
+        return JSONResponse({"rows": _rows_of(payload)})
+
+    @app.get("/api/declaration/{name:path}")
+    def api_declaration(name: str, proof: bool = True) -> JSONResponse:
+        """Source, elaboration, closure, proof dependencies and every ledger row."""
+        detail = decls.detail(name, with_proof=proof)
+        detail["occurrences"] = refresh_xref().occurrences(name)
+        if not detail.get("source") and not detail.get("elaborated") and not detail["occurrences"]:
+            raise HTTPException(404, f"nothing known about {name}")
+        return JSONResponse(detail)
+
+    @app.get("/api/graph/status")
+    def api_graph_status() -> JSONResponse:
+        return JSONResponse(decls.graph_status())
+
+    @app.get("/api/graph/{name:path}")
+    def api_graph(name: str, depth: int = 1) -> JSONResponse:
+        """Immediate proof dependencies, for the dependency view."""
+        detail = decls.detail(name, with_proof=True)
+        return JSONResponse(
+            {
+                "name": name,
+                "graphName": detail.get("graphName"),
+                "status": detail.get("graphStatus"),
+                "proof": detail.get("proof"),
+                "hint": detail.get("proofHint"),
+                "closure": detail.get("closure"),
+            }
+        )
 
     # -- annotation --------------------------------------------------------
 
@@ -205,6 +279,119 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
             task.cancel()
 
     return app
+
+
+def _rows_of(payload: Any) -> list[dict[str, Any]]:
+    """Navigable rows of a payload, wherever this schema happens to keep them."""
+    from .xref import _row_identity
+
+    for container in (
+        payload.get("data", {}).get("items") if isinstance(payload.get("data"), dict) else None,
+        payload.get("data", {}).get("rows") if isinstance(payload.get("data"), dict) else None,
+        payload.get("items"),
+        payload.get("rows"),
+        payload.get("results"),
+    ):
+        if isinstance(container, list) and container:
+            out = []
+            for node in container:
+                if not isinstance(node, dict):
+                    continue
+                ident = _row_identity(node)
+                if ident:
+                    out.append({"id": ident[0], "title": ident[1]})
+            if out:
+                return out
+    # An alignment payload keeps its rows one level down, per paper.
+    papers = payload.get("papers")
+    if isinstance(papers, list):
+        out = []
+        for paper in papers:
+            for node in (paper or {}).get("rows", []) or []:
+                if isinstance(node, dict) and node.get("id"):
+                    out.append({"id": node["id"], "title": node.get("title") or node["id"]})
+        return out
+    return []
+
+
+#: Injected into every served viewer page. The viewers are self-contained
+#: documents that know nothing about the shell around them, and rewriting seven
+#: of them to add navigation would fork each from its static twin. Instead the
+#: shell reaches in: declaration names become clickable, and a click is posted
+#: up to the parent frame, which owns routing.
+_BRIDGE = r"""
+<script>
+(function(){
+  if (window.top === window.self) return;   // opened directly: stay static
+  const NAME = /^[A-Za-z_][A-Za-z0-9_'\u2080-\u2089!?]*(\.[A-Za-z0-9_'\u2080-\u2089!?]+)+$/;
+  const link = el => {
+    const t = (el.textContent || '').trim();
+    if (!NAME.test(t) || t.length > 200 || el.dataset.xr) return;
+    el.dataset.xr = '1';
+    el.style.cursor = 'pointer';
+    el.style.textDecoration = 'underline dotted';
+    el.style.textUnderlineOffset = '2px';
+    el.title = 'Show every ledger that names ' + t;
+    el.addEventListener('click', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      parent.postMessage({aiq: 'declaration', name: t}, '*');
+    });
+  };
+  const scan = () => document.querySelectorAll('code, .decl h3 code, td code').forEach(link);
+  scan();
+  new MutationObserver(scan).observe(document.body, {childList: true, subtree: true});
+  document.addEventListener('keydown', ev => {
+    if (ev.key === '/' && !/input|textarea/i.test((ev.target.tagName || ''))) {
+      ev.preventDefault(); parent.postMessage({aiq: 'focus-search'}, '*');
+    }
+  });
+  // The shell asks for a row by its census id. Viewers anchor rows
+  // differently -- an exact id, a prefixed anchor, or nothing at all -- so try
+  // the cheap selectors first and fall back to finding the text.
+  addEventListener('message', ev => {
+    const m = ev.data || {};
+    if (m.aiq === 'theme') {
+      if (m.value === 'system') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', m.value);
+      return;
+    }
+    if (m.aiq !== 'scroll-to' || !m.id) return;
+    const esc = (window.CSS && CSS.escape) ? CSS.escape(m.id) : m.id.replace(/[^\w-]/g, '\\$&');
+    let el = document.getElementById(m.id)
+          || document.querySelector('[id$="-' + esc + '"]')
+          || document.querySelector('[data-id="' + esc + '"]');
+    if (!el) {
+      for (const c of document.querySelectorAll('code, td, h2, h3')) {
+        if ((c.textContent || '').trim() === m.id) { el = c; break; }
+      }
+    }
+    if (!el) return;
+    const box = el.closest('section, tr, .row, .decl, article') || el;
+    box.scrollIntoView({behavior: 'smooth', block: 'center'});
+    const prev = box.style.outline;
+    box.style.outline = '2px solid #2f6f4f';
+    box.style.outlineOffset = '3px';
+    setTimeout(() => { box.style.outline = prev; }, 2200);
+  });
+
+  parent.postMessage({aiq: 'ready', title: document.title}, '*');
+})();
+</script>
+"""
+
+
+def _with_bridge(page: str, theme: str | None = None) -> str:
+    """Attach the shell bridge, and stamp the shell's theme for the first paint.
+
+    An iframe is a separate document and never inherits the shell's
+    ``data-theme``, so a viewer opened inside a dark shell painted itself light
+    -- dark text on the dark ground showing through. The stamp avoids the flash;
+    the bridge's message handler keeps it in step when the theme is toggled.
+    """
+    if theme in ("dark", "light") and "<html" in page:
+        i = page.find("<html")
+        page = page[:i] + f'<html data-theme="{theme}"' + page[page.find(">", i):]
+    return page + _BRIDGE
 
 
 async def _watch_files(app, catalog: Catalog, interval: float = 1.0) -> None:

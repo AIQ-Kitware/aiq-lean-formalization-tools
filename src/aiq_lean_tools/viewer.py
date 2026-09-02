@@ -33,10 +33,27 @@ def read_asset(asset: str) -> str:
     return resources.files("aiq_lean_tools").joinpath(f"assets/{asset}").read_text(encoding="utf-8")
 
 
+def _with_theme(page: str) -> str:
+    """Put the shared theme in front of the viewer's own stylesheet.
+
+    Six of the seven viewers declared no colours at all, so a browser in dark
+    mode rendered them white. Injecting before their own <style> means a viewer
+    that already styles something keeps its rules and this only fills the gap.
+    """
+    css = read_asset("theme.css")
+    block = f'<style id="aiq-theme">\n{css}\n</style>'
+    marker = "<style"
+    i = page.find(marker)
+    if i == -1:
+        return page + block
+    return page[:i] + block + page[i:]
+
+
 def viewer_html(asset: str, title: str, payload: Any) -> str:
     """Render ``asset`` with ``payload`` embedded and ``title`` substituted."""
-    return (
+    page = (
         read_asset(asset)
         .replace("__TITLE__", _html.escape(str(title)))
         .replace("__PAYLOAD__", encode_payload(payload))
     )
+    return _with_theme(page)

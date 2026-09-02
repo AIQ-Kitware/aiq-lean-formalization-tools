@@ -130,3 +130,81 @@ def test_markers_separate_the_schemas():
 
     # A review needs both markers: `rows` alone is not decisive.
     assert not specs["review"].claims({"rows": []})
+
+
+# -- declaration audit ---------------------------------------------------
+
+LEAN = '''import Mathlib
+
+namespace Demo
+
+/-- A docstring that belongs to the theorem below. -/
+theorem alpha (n : Nat) : n = n := by
+  rfl
+
+/-- The next one, which must not be swallowed by the previous. -/
+theorem beta (n : Nat) : n + 0 = n := by
+  simp
+
+end Demo
+'''
+
+
+def test_full_declaration_includes_docstring_and_proof(tmp_path):
+    from aiq_lean_tools.server.declaration import _full_declaration
+
+    path = tmp_path / "Demo.lean"
+    path.write_text(LEAN, encoding="utf-8")
+    # `theorem alpha` is on line 6 (1-indexed).
+    text = _full_declaration(path, 6)
+    assert text is not None
+    assert "A docstring that belongs" in text, "the docstring above the theorem is part of it"
+    assert "theorem alpha" in text
+    assert "rfl" in text, "the proof body is what makes this auditable"
+    # Scanning forward from the docstring used to stop at the theorem itself,
+    # returning the docstring alone.
+    assert text.strip() != "/-- A docstring that belongs to the theorem below. -/"
+    assert "theorem beta" not in text, "must stop at the next declaration"
+
+
+def test_full_declaration_handles_a_missing_file(tmp_path):
+    from aiq_lean_tools.server.declaration import _full_declaration
+
+    assert _full_declaration(tmp_path / "nope.lean", 3) is None
+
+
+def test_graph_name_resolution_tries_the_qualified_spelling(tmp_path):
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    svc = DeclarationService(tmp_path)
+    svc.graph = lambda: {"table": {"TauCeti.Demo.alpha": object(), "Other.beta": object()}}
+
+    # Censuses use the short name; the graph index stores the qualified one.
+    assert svc.resolve_graph_name("Demo.alpha") == "TauCeti.Demo.alpha"
+    assert svc.resolve_graph_name("TauCeti.Demo.alpha") == "TauCeti.Demo.alpha"
+    assert svc.resolve_graph_name("Missing.gamma") is None
+
+
+def test_graph_name_resolution_refuses_an_ambiguous_suffix(tmp_path):
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    svc = DeclarationService(tmp_path)
+    svc.graph = lambda: {"table": {"A.thing": object(), "B.thing": object()}}
+    assert svc.resolve_graph_name("thing") is None
+
+
+def test_graph_status_reports_absence_rather_than_guessing(tmp_path):
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    status = DeclarationService(tmp_path).graph_status()
+    assert status["present"] is False
+
+
+def test_theme_is_injected_before_the_viewer_stylesheet():
+    from aiq_lean_tools.viewer import _with_theme
+
+    page = "<html><head><style>body{color:red}</style></head><body></body></html>"
+    out = _with_theme(page)
+    # The viewer's own rules must still come last so it keeps what it styled.
+    assert out.index('id="aiq-theme"') < out.index("body{color:red}")
+    assert "color-scheme" in out
