@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`leanq` re-read every source file on every declaration lookup.**
+  `candidate_declaration_modules` cost 2.2 seconds each, which is fine for the
+  handful of names a graph target needs and catastrophic for the several hundred
+  a large review packet seeds: 643 seeds spent twenty-three minutes re-reading
+  the tree before Lean was invoked at all. Indexed once per library; the same job
+  now reaches Lean in about two seconds.
+
 - Record `typeDeps` -- the constants a declaration's *type* uses -- in every
   `leanq` index mode beside the merged `deps` list, and bump the graph cache
   version. A dependency graph that cannot tell a statement edge from a proof

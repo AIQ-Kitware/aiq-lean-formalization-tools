@@ -10,7 +10,7 @@ module, follows only the local source import closure, and lets Lean elaborate th
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
@@ -24,6 +24,11 @@ _DECL_RE_TEMPLATE = (
     r"(?:(?:private|protected|noncomputable|unsafe|partial|scoped|local|opaque)\s+)*"
     r"(?:theorem|lemma|def|abbrev|structure|class|inductive|axiom)\s+"
     r"`?{name}`?(?=\s|\(|\{|:|$)"
+)
+#: The same shape, capturing whatever short name a declaration gives, so a whole
+#: library can be indexed in one pass instead of re-read once per lookup.
+_DECL_RE_ANY = re.compile(
+    _DECL_RE_TEMPLATE.replace("{name}", r"(?P<name>[^\s(){}:`]+)")
 )
 
 
@@ -45,6 +50,10 @@ class LeanProject:
     """A Lake project on disk."""
 
     root: Path
+    #: library -> {short declaration name: modules}, built lazily by
+    #: :meth:`declaration_index`.
+    _decl_index: dict[str, dict[str, list[str]]] = field(default_factory=dict, repr=False,
+                                                         compare=False)
 
     @property
     def lakefile(self) -> Path:
@@ -393,6 +402,30 @@ class LeanProject:
             )
         return [lib for lib in declared if lib in used]
 
+    def declaration_index(self, library: str) -> dict[str, list[str]]:
+        """Short declaration name -> the modules of ``library`` that declare it.
+
+        Built in one pass over the library's sources and cached on the project.
+        The previous implementation re-read every source file on every lookup,
+        which is fine for the handful of names a graph target needs and
+        catastrophic for the several hundred an alignment packet seeds: 2.2
+        seconds each, so 643 seeds cost twenty-three minutes of pure re-reading
+        before Lean was invoked at all.
+        """
+        cached = self._decl_index.get(library)
+        if cached is not None:
+            return cached
+        index: dict[str, list[str]] = {}
+        for module in self.source_modules(library):
+            try:
+                text = self.source_of(module).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for match in _DECL_RE_ANY.finditer(text):
+                index.setdefault(match.group("name"), []).append(module)
+        self._decl_index[library] = index
+        return index
+
     def candidate_declaration_modules(self, target: str) -> list[str]:
         """Every project source module whose text declares ``target``'s short name.
 
@@ -405,14 +438,9 @@ class LeanProject:
         short = target.rsplit(".", 1)[-1]
         first = target.split(".", 1)[0]
         candidate_libs = [first] if first in declared else declared
-        pattern = re.compile(_DECL_RE_TEMPLATE.replace("{name}", re.escape(short)))
         matches: list[str] = []
         for library in candidate_libs:
-            for module in self.source_modules(library):
-                path = self.source_of(module)
-                text = path.read_text(encoding="utf-8", errors="replace")
-                if pattern.search(text):
-                    matches.append(module)
+            matches.extend(self.declaration_index(library).get(short, ()))
         return list(dict.fromkeys(matches))
 
     def declaration_modules(self, targets: Sequence[str]) -> list[str]:
