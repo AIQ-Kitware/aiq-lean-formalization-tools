@@ -503,16 +503,18 @@ class CensusDocument:
                 out += ["**Completion holes:**", "", *[f"- {x}" for x in holes], ""]
         return "\n".join(out).rstrip() + "\n"
 
-    def render_html(self) -> str:
-        payload = {
+    def payload(self) -> dict:
+        return {
             "title": self.title,
             "family": self.family,
             "summary": self.summary(),
             "data": self.data,
         }
-        template = resources.files("aiq_lean_tools").joinpath("assets/census_viewer.html").read_text(encoding="utf-8")
-        encoded = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/").replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(self.title)).replace("__PAYLOAD__", encoded)
+
+    def render_html(self) -> str:
+        from .viewer import viewer_html
+
+        return viewer_html("census_viewer.html", self.title, self.payload())
 
 
 def _render_embedded_semantic_review(review: Mapping[str, Any]) -> list[str]:

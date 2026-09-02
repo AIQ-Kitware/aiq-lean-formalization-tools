@@ -219,9 +219,9 @@ class FormalizationWorkspace:
             data["source_audit"] = source_audit_summary(scan_lean_project(self.root))
         return data
 
-    def render_html(self, *, include_source_audit: bool = False) -> str:
+    def payload(self, *, include_source_audit: bool = False) -> dict:
         data = self.overview(include_source_audit=include_source_audit)
-        # Include compact row data for drill-down without needing a web server.
+        # Carried inline so the static page can drill down with no server behind it.
         data["census_rows"] = [
             {
                 "document": doc.path.relative_to(self.root).as_posix(),
@@ -238,11 +238,17 @@ class FormalizationWorkspace:
             }
             for bundle in self.coverage_bundles()
         ]
-        template = resources.files("aiq_lean_tools").joinpath("assets/workspace_viewer.html").read_text(encoding="utf-8")
+        return data
+
+    def payload_title(self, data: dict) -> str:
         title = data.get("manifest", {}).get("project_name") if isinstance(data.get("manifest"), dict) else None
-        title = title or self.root.name
-        encoded = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(str(title))).replace("__PAYLOAD__", encoded)
+        return str(title or self.root.name)
+
+    def render_html(self, *, include_source_audit: bool = False) -> str:
+        from .viewer import viewer_html
+
+        data = self.payload(include_source_audit=include_source_audit)
+        return viewer_html("workspace_viewer.html", self.payload_title(data), data)
 
 
 def _discovery_skip_parts(root: Path) -> set[str]:

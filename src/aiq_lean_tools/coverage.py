@@ -331,18 +331,23 @@ class CoverageBundle:
                 lines += [f"**Review note.** {row['review_note']}", ""]
         return "\n".join(lines).rstrip() + "\n"
 
-    def render_html(self) -> str:
-        payload = {
+    @property
+    def title(self) -> str:
+        return f"Formalization coverage: {self.results.path.stem}"
+
+    def payload(self) -> dict:
+        return {
             "summary": self.summary(),
             "results_path": str(self.results.path),
             "atoms_path": str(self.atoms.path) if self.atoms else None,
             "results": self.results.results,
             "atoms": self.atoms.atoms if self.atoms else [],
         }
-        template = resources.files("aiq_lean_tools").joinpath("assets/coverage_viewer.html").read_text(encoding="utf-8")
-        title = f"Formalization coverage: {self.results.path.stem}"
-        encoded = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/").replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(title)).replace("__PAYLOAD__", encoded)
+
+    def render_html(self) -> str:
+        from .viewer import viewer_html
+
+        return viewer_html("coverage_viewer.html", self.title, self.payload())
 
 
 def load_source_atom_inventory(path: str | pathlib.Path, *, root: str | pathlib.Path | None = None) -> SourceAtomInventoryDocument:

@@ -605,10 +605,9 @@ def render_alignment_html(payload: Mapping[str, Any]) -> str:
     import html as _html
     import json as _json
 
-    template = resources.files("aiq_lean_tools").joinpath("assets/alignment_viewer.html").read_text(encoding="utf-8")
-    text = _json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    text = text.replace("<", r"\u003c").replace(">", r"\u003e").replace("&", r"\u0026")
-    return template.replace("__TITLE__", _html.escape(str(payload.get("title", "")))).replace("__PAYLOAD__", text)
+    from .viewer import viewer_html
+
+    return viewer_html("alignment_viewer.html", payload.get("title", ""), payload)
 
 
 def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:

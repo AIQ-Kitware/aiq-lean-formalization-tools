@@ -252,10 +252,13 @@ class SemanticReviewDocument:
                 out += ["**Gap refs:** " + ", ".join(f"`{x}`" for x in row["gap_refs"]), ""]
         return "\n".join(out).rstrip() + "\n"
 
+    def payload(self) -> dict:
+        return {"title": self.title, "data": self.data}
+
     def render_html(self) -> str:
-        template = resources.files("aiq_lean_tools").joinpath("assets/review_viewer.html").read_text(encoding="utf-8")
-        payload = json.dumps({"title": self.title, "data": self.data}, ensure_ascii=False).replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(self.title)).replace("__PAYLOAD__", payload)
+        from .viewer import viewer_html
+
+        return viewer_html("review_viewer.html", self.title, self.payload())
 
 
 def load_semantic_review(path: str | pathlib.Path, *, root: str | pathlib.Path | None = None) -> SemanticReviewDocument:

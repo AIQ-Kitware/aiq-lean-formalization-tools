@@ -1,0 +1,141 @@
+<title>__TITLE__</title>
+<style>
+:root{
+  --bg:#fbfbf9; --panel:#fff; --ink:#1a1c1a; --muted:#6b6f6b; --line:#e0e2dd;
+  --accent:#2f6f4f; --accent-soft:#eaf2ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14161a; --panel:#1b1e23; --ink:#e6e8e6; --muted:#9aa0a0; --line:#2b2f36;
+  --accent:#6fbf8f; --accent-soft:#1e2a24; --warn:#e0b060; --warn-soft:#2a2418;
+}}
+:root[data-theme="dark"]{
+  --bg:#14161a; --panel:#1b1e23; --ink:#e6e8e6; --muted:#9aa0a0; --line:#2b2f36;
+  --accent:#6fbf8f; --accent-soft:#1e2a24; --warn:#e0b060; --warn-soft:#2a2418;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:14px;font-weight:620;margin:0;letter-spacing:-.01em;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:#bbb;flex:none}
+.dot.on{background:var(--accent)}
+input[type=search]{flex:1;min-width:150px;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:13px var(--sans)}
+main{flex:1;display:flex;min-height:0}
+nav{width:280px;flex:none;border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:8px}
+nav h2{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:14px 6px 5px}
+nav a{display:block;padding:5px 8px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:12.5px;line-height:1.35}
+nav a:hover{background:var(--accent-soft)}
+nav a.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav a small{display:block;color:var(--muted);font-size:11px;font-weight:400}
+section{flex:1;min-width:0;display:flex;flex-direction:column}
+iframe{flex:1;border:0;width:100%;background:var(--bg)}
+.pane{flex:1;overflow:auto;padding:16px 20px}
+.hit{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;background:var(--panel);cursor:pointer}
+.hit:hover{border-color:var(--accent)}
+.hit b{color:var(--accent);font-weight:600}
+.hit .f{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.empty{color:var(--muted);padding:20px}
+.bar{padding:5px 14px;background:var(--warn-soft);color:var(--warn);font-size:12px;border-bottom:1px solid var(--line);display:none}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+code{font-family:var(--mono);font-size:12px}
+button{font:12px var(--sans);padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+</style>
+
+<header>
+  <span class="dot" id="live"></span>
+  <h1>__TITLE__</h1>
+  <input type="search" id="q" placeholder="Search every ledger — declarations, clauses, notes…">
+  <button id="journal">Journal</button>
+  <button id="reload">Rescan</button>
+</header>
+<div class="bar" id="bar"></div>
+<main>
+  <nav id="nav"></nav>
+  <section>
+    <iframe id="frame" title="view"></iframe>
+    <div class="pane" id="pane" hidden></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const nav = $('#nav'), frame = $('#frame'), pane = $('#pane'), bar = $('#bar');
+let catalog = null, current = null;
+
+const e = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function showFrame(url){ pane.hidden = true; frame.hidden = false; frame.src = url; }
+function showPane(html){ frame.hidden = true; pane.hidden = false; pane.innerHTML = html; }
+
+async function loadCatalog(refresh){
+  catalog = await (await fetch('/api/catalog' + (refresh ? '?refresh=true' : ''))).json();
+  const byView = {};
+  for (const d of catalog.documents) (byView[d.view] ||= []).push(d);
+  let h = '<h2>Workspace</h2><a href="#" data-url="/view/workspace" class="w">Everything at once<small>all ledgers, one summary</small></a>';
+  for (const v of catalog.views){
+    const docs = byView[v.name];
+    if (!docs || !docs.length) continue;
+    h += `<h2>${e(v.label)}</h2>`;
+    for (const d of docs)
+      h += `<a href="#" data-url="/view/${e(d.view)}/${e(d.slug)}" data-key="${e(d.view)}/${e(d.slug)}">${e(d.title)}<small>${e(d.path)}</small></a>`;
+  }
+  nav.innerHTML = h;
+  nav.querySelectorAll('a').forEach(a => a.onclick = ev => {
+    ev.preventDefault();
+    nav.querySelectorAll('a').forEach(x => x.classList.remove('sel'));
+    a.classList.add('sel');
+    current = a.dataset.key || null;
+    showFrame(a.dataset.url);
+  });
+  const first = nav.querySelector('a');
+  if (first) first.click();
+}
+
+let timer = null;
+$('#q').oninput = ev => {
+  clearTimeout(timer);
+  const q = ev.target.value.trim();
+  if (q.length < 2) { if (current) showFrame('/view/' + current); return; }
+  timer = setTimeout(async () => {
+    const r = await (await fetch('/api/search?q=' + encodeURIComponent(q))).json();
+    if (!r.hits.length) return showPane('<div class="empty">No match for <code>' + e(q) + '</code> in any ledger.</div>');
+    showPane(`<p style="color:var(--muted)">${r.hits.length}${r.truncated ? '+' : ''} match(es) for <code>${e(q)}</code></p>` +
+      r.hits.map(h => `<div class="hit" data-url="/view/${e(h.view)}/${e(h.slug)}">
+        <b>${e(h.document)}</b> <span class="f">${e(h.field)}</span>
+        <div>${e(h.excerpt)}</div></div>`).join(''));
+    pane.querySelectorAll('.hit').forEach(d => d.onclick = () => showFrame(d.dataset.url));
+  }, 220);
+};
+
+$('#journal').onclick = async () => {
+  const r = await (await fetch('/api/journal')).json();
+  if (!r.entries.length) return showPane('<div class="empty">No annotations recorded yet.</div>');
+  showPane('<table><tr><th>when</th><th>who</th><th>document</th><th>field</th><th>before</th><th>after</th></tr>' +
+    r.entries.map(x => `<tr><td>${e(x.at)}</td><td>${e(x.author)}</td><td>${e(x.document)}</td>
+      <td><code>${e(x.pointer)}</code></td><td>${e(String(x.before).slice(0,90))}</td>
+      <td>${e(String(x.after).slice(0,90))}</td></tr>`).join('') + '</table>');
+};
+
+$('#reload').onclick = () => loadCatalog(true);
+
+function connect(){
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/live');
+  ws.onopen = () => $('#live').classList.add('on');
+  ws.onclose = () => { $('#live').classList.remove('on'); setTimeout(connect, 2000); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    bar.style.display = 'block';
+    bar.textContent = m.kind === 'edited'
+      ? 'Annotation written — reloading the view.'
+      : 'Changed on disk: ' + (m.files || []).join(', ');
+    setTimeout(() => bar.style.display = 'none', 4000);
+    if (current) frame.src = '/view/' + current + '?t=' + Date.now();
+  };
+}
+
+loadCatalog(false).then(connect);
+</script>

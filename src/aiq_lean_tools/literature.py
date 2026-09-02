@@ -317,11 +317,13 @@ class LiteratureDocument:
         lines += [r"\end{document}", ""]
         return "\n".join(lines)
 
+    def payload(self) -> dict:
+        return {"summary": self.summary(), "data": self.data}
+
     def render_html(self) -> str:
-        payload = {"summary": self.summary(), "data": self.data}
-        template = resources.files("aiq_lean_tools").joinpath("assets/literature_viewer.html").read_text(encoding="utf-8")
-        encoded = json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(self.title)).replace("__PAYLOAD__", encoded)
+        from .viewer import viewer_html
+
+        return viewer_html("literature_viewer.html", self.title, self.payload())
 
 
 def load_literature(path: str | pathlib.Path, *, root: str | pathlib.Path | None = None) -> LiteratureDocument:

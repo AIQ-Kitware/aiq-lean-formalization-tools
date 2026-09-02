@@ -292,10 +292,17 @@ class FoundationReport:
                 lines.append(f"- **{finding.level.upper()}** `{finding.code}`{loc}: {finding.message}")
         return "\n".join(lines).rstrip() + "\n"
 
+    @property
+    def title(self) -> str:
+        return self.foundation_map.title
+
+    def payload(self) -> dict:
+        return self.to_json()
+
     def render_html(self) -> str:
-        template = resources.files("aiq_lean_tools").joinpath("assets/foundation_viewer.html").read_text(encoding="utf-8")
-        payload = json.dumps(self.to_json(), ensure_ascii=False).replace("<", "\\u003c")
-        return template.replace("__TITLE__", html.escape(self.foundation_map.title)).replace("__PAYLOAD__", payload)
+        from .viewer import viewer_html
+
+        return viewer_html("foundation_viewer.html", self.title, self.payload())
 
 
 def _dependency_cycles(nodes: Sequence[FoundationNode]) -> tuple[set[str], tuple[tuple[str, ...], ...]]:

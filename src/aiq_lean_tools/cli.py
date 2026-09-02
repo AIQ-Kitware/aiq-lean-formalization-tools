@@ -194,6 +194,13 @@ def cmd_census_render(args) -> int:
     return _emit(text, args.out, getattr(args, "check", False))
 
 
+def cmd_serve(args) -> int:
+    from .server import serve
+
+    root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
+    return serve(root, host=args.host, port=args.port, title=args.title)
+
+
 def cmd_census_html(args) -> int:
     doc = load_census(args.path, root=args.root)
     out = Path(args.out) if args.out else doc.path.with_suffix(".html")
@@ -1528,6 +1535,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="aiq-lean", description="Reusable Lean formalization census, audit, and visualization tools")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
+
+    sv = sub.add_parser("serve", help="serve every viewer from one app, with cross-ledger search and annotation")
+    sv.add_argument("--root", help="repository root (default: cwd)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8800)
+    sv.add_argument("--title", default="Formalization workspace")
+    sv.set_defaults(func=cmd_serve)
+
 
     census = sub.add_parser("census", help="validate, edit, probe, and render source censuses")
     cs = census.add_subparsers(dest="census_command", required=True)
