@@ -12,7 +12,9 @@ from .common import (
     Finding, Path, atomic_write_json, infer_artifact_root, load_json, md_escape,
     dotted_set, dotted_delete, validate_source_locator,
 )
+from .correspondence import validate_correspondence
 from .errors import ValidationError
+from .source_pins import validate_source_pins
 from .statement_pins import validate_pins
 
 
@@ -92,11 +94,16 @@ class SemanticReviewDocument:
             locator = row.get("source_locator")
             if locator:
                 findings.extend(validate_source_locator(locator, rid, self.root))
+            claimed = [str(x) for x in decls] if isinstance(decls, list) else []
+            findings.extend(validate_pins(row, claimed=claimed, location=rid))
+            findings.extend(validate_source_pins(row, location=rid))
             findings.extend(
-                validate_pins(
+                validate_correspondence(
                     row,
-                    claimed=[str(x) for x in decls] if isinstance(decls, list) else [],
                     location=rid,
+                    declarations=claimed,
+                    relations=self.data.get("relation_definitions"),
+                    check_status=False,
                 )
             )
         if check_companion:

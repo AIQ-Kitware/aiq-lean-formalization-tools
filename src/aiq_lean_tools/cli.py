@@ -198,7 +198,8 @@ def cmd_serve(args) -> int:
     from .server import serve
 
     root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
-    return serve(root, host=args.host, port=args.port, title=args.title)
+    return serve(root, host=args.host, port=args.port, title=args.title,
+                 private_sources=args.private_sources, include_private=args.include_private)
 
 
 def cmd_census_html(args) -> int:
@@ -1206,6 +1207,16 @@ def cmd_imports_check(args) -> int:
 
 
 
+def _source_library(args):
+    """The source documents an alignment command reads, unless asked not to."""
+    from .source_model import SourceLibrary, load_private_config
+
+    if getattr(args, "no_sources", False):
+        return None
+    private = load_private_config(getattr(args, "private_sources", None))
+    return SourceLibrary.discover(getattr(args, "root", None), private=private)
+
+
 def cmd_alignment_render(args) -> int:
     packet = build_alignment_packet(
         args.census,
@@ -1218,6 +1229,9 @@ def cmd_alignment_render(args) -> int:
         sidecar=args.sidecar,
         library=args.lib,
         refresh=args.refresh,
+        sources=_source_library(args),
+        include_private=getattr(args, "include_private", False),
+        rows=getattr(args, "row", None) or (),
     )
     text = packet.render_markdown()
     status = _emit(text, args.out, getattr(args, "check", False))
@@ -1236,6 +1250,9 @@ def cmd_alignment_html(args) -> int:
         sidecar=args.sidecar,
         library=args.lib,
         refresh=args.refresh,
+        sources=_source_library(args),
+        include_private=getattr(args, "include_private", False),
+        rows=getattr(args, "row", None) or (),
     )
     graph = load_graph_table(args.graph) if args.graph else None
     payload = alignment_payload(packet, graph=graph, title=args.title)
@@ -1249,21 +1266,21 @@ def cmd_alignment_html(args) -> int:
 def _load_pin_document(path: str, root: str | None):
     """A census (items) or a standalone review (rows), told apart by shape."""
     from .statement_pins import census_pin_targets, review_pin_targets
+    from .source_pins import census_source_targets, review_source_targets
 
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(raw, dict) and isinstance(raw.get("rows"), list) and "items" not in raw:
         from .semantic_review import load_semantic_review
 
         doc = load_semantic_review(path, root=root)
-        return doc, review_pin_targets
+        return doc, review_pin_targets, review_source_targets
     doc = load_census(path, root=root)
-    return doc, census_pin_targets
+    return doc, census_pin_targets, census_source_targets
 
 
-def _pin_targets_and_records(args):
+def _statement_targets_and_records(args, doc, target_fn):
     from .statement_pins import statement_records
 
-    doc, target_fn = _load_pin_document(args.document, args.root)
     targets = target_fn(doc, row_ids=args.id or ())
     if not targets:
         raise SystemExit("no reviewed rows with declarations to pin in " + args.document)
@@ -1276,38 +1293,121 @@ def _pin_targets_and_records(args):
         doc.root, unique_in_order(seeds), sidecar=args.sidecar, library=args.lib,
         refresh=getattr(args, "refresh", False),
     )
-    return doc, targets, records, meta
+    return targets, records, meta
 
 
 def cmd_alignment_pin(args) -> int:
+    """Record what the review accepted: the elaborated types, and the passages.
+
+    Both halves are written in one pass so a row cannot end up pinned on one
+    side and unpinned on the other, which is exactly the state that makes a
+    later drift report ambiguous.
+    """
+    from .source_pins import pin_source_targets
     from .statement_pins import pin_targets
 
-    doc, targets, records, meta = _pin_targets_and_records(args)
-    written, findings = pin_targets(
-        targets, records, toolchain=str(meta.get("toolchain", "")), note=args.note or "",
-    )
+    doc, target_fn, source_fn = _load_pin_document(args.document, args.root)
+    findings: list = []
+    statements = sources = 0
+    if not args.source_only:
+        targets, records, meta = _statement_targets_and_records(args, doc, target_fn)
+        statements, found = pin_targets(
+            targets, records, toolchain=str(meta.get("toolchain", "")), note=args.note or "",
+        )
+        findings += found
+    if not args.statements_only:
+        library = _source_library(args)
+        if library is None:
+            print("source pins skipped: --no-sources")
+        else:
+            src_targets = source_fn(doc, row_ids=args.id or ())
+            sources, found = pin_source_targets(src_targets, library, note=args.note or "")
+            findings += found
     for finding in findings:
         print(finding)
     doc.write()
-    print(f"pinned {written} statement(s) on {len(targets)} row(s) in {doc.path}")
+    print(f"pinned {statements} statement(s) and {sources} source passage(s) in {doc.path}")
     return 1 if any(f.level == "error" for f in findings) else 0
 
 
 def cmd_alignment_check(args) -> int:
+    """Has either side of an accepted review moved since it was accepted?"""
+    from .correspondence import validate_correspondence
+    from .source_pins import check_source_targets, resolve_target
     from .statement_pins import check_pins
 
-    _, targets, records, _ = _pin_targets_and_records(args)
-    findings = check_pins(targets, records)
+    doc, target_fn, source_fn = _load_pin_document(args.document, args.root)
+    findings: list = []
+    pinned = rows = 0
+    if not args.source_only:
+        targets, records, _ = _statement_targets_and_records(args, doc, target_fn)
+        findings += check_pins(targets, records)
+        pinned = sum(len(t.pins) for t in targets)
+        rows = len(targets)
+    if not args.statements_only:
+        library = _source_library(args)
+        if library is None:
+            print("source checks skipped: --no-sources")
+        else:
+            src_targets = source_fn(doc, row_ids=args.id or ())
+            findings += check_source_targets(src_targets, library)
+            # With the documents in hand, a quoted excerpt can be checked
+            # against the passage it claims to come from.  Schema validation
+            # cannot do this: it does not read the source documents.
+            for target in src_targets:
+                resolved = resolve_target(target, library)
+                findings += validate_correspondence(
+                    target.container,
+                    location=target.location,
+                    fragment_text={k: v.plain for k, v in resolved.items()},
+                    relations=doc.data.get("relation_definitions"),
+                    check_status=False,
+                )
     for finding in findings:
         print(finding)
     errors = [f for f in findings if f.level == "error"]
     warnings = [f for f in findings if f.level == "warning"]
-    pinned = sum(len(t.pins) for t in targets)
     print(
-        f"{pinned} statement pin(s) on {len(targets)} row(s): "
+        f"{pinned} statement pin(s) on {rows} row(s): "
         f"{len(errors)} drifted or gone, {len(warnings)} warning(s)"
     )
     return 1 if errors else 0
+
+
+def cmd_alignment_adopt_source(args) -> int:
+    """Migrate a legacy ``source_locator`` into an explicit primary fragment.
+
+    Existing reviews carry one locator and no fragment list, and go on working:
+    the browser reads that locator as an implicit primary fragment.  This turns
+    it into a declared one, which is what makes it pinnable and what lets a row
+    add the inherited passages beside it.  Hundreds of repetitive edits are not
+    a reviewer's job.
+    """
+    doc, _, source_fn = _load_pin_document(args.document, args.root)
+    rows = doc.items if hasattr(doc, "items") else doc.rows
+    wanted = set(args.id or ())
+    changed = []
+    for row in rows:
+        rid = str(row.get("id", ""))
+        if wanted and rid not in wanted:
+            continue
+        container = row.get("semantic_review") if isinstance(row.get("semantic_review"), dict) else row
+        if container.get("source_fragments"):
+            continue
+        locator = container.get("source_locator") or row.get("source_locator")
+        if not locator:
+            continue
+        container["source_fragments"] = [
+            {"id": "source", "role": "primary", "locator": locator}
+        ]
+        changed.append(rid)
+    if args.dry_run:
+        print(f"would adopt a primary source fragment on {len(changed)} row(s): " + ", ".join(changed))
+        return 0
+    if changed:
+        doc.write()
+    print(f"adopted a primary source fragment on {len(changed)} row(s) in {doc.path}")
+    return 0
 
 
 def cmd_manifest_validate(args) -> int:
@@ -1541,6 +1641,12 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8800)
     sv.add_argument("--title", default="Formalization workspace")
+    sv.add_argument("--private-sources",
+                    help="JSON file, outside the repository, declaring local-only source documents "
+                         "(also read from AIQ_PRIVATE_SOURCES)")
+    sv.add_argument("--include-private", action="store_true",
+                    help="LOCAL ONLY: render private source excerpts in this browser session. "
+                         "Nothing is written to disk, but do not screen-share or export the page")
     sv.set_defaults(func=cmd_serve)
 
 
@@ -1683,6 +1789,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     alignment = sub.add_parser("alignment", help="build curated source-to-Lean review packets")
     als = alignment.add_subparsers(dest="alignment_command", required=True)
+
+    def add_source_args(sp) -> None:
+        sp.add_argument("--no-sources", action="store_true",
+                        help="do not resolve source locators; show only the review's own restatement")
+        sp.add_argument("--private-sources",
+                        help="JSON file, outside the repository, declaring local-only source documents "
+                             "(also read from AIQ_PRIVATE_SOURCES)")
+        sp.add_argument("--include-private", action="store_true",
+                        help="LOCAL ONLY: embed private source text in the output. Never use this for a "
+                             "file that is committed, published, or shared")
+
+    def add_row_arg(sp) -> None:
+        sp.add_argument("--row", action="append",
+                        help="review exactly this census row id, whatever its importance (repeatable)")
+
     a = als.add_parser("render")
     a.add_argument("census", nargs="+")
     a.add_argument("--root")
@@ -1696,6 +1817,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--sidecar", help="read statement records from this leanq sidecar JSONL instead of building one")
     a.add_argument("--lib", help="library label for the statement sidecar")
     a.add_argument("--refresh", action="store_true", help="rebuild the statement sidecar first")
+    add_source_args(a)
+    add_row_arg(a)
     a.set_defaults(func=cmd_alignment_render)
 
     a = als.add_parser("html", help="one self-contained review page: source statement, clauses, elaborated signatures, pin status, statement closures, and proof dependencies")
@@ -1711,6 +1834,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--json", action="store_true", help="write the page payload instead of HTML")
     a.add_argument("-o", "--out")
     a.add_argument("--check", action="store_true")
+    add_source_args(a)
+    add_row_arg(a)
     a.set_defaults(func=cmd_alignment_html)
 
     def add_pin_args(sp) -> None:
@@ -1721,13 +1846,25 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--lib", help="library label for the statement sidecar")
         sp.add_argument("--refresh", action="store_true", help="rebuild the statement sidecar first")
 
-    a = als.add_parser("pin", help="record the elaborated-type hashes of each reviewed declaration on its review row")
+    a = als.add_parser("pin", help="record the elaborated-type hashes of each reviewed declaration, and the content hash of each source passage it cites")
     add_pin_args(a)
+    add_source_args(a)
     a.add_argument("--note", help="free-text note stored with every pin written")
+    a.add_argument("--statements-only", action="store_true", help="do not touch source pins")
+    a.add_argument("--source-only", action="store_true", help="pin source passages only; do not invoke Lean")
     a.set_defaults(func=cmd_alignment_pin)
-    a = als.add_parser("check", help="fail when a pinned declaration's elaborated type differs from what the review accepted")
+    a = als.add_parser("check", help="fail when a pinned elaborated type, or a pinned source passage, differs from what the review accepted")
     add_pin_args(a)
+    add_source_args(a)
+    a.add_argument("--statements-only", action="store_true")
+    a.add_argument("--source-only", action="store_true", help="check source passages only; do not invoke Lean")
     a.set_defaults(func=cmd_alignment_check)
+    a = als.add_parser("adopt-source", help="turn a row's legacy single source_locator into an explicit primary source fragment")
+    a.add_argument("document")
+    a.add_argument("--root")
+    a.add_argument("--id", action="append")
+    a.add_argument("--dry-run", action="store_true")
+    a.set_defaults(func=cmd_alignment_adopt_source)
 
     history = sub.add_parser("history", help="summarize auditable Git and co-author provenance")
     hs = history.add_subparsers(dest="history_command", required=True)

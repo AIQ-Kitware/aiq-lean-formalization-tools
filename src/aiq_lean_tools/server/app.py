@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ..viewer import read_asset, viewer_html
+from .alignment import AlignmentService
 from .edits import EditRefused, apply_edit, read_journal
 from .registry import Catalog
 from .warmup import Readiness
@@ -58,7 +59,8 @@ def _require_fastapi() -> None:
         )
 
 
-def create_app(root: Path, *, title: str = "Formalization workspace"):
+def create_app(root: Path, *, title: str = "Formalization workspace",
+               private_sources: str | None = None, include_private: bool = False):
     _require_fastapi()
 
     root = Path(root).expanduser().resolve()
@@ -71,6 +73,9 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     app.state.xref = xref
     decls = DeclarationService(root)
     app.state.declarations = decls
+    alignment = AlignmentService(root, decls, private=private_sources,
+                                 include_private=include_private)
+    app.state.alignment = alignment
 
     # Pages are large -- the workspace view is 1.6 MB of JSON in a script tag --
     # and highly compressible.
@@ -85,6 +90,8 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     ready.declare("statements", "Loading elaborated statements", "elaborated signatures and closures")
     ready.declare("graph", "Loading the dependency graph", "proof dependencies and axioms")
     ready.declare("workspace", "Building the workspace summary", "the workspace view")
+    ready.declare("literature", "Reading literature source documents",
+                  "rendered source passages on the alignment view")
 
     # The workspace view rebuilds from every ledger in the repository, which
     # takes half a minute; it was doing that on each request. Cached against the
@@ -144,9 +151,24 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
         views = [{"name": s.name, "label": s.label} for s in catalog.specs]
         views.append({"name": "workspace", "label": "Workspace"})
         views.append({"name": "alignment", "label": "Alignment"})
+        # Every census can be read as an alignment surface, so the sidebar can
+        # offer one beside each. This used to advertise an "Alignment" view with
+        # no documents behind it and no route to serve one.
+        docs = docs + [
+            {"view": "alignment", "slug": d["slug"], "path": d["path"],
+             "title": d["title"]}
+            for d in docs if d["view"] == "census"
+        ]
         return JSONResponse(
             {"root": str(root), "title": title, "views": views, "documents": docs}
         )
+
+    @app.get("/api/payload/alignment/{slug}")
+    def api_alignment(slug: str, importance: str = "headline") -> JSONResponse:
+        doc = catalog.get("census", slug)
+        if doc is None:
+            raise HTTPException(404, f"no census named {slug}")
+        return JSONResponse(alignment.payload(doc.path, importance=importance)[0])
 
     @app.get("/api/payload/{view}/{slug}")
     def api_payload(view: str, slug: str) -> JSONResponse:
@@ -182,6 +204,27 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
 
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
         return HTMLResponse(page, headers={"ETag": etag, "Cache-Control": "no-cache"})
+
+    @app.get("/view/alignment/{slug}", response_class=HTMLResponse)
+    def alignment_page(request: Request, slug: str, importance: str = "headline",
+                       row: list[str] | None = None, theme: str | None = None) -> HTMLResponse:
+        doc = catalog.get("census", slug)
+        if doc is None:
+            raise HTTPException(404, f"no census named {slug}")
+        rows = tuple(row or ())
+        data, doc_title = alignment.payload(doc.path, importance=importance, rows=rows)
+        # The source documents are part of what this page is made of, so they
+        # belong in the tag. Without them, editing the reconstruction left the
+        # cached page showing the passage the review was accepted against --
+        # precisely the drift a source pin exists to notice.
+        key = ("alignment", slug, importance, rows, doc.path.stat().st_mtime_ns,
+               alignment.documents_stamp(), len(decls.statements()), theme)
+        return _cached_page(
+            key,
+            lambda: _with_bridge(
+                viewer_html("alignment_viewer.html", doc_title, data, math=True), theme),
+            request,
+        )
 
     @app.get("/view/{view}/{slug}", response_class=HTMLResponse)
     def view_page(request: Request, view: str, slug: str, theme: str | None = None) -> HTMLResponse:
@@ -250,6 +293,11 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
     @app.get("/api/rows/{view}/{slug}")
     def api_rows(view: str, slug: str) -> JSONResponse:
         """The navigable rows of one document, for a jump-to list."""
+        if view == "alignment":
+            doc = catalog.get("census", slug)
+            if doc is None:
+                raise HTTPException(404, f"no census named {slug}")
+            return JSONResponse({"rows": _rows_of(alignment.payload(doc.path)[0])})
         try:
             payload, _ = catalog.payload(view, slug)
         except KeyError:
@@ -367,6 +415,8 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
         ready.run("statements", decls.statements, describe=lambda m: f"{len(m)} elaborated statement(s)")
         ready.run("workspace", lambda: workspace_payload(False),
                   describe=lambda r: f"{len(r[0].get('census_rows', []))} census document(s)")
+        ready.run("literature", alignment.library,
+                  describe=lambda lib: f"{len(lib.documents)} source document(s)")
         ready.run("graph", decls.graph_status,
                   describe=lambda g: (f"{g['declarations']} declarations"
                                       + (" (stale)" if g.get("stale") else "")) if g and g.get("present")
@@ -557,11 +607,16 @@ def _excerpt(text: str, needle: str, width: int = 130) -> str:
     return ("…" if start else "") + out + ("…" if start + width < len(text) else "")
 
 
-def serve(root: Path, *, host: str = "127.0.0.1", port: int = 8800, title: str = "Formalization workspace") -> int:
+def serve(root: Path, *, host: str = "127.0.0.1", port: int = 8800,
+          title: str = "Formalization workspace", private_sources: str | None = None,
+          include_private: bool = False) -> int:
     _require_fastapi()
     import uvicorn
 
-    app = create_app(root, title=title)
+    app = create_app(root, title=title, private_sources=private_sources,
+                     include_private=include_private)
+    if include_private:
+        print("LOCAL MODE: private source excerpts will be rendered in this session")
     print(f"serving {root} at http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="warning")
     return 0

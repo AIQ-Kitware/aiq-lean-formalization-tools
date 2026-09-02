@@ -59,11 +59,16 @@ aiq-lean review html dev/paper-result-semantic-review.json
 # Curated source-to-Lean review packet from embedded semantic-review data
 aiq-lean alignment render dev/paper-full-source-census.json --importance headline
 aiq-lean alignment render dev/paper-full-source-census.json --statements
-# One self-contained review page per census: source statement, clauses, elaborated
-# signatures, pin status, statement closures, and proof dependencies
+# One self-contained review page per census: the literature passage with its
+# mathematics rendered, the clause-by-clause correspondence, and each Lean
+# declaration's source, elaborated signature, statement closure and dependencies
 aiq-lean alignment html dev/paper-full-source-census.json --statements \
     --graph build/leanq/project-semantic-graph.json -o build/paper-alignment.html
-# Pin the elaborated statement each review accepted, and fail when it moves
+aiq-lean alignment html dev/paper-full-source-census.json --row theorem-2 -o build/one.html
+# Migrate a legacy single `source_locator` into a declared primary fragment
+aiq-lean alignment adopt-source dev/paper-full-source-census.json
+# Pin what each review accepted -- the elaborated statement and the source
+# passage -- and fail when either moves
 aiq-lean alignment pin dev/paper-full-source-census.json --id theorem-2
 aiq-lean alignment check dev/paper-full-source-census.json
 aiq-lean alignment check dev/paper-result-semantic-review.json --sidecar .leanq/MyLibrary.statements-v1.jsonl
@@ -203,7 +208,7 @@ The package deliberately supports the census families that arose during the DK/Y
 
 The authoritative artifact is JSON. Markdown and HTML are generated views. The validators preserve paper-specific status vocabularies by reading each document's `*_definitions` tables rather than hard-coding one project's states.
 
-See `docs/census-model.md` for the shared conventions and `src/aiq_lean_tools/schemas/` for permissive interchange schemas.
+See `docs/source-model.md` for the literature-fragment model behind the alignment view, `docs/census-model.md` for the shared conventions and `src/aiq_lean_tools/schemas/` for permissive interchange schemas.
 
 ## Workspace discovery
 

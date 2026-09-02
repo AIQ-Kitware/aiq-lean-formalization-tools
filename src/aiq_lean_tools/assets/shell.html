@@ -353,7 +353,7 @@ frame.addEventListener('load', ()=>frameLoading(false));
 /* ---- Lean highlighting ------------------------------------------------ */
 /* Small on purpose: keywords, comments, strings and sorts. Enough to read a
    proof at a glance, and no CDN or grammar file to keep in step with Lean. */
-const LEAN_KW = new RegExp('\\b(' + [
+const LEAN_WORDS = [
  'theorem','lemma','def','abbrev','instance','structure','class','inductive','where','example',
  'by','fun','let','have','show','from','calc','match','with','do','if','then','else','at','in',
  'variable','universe','namespace','end','section','open','import','export','attribute','deriving',
@@ -362,7 +362,10 @@ const LEAN_KW = new RegExp('\\b(' + [
  'obtain','use','induction','ring','linarith','nlinarith','positivity','norm_num','field_simp',
  'unfold','change','convert','congr','ext','funext','subst','specialize','gcongr','bound','trans',
  'this','sorry','admit','all_goals','any_goals','first','try','repeat','focus','conv','push_cast'
-].join('|') + ')\\b','g');
+];
+/* One pass, two alternatives: chained replaces re-scanned inserted markup, and
+   `class` is a Lean keyword, so `<span class="t">` came out broken. */
+const LEAN_TOKEN = new RegExp('\\b(Prop|Type|Sort)\\b|\\b(' + LEAN_WORDS.join('|') + ')\\b', 'g');
 
 function leanHl(src){
   const out=[]; let i=0;
@@ -373,9 +376,8 @@ function leanHl(src){
     if(src[i]==='"'){ let j=i+1; while(j<src.length&&!(src[j]==='"'&&src[j-1]!=='\\')) j++; push('s',src.slice(i,j+1)); i=j+1; continue; }
     let j=i; while(j<src.length && !src.startsWith('/-',j) && !src.startsWith('--',j) && src[j]!=='"') j++;
     const chunk=src.slice(i,j);
-    out.push(e(chunk)
-      .replace(/\b(Prop|Type|Sort)\b/g,'<span class="t">$1</span>')
-      .replace(LEAN_KW,'<span class="k">$1</span>'));
+    out.push(e(chunk).replace(LEAN_TOKEN,
+      (m,t,k) => t ? `<span class="t">${t}</span>` : `<span class="k">${k}</span>`));
     i=j;
   }
   return out.join('');

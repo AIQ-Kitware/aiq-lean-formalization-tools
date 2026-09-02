@@ -151,7 +151,7 @@ end Demo
 
 
 def test_full_declaration_includes_docstring_and_proof(tmp_path):
-    from aiq_lean_tools.server.declaration import _full_declaration
+    from aiq_lean_tools.lean_source import full_declaration_text as _full_declaration
 
     path = tmp_path / "Demo.lean"
     path.write_text(LEAN, encoding="utf-8")
@@ -168,7 +168,7 @@ def test_full_declaration_includes_docstring_and_proof(tmp_path):
 
 
 def test_full_declaration_handles_a_missing_file(tmp_path):
-    from aiq_lean_tools.server.declaration import _full_declaration
+    from aiq_lean_tools.lean_source import full_declaration_text as _full_declaration
 
     assert _full_declaration(tmp_path / "nope.lean", 3) is None
 
@@ -334,3 +334,106 @@ def test_workspace_accepts_an_injected_source_index(tmp_path):
 
     for name in ("overview", "payload", "render_html"):
         assert "source_index" in inspect.signature(getattr(FormalizationWorkspace, name)).parameters
+
+
+# ---------------------------------------------------------------------------
+# The alignment view, served
+
+
+def _alignment_repo(tmp_path):
+    """A minimal repository: one census, one review, one marked source passage."""
+    (tmp_path / "prose").mkdir()
+    (tmp_path / "prose" / "paper.tex").write_text(
+        "% S-CERT-CLAIM-BEGIN T-1\n% S-CERT-SOURCE-BEGIN\n"
+        "Assume a gap $\\delta>0$.  Then the estimate holds.\n"
+        "% S-CERT-SOURCE-END\n% S-CERT-CLAIM-END T-1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "prose" / "literature.json").write_text(json.dumps({
+        "version": 1,
+        "reconstruction": {"note_root": "."},
+        "works": {"Paper": {
+            "title": "A paper", "authors": ["A. Author"], "year": 1970, "kind": "paper",
+            "target_note": "paper.tex",
+            "source_document": {"marker_prefix": "S-CERT", "format": "tex"},
+        }},
+    }), encoding="utf-8")
+    (tmp_path / "dev").mkdir()
+    (tmp_path / "dev" / "paper-full-source-census.json").write_text(json.dumps({
+        "schema_version": 1,
+        "primary_source": {"citation": "A. Author 1970"},
+        "status_definitions": {"done": "d"},
+        "verification_definitions": {"proved_in_build": "y"},
+        "importance_definitions": {"headline": "h"},
+        "items": [{
+            "id": "T-1", "title": "The estimate", "source_anchor": "Theorem 1",
+            "status": "done", "verification": "proved_in_build", "importance": "headline",
+            "lean_declarations": ["Paper.main"],
+            "semantic_review": {
+                "group": "g", "group_title": "The estimate", "claim": "c",
+                "canonical_declarations": ["Paper.main"],
+                "source_fragments": [{"id": "printed", "role": "primary",
+                                      "locator": {"document": "Paper", "marker": "T-1"}}],
+                "source_statement": {"setup": [], "hypotheses": ["gap"],
+                                     "conclusions": ["bound"], "scope": []},
+                "clause_map": [{"source_clause": "the estimate", "lean_realization": "Paper.main",
+                                "status": "claimed_exact", "source_fragment": "printed",
+                                "source_excerpt": "Then the estimate holds"}],
+            },
+        }],
+    }), encoding="utf-8")
+    return tmp_path
+
+
+def test_alignment_is_served_beside_the_census_it_reads(tmp_path):
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from aiq_lean_tools.server.app import create_app
+
+    root = _alignment_repo(tmp_path)
+    with TestClient(create_app(root)) as client:
+        catalog = client.get("/api/catalog").json()
+        slugs = {(d["view"], d["slug"]) for d in catalog["documents"]}
+        assert ("alignment", "paper-full-source-census") in slugs
+        assert ("census", "paper-full-source-census") in slugs
+
+        # The literal route must win over `/view/{view}/{slug}`.
+        page = client.get("/view/alignment/paper-full-source-census")
+        assert page.status_code == 200
+        assert b"Assume a gap" in page.content
+        assert b"data:font/woff2;base64," in page.content
+
+        payload = client.get("/api/payload/alignment/paper-full-source-census").json()
+        row = payload["papers"][0]["rows"][0]
+        assert row["sources"][0]["fragment"]["blocks"]
+        assert client.get("/api/rows/alignment/paper-full-source-census").json()["rows"] == [
+            {"id": "T-1", "title": "The estimate"}
+        ]
+        assert client.get("/view/alignment/no-such-census").status_code == 404
+
+
+def test_a_served_page_is_rerendered_only_when_its_inputs_change(tmp_path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from aiq_lean_tools.server.app import create_app
+
+    root = _alignment_repo(tmp_path)
+    with TestClient(create_app(root)) as client:
+        first = client.get("/view/alignment/paper-full-source-census")
+        etag = first.headers["etag"]
+        again = client.get("/view/alignment/paper-full-source-census",
+                           headers={"if-none-match": etag})
+        assert again.status_code == 304
+
+        # Editing the source document changes the page, so it must change the tag.
+        tex = root / "prose" / "paper.tex"
+        tex.write_text(tex.read_text().replace("the estimate holds", "a weaker estimate holds"),
+                       encoding="utf-8")
+        edited = client.get("/view/alignment/paper-full-source-census",
+                            headers={"if-none-match": etag})
+        assert edited.status_code == 200
+        assert b"a weaker estimate holds" in edited.content

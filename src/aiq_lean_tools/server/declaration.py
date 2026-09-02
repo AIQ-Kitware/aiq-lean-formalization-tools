@@ -28,19 +28,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ..lean_source import full_declaration_text
+
 #: Where statement sidecars are written by `leanq`/`aiq-lean alignment`.
 SIDECAR_DIR = ".leanq"
 #: Default saved graph index, as `viz-proof-structure.sh` writes it.
 GRAPH_PATH = "build/leanq/project-semantic-graph.json"
-
-#: Tokens that open a new top-level declaration, used to find where one ends.
-_DECL_STARTS = (
-    "theorem ", "lemma ", "def ", "abbrev ", "instance ", "structure ", "class ",
-    "inductive ", "example ", "noncomputable def ", "private theorem ", "private def ",
-    "protected theorem ", "protected def ", "@[", "namespace ", "end ", "section ",
-    "variable ", "open ", "import ", "/-- ",
-)
-
 
 class DeclarationService:
     """Read-only assembly of what the repository knows about a declaration."""
@@ -184,23 +177,10 @@ class DeclarationService:
         return value
 
     def resolve_graph_name(self, name: str) -> str | None:
-        """The graph's spelling of ``name``.
+        """The graph's spelling of ``name``; see :func:`alignment.resolve_graph_name`."""
+        from ..alignment import resolve_graph_name
 
-        Censuses and statement sidecars use the short name; the graph index
-        stores the fully qualified one, so an exact lookup silently misses every
-        declaration and every proof panel comes back empty.
-        """
-        table = (self.graph() or {}).get("table") or {}
-        if not table:
-            return None
-        if name in table:
-            return name
-        for prefix in ("TauCeti.", "TauCeti.DavisKahan.", ""):
-            if prefix + name in table:
-                return prefix + name
-        tail = "." + name.split(".")[-1]
-        matches = [k for k in table if k.endswith(tail)]
-        return matches[0] if len(matches) == 1 else None
+        return resolve_graph_name((self.graph() or {}).get("table") or {}, name)
 
     # -- the answer --------------------------------------------------------
 
@@ -226,7 +206,7 @@ class DeclarationService:
                 "line": decl.line,
                 "module": getattr(decl, "module", ""),
                 "header": text.render(),
-                "full": _full_declaration(decl.path, decl.line) if with_proof else None,
+                "full": full_declaration_text(decl.path, decl.line) if with_proof else None,
             }
             out["alternates"] = [
                 {
@@ -288,47 +268,3 @@ class DeclarationService:
                 f"`{status.get('rebuild')}` (about ten minutes)."
             )
         return out
-
-
-def _full_declaration(path: Path, line: int, limit: int = 500) -> str | None:
-    """The whole declaration, statement and proof, as written.
-
-    ``SourceDeclarationText.render`` deliberately stops before the proof body --
-    it answers "what does this say". Auditing a proof needs the body too.
-
-    The declaration's own line is never treated as a terminator: scanning
-    forward from the docstring instead of from the declaration made every
-    theorem end at its own first line, returning the docstring alone.
-    """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return None
-    decl = max(0, line - 1)
-    if decl >= len(lines):
-        return None
-
-    # Walk back over attributes, `omit ... in`, and a docstring block.
-    start = decl
-    while start > 0:
-        prev = lines[start - 1].rstrip()
-        stripped = prev.lstrip()
-        if stripped.startswith("@[") or stripped.startswith("omit ") or stripped.startswith("private ") or stripped.startswith("protected "):
-            start -= 1
-        elif prev.endswith("-/"):
-            start -= 1
-            while start > 0 and not lines[start].lstrip().startswith(("/--", "/-")):
-                start -= 1
-        elif stripped.startswith("/--") and stripped.endswith("-/"):
-            start -= 1
-        else:
-            break
-
-    out = lines[start : decl + 1]
-    for text in lines[decl + 1 : decl + limit]:
-        if text and not text[0].isspace() and any(text.startswith(t) for t in _DECL_STARTS):
-            break
-        out.append(text)
-    while out and not out[-1].strip():
-        out.pop()
-    return "\n".join(out) or None

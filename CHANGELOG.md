@@ -2,14 +2,101 @@
 
 ## Unreleased
 
+### The literature half of a semantic review
+
+A semantic review claims a Lean declaration says what a paper says. The Lean half
+was mechanical -- elaborated type, structural hash, statement closure, and a pin
+that fails when any of it moves. The paper half was a paragraph the reviewer
+typed into the ledger: not connected to the checked-in source document, not
+rendered as mathematics, and not noticed when the source document was edited
+underneath the review that had accepted it. `docs/source-model.md` describes what
+replaces it.
+
+- Add `aiq_lean_tools.source_model`: source documents, stable locators, resolved
+  fragments with their mathematics parsed into renderable blocks, and content
+  hashes. A document is declared by a `source_document` block on a work in the
+  literature manifest the repository already keeps; markers (`DK-CERT-CLAIM-BEGIN
+  …` / `-SOURCE-BEGIN` / `-SOURCE-END`) and line ranges both resolve, and a
+  locator citing a file no manifest declares is read anyway. `\newcommand`
+  definitions are collected from the document and its preamble so the page can
+  render the paper's own notation.
+- Add `aiq_lean_tools.correspondence`: a review's clause map read as edges, with
+  a small relation vocabulary a document may extend. `via_theorem`,
+  `representation_change` and `refutation` are assertions about *another*
+  theorem, so they must name it -- a representation change with no correspondence
+  theorem is a prose claim and now fails validation.
+- A row says how it reads its passage. Declaring `local` while citing a standing
+  condition inherited from elsewhere in the source is an error; declaring nothing
+  is a warning; `nonlocal` without a rationale is a warning. The classification
+  rests on link structure rather than on a boolean somebody typed. Davis--Kahan
+  Theorem 8.2 is the case this exists for: read as a self-contained passage it is
+  false, and only (1.5) and (3.5), standing since Sections 1 and 3, make it true.
+- A quoted `source_excerpt` is checked against the passage it cites, folding TeX
+  ties, `--` and typographic quotes so a quote copied from the `.tex` and one
+  copied off the rendered page both match.
+- Add source pins: `aiq-lean alignment pin` records the content hash of every
+  cited passage beside the elaborated-type hashes, and `alignment check` reports
+  `source-drift` when the reconstruction has been edited and
+  `source-pin-unresolved` when a marker is gone. The two are separate evidence
+  layers and are reported separately.
+- Add `aiq-lean alignment adopt-source`, which turns a legacy single
+  `source_locator` into a declared primary fragment. Until it is run, that
+  locator is read as an implicit primary passage, so every existing ledger --
+  including rows with no curated review at all -- shows its real source text
+  rather than nothing.
+- Rebuild `alignment html` as a three-lane comparison surface: the literature
+  passage with its mathematics rendered, the clause-by-clause correspondence, and
+  the Lean declaration with `Source` / `Elaborated` / `Expanded` / `Dependencies`
+  tabs. Clicking a clause highlights the fragment it came from, marks the quoted
+  excerpt inside it, and highlights the declarations and correspondence lemmas
+  that realize it. Inherited passages are shown apart from the printed one; each
+  lane says whether it is mechanically established or human-reviewed, and a lane
+  can be widened to full width for a long signature. Rows are built on demand, so
+  a page with many rows does not render hundreds of formulas nobody asked for.
+- Vendor KaTeX (MIT) and inline it, fonts included, into the alignment page. A
+  review packet opened from an archive, a file share or an offline checkout
+  renders its own mathematics; nothing on the page references anything outside
+  it. About 700 KB, paid only by pages that ask for mathematics.
+- Serve the alignment view: `/view/alignment/<census-slug>` appears beside every
+  census in `aiq-lean serve`, reusing the source scan, statement sidecars and
+  dependency graph the server already holds rather than rebuilding them.
+- Support an optional private source provider, configured **outside** the
+  repository by `--private-sources` or `AIQ_PRIVATE_SOURCES`. A private path
+  resolving inside the checkout is refused. Private fragments keep their
+  identity, locator and hash in every serialization and withhold their text
+  unless `--include-private` is passed for a local session.
+- Add `--row` to `alignment render`/`html`, so a packet can be built around a
+  result whose source-fidelity importance is not `headline` without promoting it.
+
 ### Fixed
 
 - **`leanq` re-read every source file on every declaration lookup.**
   `candidate_declaration_modules` cost 2.2 seconds each, which is fine for the
   handful of names a graph target needs and catastrophic for the several hundred
-  a large review packet seeds: 643 seeds spent twenty-three minutes re-reading
-  the tree before Lean was invoked at all. Indexed once per library; the same job
-  now reaches Lean in about two seconds.
+  an alignment packet seeds: 643 seeds spent twenty-three minutes re-reading the
+  tree before Lean was invoked at all. Indexed once per library; the same job now
+  reaches Lean in about two seconds.
+- **The Lean syntax highlighter mangled its own markup.** Keyword colouring ran
+  as a second `replace` over the string the first had just written into, and
+  `class` is a Lean keyword, so every `<span class="t">` came out broken. One
+  pass, two alternatives.
+- **A served alignment page did not notice its source documents changing.** The
+  ETag was derived from the census and the statements only, so editing the
+  reconstruction left the cached page showing the passage the review had been
+  accepted against -- exactly the drift a source pin exists to catch.
+- **An embedded review on a non-headline row was never validated.** Only headline
+  rows were obliged to carry the contract, and the check was skipped entirely for
+  everyone else, so a review written on Theorem 8.2 or Proposition 4.4 was
+  accepted unread. A review that asserts a clause-by-clause correspondence is now
+  held to the whole surface wherever it appears; a lighter one that only records
+  which declarations a row cites is checked for what it contains.
+- **`assets/theme.css` was not in the package data.** Editable installs hid it;
+  a wheel would have shipped viewers with no theme.
+- `_proof_payload` resolves the graph index's spelling of a name, as the
+  declaration audit page already did. Alignment pages were silently showing no
+  dependency panel for every declaration a census cites without its outer
+  namespace, and a declaration the graph does not know now says so instead of
+  quietly omitting the tab.
 
 - Record `typeDeps` -- the constants a declaration's *type* uses -- in every
   `leanq` index mode beside the merged `deps` list, and bump the graph cache

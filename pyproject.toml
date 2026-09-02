@@ -34,7 +34,14 @@ lean-warning-fix = "aiq_lean_tools.warning_fixer:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aiq_lean_tools = ["assets/*.html", "schemas/*.json", "py.typed"]
+aiq_lean_tools = [
+    "assets/*.html",
+    "assets/*.css",
+    "assets/vendor/katex/*",
+    "assets/vendor/katex/fonts/*",
+    "schemas/*.json",
+    "py.typed",
+]
 leanq = ["assets/*.html", "lean/*.lean"]
 
 [tool.pytest.ini_options]

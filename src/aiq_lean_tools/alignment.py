@@ -17,6 +17,9 @@ from typing import Any, Mapping, Sequence
 
 from .census import CensusDocument, load_census
 from .common import Path, md_escape, unique_in_order
+from .correspondence import cited_declarations, display_fragments, edges_of, relation_legend
+from .source_model import SourceFragment, SourceLibrary, SourceLocator
+from .source_pins import SOURCE_PIN_FIELD, source_pin_status
 from .lean_backend import LeanBackend, LeanQueryProbe, SubprocessLeanBackend
 from .lean_source import (
     LeanSourceIndex,
@@ -125,6 +128,35 @@ class AlignmentPacket:
     source_declarations: dict[str, list[SourceDeclarationText]] = field(default_factory=dict)
     statements: dict[str, Any] = field(default_factory=dict)
     statement_meta: dict[str, Any] = field(default_factory=dict)
+    #: Resolves a review's source locators against the repository's documents.
+    library: SourceLibrary | None = None
+    #: Local-only mode: embed the text of private source fragments as well.
+    include_private: bool = False
+    #: Proof-dependency payloads by declaration name.  Walking the saved graph
+    #: for one target costs seconds; the same declaration shows up in several
+    #: rows, and a server holds one cache across every census it renders.
+    proof_cache: dict[str, Any] = field(default_factory=dict)
+
+    def fragments(self, review: Mapping[str, Any]) -> list[tuple[dict[str, Any], SourceFragment | None]]:
+        """Every source passage a review points at, resolved where possible.
+
+        An unresolvable fragment is kept with a ``None`` body rather than
+        dropped: a reviewer must see that the review cites a passage the
+        repository can no longer find.
+        """
+        out: list[tuple[dict[str, Any], SourceFragment | None]] = []
+        for spec in display_fragments(review):
+            fragment = None
+            if self.library is not None and spec.get("locator"):
+                try:
+                    fragment = self.library.resolve(
+                        spec["locator"], id=str(spec.get("id") or ""),
+                        role=str(spec.get("role") or "primary"),
+                    )
+                except Exception:
+                    fragment = None
+            out.append((spec, fragment))
+        return out
 
     def _render_statement(
         self, name: str, review: Mapping[str, Any], context: Sequence[Mapping[str, Any]]
@@ -232,6 +264,23 @@ class AlignmentPacket:
         next_action: object | None = None,
     ) -> list[str]:
         out: list[str] = []
+        for spec, fragment in self.fragments(review):
+            role = str(spec.get("role") or "primary")
+            label = "Source passage" if role == "primary" else f"Inherited source ({role.replace('_', ' ')})"
+            if fragment is None:
+                out += [f"### {label}", "",
+                        f"**Unresolved locator** `{spec.get('locator')}`; the cited passage was "
+                        "not found in any configured source document.", ""]
+                continue
+            out += [f"### {label} — {fragment.locator.label() or fragment.locator.key}", "",
+                    f"`{fragment.locator.file}:{fragment.locator.lines[0]}-{fragment.locator.lines[1]}` "
+                    f"· content hash `{fragment.sha256[:16]}`"
+                    + (f" · **{fragment.visibility}**" if fragment.private else ""), ""]
+            if fragment.private and not self.include_private:
+                out += ["Private source text is not written into a review packet.", ""]
+            else:
+                out += ["~~~~latex", fragment.text.strip(), "~~~~", ""]
+
         source = review.get("source_statement")
         if isinstance(source, Mapping):
             out += ["### Normalized source statement", ""]
@@ -403,6 +452,8 @@ def _declaration_payload(
 ) -> dict[str, Any]:
     from leanq.statement import closure_edges, closure_summary
 
+    from .lean_source import full_declaration_text
+
     out: dict[str, Any] = {"name": name, "pinStatus": "n/a"}
     rows = packet.source_declarations.get(name, [])
     if rows:
@@ -411,7 +462,15 @@ def _declaration_payload(
             rel = row.declaration.path.relative_to(packet.root)
         except ValueError:
             rel = row.declaration.path
-        out["source"] = {"path": rel.as_posix(), "line": row.declaration.line, "text": row.render()}
+        # The header answers "what does this say"; the body answers "how".  A
+        # reviewer judging a correspondence needs both on the same screen.
+        out["source"] = {
+            "path": rel.as_posix(),
+            "line": row.declaration.line,
+            "text": row.render(),
+            "full": full_declaration_text(row.declaration.path, row.declaration.line),
+            "module": getattr(row.declaration, "module", ""),
+        }
     record = packet.statements.get(name)
     if record is not None and not record.missing:
         pins = review.get(PIN_FIELD) or []
@@ -420,6 +479,9 @@ def _declaration_payload(
         )
         out.update(
             signature=record.signature or record.type,
+            kind=record.kind,
+            module=record.module,
+            typeDeps=list(record.type_deps),
             docstring=record.docstring,
             hashes={"expr": record.type_expr_hash, "text": record.type_text_sha256},
             pin=dict(pin) if pin else None,
@@ -446,8 +508,84 @@ def _declaration_payload(
     elif record is not None:
         out["pinStatus"] = "gone"
     if graph is not None:
-        out["proof"] = _proof_payload(graph, name)
+        if name not in packet.proof_cache:
+            packet.proof_cache[name] = _proof_payload(graph, name)
+        out["proof"] = packet.proof_cache[name]
+        if out["proof"] is None:
+            # A saved index is a snapshot. After a rename it keeps answering,
+            # under the old names, so a silently absent panel is the wrong
+            # report: say the graph does not know this declaration.
+            out["proofMissing"] = str(graph.get("path") or "the saved dependency graph")
     return out
+
+
+def _source_payload(
+    packet: AlignmentPacket,
+    review: Mapping[str, Any],
+    row: Mapping[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """The literature side of one review row, and how its pins stand.
+
+    Each entry carries the fragment as the browser renders it plus the two facts
+    that decide whether the review is still about this passage: whether the row
+    pinned it, and whether the passage has moved since.
+    """
+    pins = {
+        str(p.get("fragment")): p
+        for p in (review.get(SOURCE_PIN_FIELD) or [])
+        if isinstance(p, Mapping)
+    }
+    # A census row written before this model carries one `source_locator` and
+    # no review fragments -- and rows with no curated review at all still carry
+    # it.  Read it as the implicit primary passage rather than showing nothing.
+    container: Mapping[str, Any] = review
+    if not display_fragments(review) and isinstance(row, Mapping) and row.get("source_locator"):
+        container = {**review, "source_locator": row["source_locator"]}
+    out: list[dict[str, Any]] = []
+    statuses: list[str] = []
+    for spec, fragment in packet.fragments(container):
+        fid = str(spec.get("id") or (fragment.id if fragment else ""))
+        status = source_pin_status(pins.get(fid), fragment)
+        statuses.append(status)
+        entry: dict[str, Any] = {
+            "id": fid,
+            "role": str(spec.get("role") or "primary"),
+            "implicit": bool(spec.get("why") is None and spec.get("implicit")),
+            "why": str(spec.get("why") or ""),
+            "pinStatus": status,
+            "pin": dict(pins[fid]) if fid in pins else None,
+        }
+        if fragment is None:
+            entry["unresolved"] = spec.get("locator")
+        else:
+            entry["fragment"] = fragment.as_json(include_private=packet.include_private)
+        out.append(entry)
+    if not statuses:
+        return out, None
+    for level in ("moved", "unresolved", "unpinned"):
+        if level in statuses:
+            return out, level
+    return out, "current"
+
+
+def resolve_graph_name(table: Mapping[str, Any], name: str) -> str | None:
+    """The graph index's spelling of ``name``.
+
+    Censuses and statement sidecars use whatever name the review author wrote --
+    often without the outer namespace -- while the graph index stores the fully
+    qualified one.  An exact lookup therefore misses, and the dependency panel
+    comes back empty for a declaration that is right there in the graph.
+    """
+    if not table:
+        return None
+    if name in table:
+        return name
+    for prefix in ("TauCeti.", "TauCeti.DavisKahan.", ""):
+        if prefix + name in table:
+            return prefix + name
+    tail = "." + name.split(".")[-1]
+    matches = [k for k in table if k.endswith(tail)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _proof_payload(graph: Mapping[str, Any], name: str) -> dict[str, Any] | None:
@@ -455,8 +593,10 @@ def _proof_payload(graph: Mapping[str, Any], name: str) -> dict[str, Any] | None
     from leanq.graph import target_dependency_graph
 
     table = graph["table"]
-    if name not in table:
+    resolved = resolve_graph_name(table, name)
+    if resolved is None:
         return None
+    name = resolved
     dep_graph = target_dependency_graph(table.values(), [name])
     by_library = collections.Counter(
         str(d.library or d.module.split(".", 1)[0]) for d in dep_graph.nodes.values()
@@ -518,19 +658,32 @@ def alignment_payload(
             _declaration_payload(packet, name, review, entry.context, graph)
             for name in entry.canonical
         ]
+        # Anything a clause points at is evidence a reviewer has to read, so it
+        # gets a full panel rather than a bare name in a sentence -- the theorem
+        # said to carry a representation change, and equally a supporting
+        # declaration a clause names as its realization.
+        canonical_names = set(entry.canonical)
+        cited = [n for n in cited_declarations(review) if n not in canonical_names]
+        evidence = [
+            _declaration_payload(packet, name, review, entry.context, graph)
+            for name in cited
+        ]
         variants = []
         for variant in packet.variants:
             if variant.parent_row is row:
+                variant_sources, _ = _source_payload(packet, variant.review, row)
                 variants.append({
                     "title": variant.title,
                     "claim": variant.review.get("claim"),
+                    "sources": variant_sources,
+                    "edges": [edge.as_json() for edge in edges_of(variant.review)],
                     "canonical": [
                         _declaration_payload(packet, name, variant.review, variant.context, graph)
                         for name in variant.canonical
                     ],
                 })
         reached: set[str] = set()
-        for decl in canonical:
+        for decl in [*canonical, *evidence]:
             if decl.get("closure"):
                 reached.update(decl["closure"]["summary"]["reached"])
                 reached.add(decl["name"])
@@ -564,7 +717,14 @@ def alignment_payload(
             else:
                 status = "source located" if packet.source_declarations.get(name) else "source not located"
             supporting.append({"name": name, "status": status})
+        sources, source_pin_summary = _source_payload(packet, review, row)
         paper["rows"].append({
+            "evidence": evidence,
+            "sources": sources,
+            "sourcePinSummary": source_pin_summary,
+            "sourceInterpretation": review.get("source_interpretation"),
+            "nonlocalRationale": review.get("nonlocal_rationale"),
+            "edges": [edge.as_json() for edge in edges_of(review)],
             "id": str(row.get("id")),
             "anchor": f"{len(papers)}-{row.get('id')}",
             "paper": entry.census.title,
@@ -589,25 +749,35 @@ def alignment_payload(
         name: packet.statements[name].to_json()
         for name in sorted(used_records) if name in packet.statements
     }
+    relations: dict[str, Any] = {}
+    for entry in packet.entries:
+        relations.update(relation_legend(entry.census.data.get("relation_definitions")))
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "payloadKind": "alignment-review",
         "title": title,
         "statementMeta": dict(packet.statement_meta),
         "graph": {"nodeCount": graph["nodeCount"], "path": graph.get("path")} if graph else None,
         "papers": list(papers.values()),
         "records": records,
+        # The literature side: which documents were read, and the TeX macros the
+        # page needs in order to render their mathematics.
+        "sources": (packet.library.as_json() if packet.library else {"documents": [], "macros": {}}),
+        "includesPrivate": packet.include_private,
+        "relations": relations or relation_legend(),
     }
 
 
 def render_alignment_html(payload: Mapping[str, Any]) -> str:
-    from importlib import resources
-    import html as _html
-    import json as _json
+    """The review page, with the vendored math renderer inlined.
 
+    ``math=True`` is what makes the page self-contained: the source passages are
+    TeX, and a review artifact that needs a CDN to show its own mathematics is
+    not one you can hand to a reviewer.
+    """
     from .viewer import viewer_html
 
-    return viewer_html("alignment_viewer.html", payload.get("title", ""), payload)
+    return viewer_html("alignment_viewer.html", payload.get("title", ""), payload, math=True)
 
 
 def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -641,15 +811,27 @@ def collect_alignment_entries(
     censuses: Sequence[CensusDocument],
     *,
     importance: str = "headline",
+    rows: Sequence[str] = (),
 ) -> list[AlignmentEntry]:
+    """Rows to review: every row at or above ``importance``, or exactly ``rows``.
+
+    Naming rows explicitly is how a reviewer builds a packet around a result
+    whose source-fidelity importance is not "headline" -- Theorem 8.2 is a
+    ``major`` row and Proposition 4.4 a ``supporting`` one, and neither should be
+    promoted just to be looked at.
+    """
     if importance not in IMPORTANCE_ORDER:
         raise ValueError(f"unknown importance threshold {importance!r}")
     threshold = IMPORTANCE_ORDER[importance]
+    wanted = set(rows)
     entries: list[AlignmentEntry] = []
     for census in censuses:
         for row in census.items:
             rank = IMPORTANCE_ORDER.get(str(row.get("importance", "technical")), 3)
-            if rank > threshold:
+            if wanted:
+                if str(row.get("id")) not in wanted:
+                    continue
+            elif rank > threshold:
                 continue
             review = row.get("semantic_review")
             if not isinstance(review, dict):
@@ -692,9 +874,11 @@ def _source_declaration_map(
     for entry in entries:
         names.extend(entry.canonical)
         names.extend(entry.supporting)
+        names.extend(cited_declarations(entry.review))
     for variant in variants:
         names.extend(variant.canonical)
         names.extend(variant.supporting)
+        names.extend(cited_declarations(variant.review))
     return {
         name: declaration_source_texts(index, name)
         for name in unique_in_order(names)
@@ -714,14 +898,23 @@ def build_alignment_packet(
     sidecar: str | pathlib.Path | None = None,
     library: str | None = None,
     refresh: bool = False,
+    sources: SourceLibrary | None = None,
+    include_private: bool = False,
+    rows: Sequence[str] = (),
+    source_index: LeanSourceIndex | None = None,
+    statement_map: Mapping[str, Any] | None = None,
+    proof_cache: dict[str, Any] | None = None,
 ) -> AlignmentPacket:
     censuses = [load_census(path, root=root) for path in census_paths]
     if not censuses:
         raise ValueError("at least one census is required")
     base = censuses[0].root
-    entries = collect_alignment_entries(censuses, importance=importance)
+    entries = collect_alignment_entries(censuses, importance=importance, rows=rows)
     variants = collect_alignment_variants(entries)
-    source_index = scan_lean_project(base)
+    # A caller that already holds a scan -- the server does -- passes it in
+    # rather than paying for a second walk of every Lean file.
+    if source_index is None:
+        source_index = scan_lean_project(base)
     source_declarations = _source_declaration_map(source_index, entries, variants)
 
     probe_map: dict[tuple[str, str], LeanQueryProbe] = {}
@@ -739,19 +932,24 @@ def build_alignment_packet(
         runner = backend or SubprocessLeanBackend()
         results = runner.probe_queries(base, queries, import_list, timeout=timeout)
         probe_map = {(row.mode, row.name): row for row in results}
-    statement_map: dict[str, Any] = {}
+    statements_out: dict[str, Any] = dict(statement_map or {})
     statement_meta: dict[str, Any] = {}
-    if statements or sidecar is not None:
+    if statement_map is None and (statements or sidecar is not None):
         seeds: list[str] = []
         for entry in entries:
             seeds.extend(entry.canonical)
             seeds.extend(entry.supporting)
             seeds.extend(str(item["name"]) for item in entry.context)
+            # A correspondence lemma is the evidence that a representation
+            # change is legitimate, so the page has to be able to show its
+            # elaborated statement even when the row does not register it.
+            seeds.extend(cited_declarations(entry.review))
         for variant in variants:
             seeds.extend(variant.canonical)
             seeds.extend(variant.supporting)
             seeds.extend(str(item["name"]) for item in variant.context)
-        statement_map, statement_meta = statement_records(
+            seeds.extend(cited_declarations(variant.review))
+        statements_out, statement_meta = statement_records(
             base, unique_in_order(seeds), sidecar=sidecar, library=library, refresh=refresh,
         )
     return AlignmentPacket(
@@ -761,6 +959,9 @@ def build_alignment_packet(
         import_list,
         variants=variants,
         source_declarations=source_declarations,
-        statements=statement_map,
+        statements=statements_out,
         statement_meta=statement_meta,
+        library=sources,
+        include_private=include_private,
+        proof_cache=proof_cache if proof_cache is not None else {},
     )

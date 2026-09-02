@@ -13,6 +13,8 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from .common import Finding
+from .correspondence import CLAUSE_STATUSES, validate_correspondence
+from .source_pins import validate_source_pins
 
 IMPORTANCE_ORDER = {
     "headline": 0,
@@ -20,8 +22,6 @@ IMPORTANCE_ORDER = {
     "supporting": 2,
     "technical": 3,
 }
-
-CLAUSE_STATUSES = {"claimed_exact", "derived", "scope_companion"}
 
 
 def _nonempty_string(value: object) -> bool:
@@ -135,6 +135,7 @@ def validate_embedded_review(
     findings: list[Finding],
     require_group_fields: bool = True,
     allow_external_declarations: bool = False,
+    strict: bool = True,
 ) -> None:
     """Validate one curated semantic-review object.
 
@@ -146,6 +147,10 @@ def validate_embedded_review(
         require_group_fields: Require the grouping fields used by primary rows.
         allow_external_declarations: Derived variants may intentionally cite a
             declaration outside the parent row's declaration list.
+        strict: Require the full curated contract -- grouping fields, a
+            normalized source statement, canonical declarations, a clause map.
+            A lighter review that records only which declarations a row cites is
+            still checked for what it does contain.
     """
     if not isinstance(review, Mapping):
         _finding(findings, "semantic-review", "semantic_review must be an object", row_location)
@@ -155,21 +160,23 @@ def validate_embedded_review(
         required = ("group", "group_title", "claim")
     else:
         required = ("id", "title", "claim", "provenance_note")
-    for key in required:
-        if not _nonempty_string(review.get(key)):
-            _finding(findings, f"semantic-{key}", f"{key} must be non-empty", row_location)
+    if strict:
+        for key in required:
+            if not _nonempty_string(review.get(key)):
+                _finding(findings, f"semantic-{key}", f"{key} must be non-empty", row_location)
 
-    _validate_source_statement(
-        review.get("source_statement"),
-        location=f"{row_location}.source_statement",
-        findings=findings,
-    )
+    if strict or review.get("source_statement") is not None:
+        _validate_source_statement(
+            review.get("source_statement"),
+            location=f"{row_location}.source_statement",
+            findings=findings,
+        )
     canonical = _validate_declaration_list(
-        review.get("canonical_declarations"),
+        review.get("canonical_declarations", review.get("declarations", [])),
         field="canonical_declarations",
         location=f"{row_location}.canonical_declarations",
         findings=findings,
-        require_nonempty=True,
+        require_nonempty=strict,
     )
     supporting = _validate_declaration_list(
         review.get("supporting_declarations", []),
@@ -194,16 +201,29 @@ def validate_embedded_review(
         location=f"{row_location}.context_declarations",
         findings=findings,
     )
-    _validate_clause_map(
-        review.get("clause_map"),
-        location=f"{row_location}.clause_map",
-        findings=findings,
+    if strict or review.get("clause_map") is not None:
+        _validate_clause_map(
+            review.get("clause_map"),
+            location=f"{row_location}.clause_map",
+            findings=findings,
+        )
+    # The structured half: which source fragment each clause came from, what
+    # relation it claims, and whether a row reading its passage as
+    # self-contained quietly cites a condition inherited from elsewhere.
+    findings.extend(
+        validate_correspondence(
+            review,
+            location=row_location,
+            declarations=[*canonical, *supporting],
+            check_status=False,
+        )
     )
     from .statement_pins import validate_pins
 
     findings.extend(
         validate_pins(review, claimed=[*canonical, *supporting], location=row_location)
     )
+    findings.extend(validate_source_pins(review, location=row_location))
 
 
 def validate_embedded_surface(
@@ -218,12 +238,24 @@ def validate_embedded_surface(
     census_declarations = [str(x) for x in decls] if isinstance(decls, list) else []
 
     review = row.get("semantic_review")
-    if require_headline_review:
+    # A review that is present is validated whether or not one was *required*.
+    # Only headline rows are obliged to carry the embedded contract, and for a
+    # while that meant a review written on a lower-importance row -- Theorem 8.2,
+    # Proposition 4.4 -- was accepted without being checked at all.
+    #
+    # The full contract still applies only where the review claims it: a review
+    # that asserts a clause-by-clause correspondence is held to the whole
+    # surface, while one that only records which declarations a row cites is
+    # checked for what it contains.
+    if require_headline_review or isinstance(review, Mapping):
         validate_embedded_review(
             review,
             row_location=f"{row_location}.semantic_review",
             census_declarations=census_declarations,
             findings=findings,
+            strict=require_headline_review or bool(
+                isinstance(review, Mapping) and review.get("clause_map")
+            ),
         )
 
     variants = row.get("semantic_review_variants", [])

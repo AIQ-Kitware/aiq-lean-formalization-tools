@@ -1,59 +1,609 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <style>
-:root{--bg:#fbfaf7;--fg:#1f2328;--muted:#6a6f76;--line:#d8d5ce;--panel:#f3f1ec;--accent:#1f5fa8;--ok:#2f7d4e;--warn:#a86a12;--bad:#b23a2e;--code:#f5f3ee;color-scheme:light}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171a;--fg:#e7e5e0;--muted:#9a9ea5;--line:#33373d;--panel:#1d2024;--accent:#86aee8;--ok:#7fc79a;--warn:#e0a94f;--bad:#ee8a7e;--code:#1a1d21;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#15171a;--fg:#e7e5e0;--muted:#9a9ea5;--line:#33373d;--panel:#1d2024;--accent:#86aee8;--ok:#7fc79a;--warn:#e0a94f;--bad:#ee8a7e;--code:#1a1d21;color-scheme:dark}
-body{margin:0;font:14px/1.5 'IBM Plex Sans',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
-header h1{font-size:18px;margin:0}header .meta{color:var(--muted)}
-main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 60px)}
-nav{border-right:1px solid var(--line);padding:12px;overflow:auto;position:sticky;top:0;height:100vh;box-sizing:border-box}
-nav input{width:100%;box-sizing:border-box;padding:7px;margin-bottom:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
-nav h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}
-nav a{display:block;padding:5px 7px;border-radius:6px;color:var(--fg);text-decoration:none;font-size:13px}
-nav a:hover,nav a.active{background:var(--panel)}
-nav a .b{float:right}
-section.row{padding:18px 26px;border-bottom:1px solid var(--line)}
-section.row h2{margin:0 0 4px;font-size:17px;text-wrap:balance}
+:root{
+  --bg:#fbfaf7;--fg:#1f2328;--muted:#6a6f76;--line:#d8d5ce;--panel:#f3f1ec;--panel2:#eceae4;
+  --accent:#1f5fa8;--ok:#2f7d4e;--warn:#a86a12;--bad:#b23a2e;--code:#f5f3ee;
+  --mark:#fff2a8;--src:#f7f4ec;--sel:#e4edf8;color-scheme:light
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#15171a;--fg:#e7e5e0;--muted:#9a9ea5;--line:#33373d;--panel:#1d2024;--panel2:#23272c;
+  --accent:#86aee8;--ok:#7fc79a;--warn:#e0a94f;--bad:#ee8a7e;--code:#1a1d21;
+  --mark:#5a4c1c;--src:#1b1e22;--sel:#22303f;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#15171a;--fg:#e7e5e0;--muted:#9a9ea5;--line:#33373d;--panel:#1d2024;--panel2:#23272c;
+  --accent:#86aee8;--ok:#7fc79a;--warn:#e0a94f;--bad:#ee8a7e;--code:#1a1d21;
+  --mark:#5a4c1c;--src:#1b1e22;--sel:#22303f;color-scheme:dark}
+
+body{margin:0;font:14px/1.55 'IBM Plex Sans',system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header.top{padding:12px 20px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:5}
+header.top h1{font-size:17px;margin:0}
 .meta{color:var(--muted);font-size:12.5px}
-.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11.5px;border:1px solid var(--line);color:var(--muted);vertical-align:middle}
-.badge.ok{color:var(--ok);border-color:var(--ok)}.badge.warn{color:var(--warn);border-color:var(--warn)}.badge.bad{color:var(--bad);border-color:var(--bad)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:10px 0}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-.card h4{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.card ul{margin:0;padding-left:18px}
-pre,code{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-pre{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:6px 0}
-table{width:100%;border-collapse:collapse;margin:8px 0;font-variant-numeric:tabular-nums}th,td{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left;font-size:13px}
-th{background:var(--panel)}
-details{margin:6px 0}summary{cursor:pointer;color:var(--accent)}summary:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.decl{border-left:3px solid var(--accent);padding-left:12px;margin:14px 0}
-.decl h3{margin:0 0 4px;font-size:14px;word-break:break-all}
-.tree ul{list-style:none;padding-left:16px;margin:2px 0;border-left:1px dotted var(--line)}
-.tree li{margin:2px 0}.tree .via{color:var(--muted);font-size:11px;margin-right:4px}
-.tree .k{color:var(--muted);font-size:11.5px}
-.warnlist li{color:var(--warn)}
-.chips code{display:inline-block;margin:2px 3px 2px 0;padding:1px 5px;background:var(--code);border:1px solid var(--line);border-radius:4px}
-.hash{color:var(--muted);font-size:12px}
+main{display:grid;grid-template-columns:300px minmax(0,1fr);min-height:calc(100vh - 52px)}
+nav{border-right:1px solid var(--line);padding:12px;overflow:auto;position:sticky;top:52px;height:calc(100vh - 52px);box-sizing:border-box}
+nav input{width:100%;box-sizing:border-box;padding:7px;margin-bottom:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+nav h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}
+nav a{display:block;padding:5px 7px;border-radius:6px;color:var(--fg);text-decoration:none;font-size:13px;cursor:pointer}
+nav a:hover{background:var(--panel)}
+nav a.sel{background:var(--sel)}
+#rows{min-width:0}
+
+section.row{border-bottom:1px solid var(--line);padding:14px 20px 22px;scroll-margin-top:56px}
+section.row>h2{margin:0 0 3px;font-size:17px;text-wrap:balance;cursor:pointer}
+section.row>h2::before{content:"\25be ";color:var(--muted)}
+section.row.closed>h2::before{content:"\25b8 ";}
+section.row.closed .lanes,section.row.closed .claim{display:none}
+.claim{margin:8px 0 12px;max-width:78ch}
+
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;border:1px solid var(--line);color:var(--muted);vertical-align:middle;white-space:nowrap}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.badge.bad{color:var(--bad);border-color:var(--bad)}
+.badge.mech{border-style:solid;color:var(--accent);border-color:var(--accent)}
+.badge.human{border-style:dashed}
+
+.lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
+.lane{min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
+.lane>h3{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);background:var(--panel2);border-bottom:1px solid var(--line);
+  display:flex;gap:8px;align-items:center;justify-content:space-between;cursor:pointer}
+.lane>h3 .wide{border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--muted)}
+.lanes.wide-0 .lane:nth-child(1),.lanes.wide-1 .lane:nth-child(2),.lanes.wide-2 .lane:nth-child(3){grid-column:1/-1}
+.lanes.wide-0 .lane:not(:nth-child(1)),.lanes.wide-1 .lane:not(:nth-child(2)),.lanes.wide-2 .lane:not(:nth-child(3)){display:none}
+.lane .inner{padding:10px 12px;max-height:78vh;overflow:auto}
+
+.card{border:1px solid var(--line);border-radius:7px;background:var(--bg);padding:9px 11px;margin:0 0 10px}
+.card.primary{border-left:3px solid var(--accent)}
+.card.inherited{border-left:3px solid var(--warn)}
+.card h4{margin:0 0 5px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.card.hit{outline:2px solid var(--accent);outline-offset:2px}
+
+.frag .prose{margin:6px 0;max-width:70ch}
+.frag .display{margin:9px 0;overflow-x:auto;overflow-y:hidden;text-align:center}
+.frag .display .tag{float:right;color:var(--muted);font-size:12px}
+.frag .anchor{color:var(--muted);font-size:12.5px;font-style:italic}
+.frag h5{margin:2px 0 6px;font-size:13.5px}
+.frag li{margin:3px 0}
+mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
+
+.clause{border:1px solid var(--line);border-radius:7px;padding:8px 10px;margin:0 0 9px;background:var(--bg);cursor:pointer}
+.clause:hover{border-color:var(--accent)}
+.clause.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--sel)}
+.clause .src{margin:0 0 6px}
+.clause .arrow{color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin:5px 0 3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.clause .lean{margin:0;color:var(--fg)}
+/* Lean names are long and unbreakable; without this they set the column width
+   and everything to their right is clipped. */
+.clause .src,.clause .lean,.clause .why,.card .meta,.decl>.h code,.tabpanel .meta{overflow-wrap:anywhere}
+.clause .why{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+.clause .ev{margin-top:6px}
+.clause .ev code{cursor:pointer}
+.kindhead{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 5px}
+.kindhead:first-child{margin-top:0}
+
+.note{border-left:3px solid var(--warn);background:var(--panel2);padding:7px 10px;border-radius:0 6px 6px 0;margin:0 0 10px;font-size:13px}
+.note.info{border-left-color:var(--accent)}
+
+.decl{border:1px solid var(--line);border-radius:7px;margin:0 0 11px;background:var(--bg);overflow:hidden}
+.decl.hit{outline:2px solid var(--accent);outline-offset:2px}
+.decl>.h{padding:7px 10px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.decl>.h code{font-size:12px;word-break:break-all;font-weight:600}
+.tabs{display:flex;gap:2px;padding:5px 8px 0;flex-wrap:wrap;background:var(--panel2);border-bottom:1px solid var(--line)}
+.tabs button{border:1px solid transparent;border-bottom:none;background:none;color:var(--muted);
+  font:inherit;font-size:12px;padding:3px 9px;border-radius:5px 5px 0 0;cursor:pointer}
+.tabs button.on{background:var(--bg);color:var(--fg);border-color:var(--line)}
+.tabpanel{padding:8px 10px}
+.tabpanel[hidden]{display:none}
+
+pre,code{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:9px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin:6px 0}
+pre .k{color:var(--accent)}pre .c{color:var(--muted);font-style:italic}pre .t{color:var(--ok)}pre .s{color:var(--warn)}
+.hash{color:var(--muted);font-size:11.5px;word-break:break-all}
 .empty{color:var(--muted);font-style:italic}
+details{margin:6px 0}summary{cursor:pointer;color:var(--accent);font-size:12.5px}
+summary:focus-visible,a:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table{width:100%;border-collapse:collapse;margin:6px 0}
+th,td{border:1px solid var(--line);padding:4px 6px;vertical-align:top;text-align:left;font-size:12.5px}
+th{background:var(--panel2)}
+.chips code{display:inline-block;max-width:100%;margin:2px 3px 2px 0;padding:1px 5px;background:var(--code);border:1px solid var(--line);border-radius:4px;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.tree ul{list-style:none;padding-left:15px;margin:2px 0;border-left:1px dotted var(--line)}
+.tree li{margin:2px 0}.tree .via{color:var(--muted);font-size:10.5px;margin-right:4px}
+.tree .k2{color:var(--muted);font-size:11.5px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.katex{font-size:1.03em}
+.katex-display{margin:.35em 0}
+@media(max-width:900px){main{grid-template-columns:1fr}nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}}
 </style></head><body>
-<header><h1 id="title"></h1><span class="meta" id="subtitle"></span></header>
-<main><nav><input id="search" type="search" placeholder="filter rows and declarations"><div id="nav"></div></nav><div id="rows"></div></main>
+<header class="top">
+  <h1 id="title"></h1><span class="meta" id="subtitle"></span>
+  <span class="legend" style="margin-left:auto">
+    <span><span class="badge mech">compiler / file</span> mechanically established</span>
+    <span><span class="badge human">reviewed</span> human judgment</span>
+  </span>
+</header>
+<main>
+  <nav><input id="search" type="search" placeholder="filter rows and declarations"><div id="nav"></div></nav>
+  <div id="rows"></div>
+</main>
 <script type="application/json" id="payload">__PAYLOAD__</script>
 <script>
-const P=JSON.parse(document.getElementById('payload').textContent);
-const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const R=P.records||{};
-document.getElementById('title').textContent=P.title;
-const meta=[];if(P.statementMeta&&P.statementMeta.toolchain)meta.push('toolchain '+P.statementMeta.toolchain);if(P.generated)meta.push('generated '+P.generated);if(P.graph)meta.push('proof graph: '+P.graph.nodeCount+' declarations');
-document.getElementById('subtitle').textContent=meta.join(' · ');
-const pinClass={current:'ok','text-drift':'warn',drift:'bad',gone:'bad',unpinned:''};
-function short(n){return n.split('.').slice(-2).join('.');}
-function chips(list){return list&&list.length?'<span class="chips">'+list.map(x=>`<code title="${e(x)}">${e(x)}</code>`).join('')+'</span>':'<span class="empty">none</span>';}
-function treeNode(name,via,seen,depth){const r=R[name];const v=via?`<span class="via">[${via}]</span>`:'';if(!r)return `<li>${v}<code>${e(name)}</code> <span class="k">(no record)</span></li>`;if(r.missing)return `<li>${v}<code>${e(name)}</code> <span class="k">(not in environment)</span></li>`;if(seen.has(name))return `<li>${v}<code>${e(name)}</code> <span class="k">(above)</span></li>`;seen.add(name);const kind=(r.flags||[]).includes('class')?'class':(r.flags||[]).includes('structure')?'structure':r.kind;const plumb=(r.flags||[]).includes('instance')||(r.flags||[]).includes('projection')||r.kind==='ctor';if(r.boundary&&depth>0)return `<li>${v}<code>${e(name)}</code> <span class="k">(${e(kind)}, ${e(r.library||'')})</span>${r.docstring?`<details><summary>doc</summary><div>${e(r.docstring)}</div></details>`:''}</li>`;let h=`<li>${v}<code>${e(name)}</code> <span class="k">(${e(kind)}, ${e(r.module)}:${r.line||''})</span>`;const expands=(r.kind==='def'||r.kind==='inductive')&&(depth===0||!r.boundary);h+=`<details${depth<2?' open':''}><summary>signature</summary><pre>${e(r.signature||r.type)}</pre>`;if(r.fields&&r.fields.length)h+='<ul>'+r.fields.map(f=>`<li><code>${e(f.name)}</code> : <code>${e((f.type||'').replace(/\s+/g,' '))}</code></li>`).join('')+'</ul>';if(r.docstring)h+=`<div class="meta">${e(r.docstring)}</div>`;h+='</details>';if(expands){const kids=(r.typeDeps||[]).map(d=>[d,'type']).concat((r.bodyDeps||[]).filter(d=>!(r.typeDeps||[]).includes(d)).map(d=>[d,'body']));const plumbing=[],rest=[];for(const [d,w] of kids){const c=R[d];if(c&&!c.missing&&((c.flags||[]).includes('instance')||(c.flags||[]).includes('projection')||c.kind==='ctor'))plumbing.push(d);else rest.push([d,w]);}if(rest.length)h+='<ul>'+rest.map(([d,w])=>treeNode(d,w,seen,depth+1)).join('')+'</ul>';if(plumbing.length)h+=`<div class="k">via instances/projections: ${plumbing.map(e).join(', ')}</div>`;}return h+'</li>';}
-function declBlock(d){let h=`<div class="decl"><h3><code>${e(d.name)}</code> <span class="badge ${pinClass[d.pinStatus]||''}">pin: ${e(d.pinStatus||'n/a')}</span>`;if(d.source)h+=` <span class="meta">${e(d.source.path)}:${d.source.line}</span>`;h+='</h3>';if(d.signature)h+=`<div class="meta">elaborated signature</div><pre>${e(d.signature)}</pre>`;else if(d.source&&d.source.text)h+=`<details><summary>Lean source as written (not elaborated)</summary><pre>${e(d.source.text)}</pre></details>`;if(d.hashes)h+=`<div class="hash">structural type hash ${e(d.hashes.expr)} · printed-type hash ${e((d.hashes.text||'').slice(0,16))}${d.pin?` · pinned ${e(d.pin.pinned_on||'?')}${d.pin.note?' — '+e(d.pin.note):''}`:''}</div>`;if(d.docstring)h+=`<div class="meta">${e(d.docstring)}</div>`;if(d.closure){const s=d.closure.summary;h+='<div class="grid">';h+=d.hasDictionary?`<div class="card"><h4>Undisclosed project constants</h4>${d.undisclosed.length?'<ul class="warnlist">'+d.undisclosed.map(x=>`<li><code>${e(x)}</code></li>`).join('')+'</ul>':'<span class="empty">every project constant in the statement closure is in the dictionary</span>'}</div>`:`<div class="card"><h4>Project constants in the statement</h4><span class="meta">no local semantic dictionary recorded for this row</span>${chips(d.undisclosed)}</div>`;h+=`<div class="card"><h4>Statement closure</h4>${s.unfolded.length} project constant(s) unfolded, ${s.leaves.length} leaf/leaves, ${s.boundary.length} boundary, ${s.plumbing.length} plumbing${s.unknown.length?', <span class="badge bad">'+s.unknown.length+' unknown</span>':''}${d.unreachableDictionary.length?'<div>Dictionary definitions never reached: '+chips(d.unreachableDictionary)+'</div>':''}</div>`;h+=`<div class="card"><h4>Boundary vocabulary</h4>${chips(s.boundary)}</div>`;h+='</div>';h+=`<details><summary>statement closure tree</summary><div class="tree"><ul>${treeNode(d.name,'',new Set(),0)}</ul></div></details>`;}if(d.proof){const p=d.proof;h+=`<details><summary>proof dependencies: ${p.nodeCount} project declaration(s), ${p.edgeCount} edge(s)</summary><div class="grid"><div class="card"><h4>By library</h4><ul>${Object.entries(p.byLibrary).map(([k,v])=>`<li>${e(k)}: ${v}</li>`).join('')}</ul></div><div class="card"><h4>Direct dependencies</h4><ul>${p.direct.map(x=>`<li><span class="badge ${x.role==='type'?'ok':''}">${e(x.role)}</span> <code>${e(x.name)}</code> <span class="k">${e(x.kind)}</span></li>`).join('')||'<li class="empty">none in project</li>'}</ul></div>${p.axioms?`<div class="card"><h4>Axioms</h4>${chips(p.axioms)}</div>`:''}</div><details><summary>by module</summary><table><tr><th>module</th><th>declarations</th></tr>${p.byModule.map(([m,c])=>`<tr><td><code>${e(m)}</code></td><td>${c}</td></tr>`).join('')}</table></details></details>`;}return h+'</div>';}
-function rowBlock(r){let h=`<section class="row" id="${e(r.anchor)}"><h2>${e(r.title)} <span class="badge">${e(r.importance||'')}</span> ${r.pinSummary?`<span class="badge ${pinClass[r.pinSummary]||''}">${e(r.pinSummary)}</span>`:''}</h2><div class="meta">${e(r.paper)} · <code>${e(r.id)}</code> · ${e(r.sourceAnchor||'')} · status ${e(r.status||'')} · verification ${e(r.verification||'')}</div>`;if(r.claim)h+=`<p>${e(r.claim)}</p>`;const ss=r.sourceStatement;if(ss){h+='<div class="grid">';for(const k of ['setup','hypotheses','conclusions','scope']){if(ss[k]&&ss[k].length)h+=`<div class="card"><h4>${k}</h4><ul>${ss[k].map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`;}h+='</div>';}if(r.clauses&&r.clauses.length)h+='<table><tr><th>source clause</th><th>Lean realization</th><th>status</th></tr>'+r.clauses.map(c=>`<tr><td>${e(c.source_clause)}</td><td>${e(c.lean_realization||c.lean_clause)}</td><td><code>${e(c.status||c.relation)}</code></td></tr>`).join('')+'</table>';h+='<h3>Canonical declarations</h3>'+(r.canonical.length?r.canonical.map(declBlock).join(''):'<p class="empty">none</p>');if(r.supporting.length)h+=`<details><summary>supporting declarations (${r.supporting.length})</summary><ul>${r.supporting.map(s=>`<li><code>${e(s.name)}</code> <span class="badge">${e(s.status)}</span></li>`).join('')}</ul></details>`;if(r.context.length)h+=`<details><summary>local semantic dictionary (${r.context.length})</summary><table><tr><th>declaration</th><th>role</th><th>kind</th></tr>${r.context.map(c=>`<tr><td><code>${e(c.name)}</code></td><td>${e(c.role)}</td><td>${e(c.kind||'')}${c.reachable===false?' <span class="badge warn">not in any statement closure</span>':''}</td></tr>`).join('')}</table></details>`;if(r.note)h+=`<p><strong>Review note.</strong> ${e(r.note)}</p>`;if(r.nextAction)h+=`<p><strong>Next action.</strong> ${e(r.nextAction)}</p>`;for(const v of r.variants||[]){h+=`<h3>Derived variant: ${e(v.title)}</h3>${v.claim?`<p>${e(v.claim)}</p>`:''}${v.canonical.map(declBlock).join('')}`;}return h+'</section>';}
-const rowsEl=document.getElementById('rows'),navEl=document.getElementById('nav'),q=document.getElementById('search');
-function render(){const needle=q.value.toLowerCase();rowsEl.innerHTML='';navEl.innerHTML='';for(const paper of P.papers){const rows=paper.rows.filter(r=>!needle||JSON.stringify(r).toLowerCase().includes(needle));if(!rows.length)continue;navEl.innerHTML+=`<h3>${e(paper.title)}</h3>`+rows.map(r=>`<a href="#${e(r.anchor)}">${e(r.title)} ${r.pinSummary?`<span class="badge b ${pinClass[r.pinSummary]||''}">${e(r.pinSummary)}</span>`:''}</a>`).join('');for(const r of rows)rowsEl.innerHTML+=rowBlock(r);}}
-q.addEventListener('input',render);render();
+"use strict";
+const P = JSON.parse(document.getElementById('payload').textContent);
+const R = P.records || {};
+const MACROS = (P.sources && P.sources.macros) || {};
+const RELATIONS = P.relations || {};
+const e = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---- mathematics ------------------------------------------------------
+   Source text is TeX, and a reviewer comparing a paper with a Lean statement
+   needs to read it as mathematics.  Every formula is emitted as a placeholder
+   carrying its TeX, and rendered once, when its row is first opened.        */
+const HAVE_KATEX = typeof katex !== 'undefined';
+function texEl(tex, display){
+  return `<span class="tex" data-tex="${e(tex)}"${display?' data-display="1"':''}></span>`;
+}
+function renderMath(scope){
+  scope.querySelectorAll('.tex[data-tex]:not([data-done])').forEach(el => {
+    el.dataset.done = '1';
+    const tex = el.dataset.tex;
+    if (!HAVE_KATEX) { el.textContent = (el.dataset.display ? '\n' : '') + tex; el.style.fontFamily='monospace'; return; }
+    try {
+      katex.render(tex, el, {
+        displayMode: el.dataset.display === '1', throwOnError: false, trust: false,
+        macros: Object.assign({}, MACROS), strict: 'ignore',
+      });
+    } catch (err) { el.textContent = tex; el.style.fontFamily = 'monospace'; }
+  });
+}
+/* Inline `$...$` inside a review's own prose, so a clause written in TeX reads
+   as mathematics too. */
+function inlineTex(text){
+  const parts = String(text ?? '').split(/\$([^$]+)\$/g);
+  return parts.map((p, i) => i % 2 ? texEl(p, false) : e(p)).join('');
+}
+
+/* ---- Lean syntax colouring -------------------------------------------- */
+const LEAN_WORDS = [
+ 'theorem','lemma','def','abbrev','instance','structure','class','inductive','example','where',
+ 'by','fun','let','have','show','from','match','with','do','if','then','else','at','in','forall',
+ 'noncomputable','private','protected','partial','unsafe','mutual','omit','include','set_option',
+ 'exact','apply','intro','intros','refine','simp','simpa','rw','rwa','constructor','cases','rcases',
+ 'obtain','use','induction','ring','linarith','nlinarith','positivity','norm_num','field_simp',
+ 'unfold','change','convert','congr','ext','funext','subst','specialize','gcongr','bound','trans',
+ 'this','all_goals','any_goals','first','try','repeat','focus','conv','push_cast','calc'
+];
+/* One pass, two alternatives. Two chained `replace` calls re-scanned the markup
+   the first had just inserted -- and `class` is a Lean keyword, so every
+   `<span class="t">` was mangled into broken HTML. */
+const LEAN_TOKEN = new RegExp('\\b(Prop|Type|Sort)\\b|\\b(' + LEAN_WORDS.join('|') + ')\\b', 'g');
+function leanHl(src){
+  const out=[]; let i=0;
+  const push=(cls,txt)=>out.push(cls?`<span class="${cls}">${e(txt)}</span>`:e(txt));
+  while(i<src.length){
+    if(src.startsWith('/-',i)){const j=src.indexOf('-/',i+2);const end=j<0?src.length:j+2;push('c',src.slice(i,end));i=end;continue;}
+    if(src.startsWith('--',i)){const j=src.indexOf('\n',i);const end=j<0?src.length:j;push('c',src.slice(i,end));i=end;continue;}
+    if(src[i]==='"'){let j=i+1;while(j<src.length&&!(src[j]==='"'&&src[j-1]!=='\\'))j++;push('s',src.slice(i,j+1));i=j+1;continue;}
+    let j=i;while(j<src.length&&!src.startsWith('/-',j)&&!src.startsWith('--',j)&&src[j]!=='"')j++;
+    out.push(e(src.slice(i,j)).replace(LEAN_TOKEN,
+      (m,t,k) => t ? `<span class="t">${t}</span>` : `<span class="k">${k}</span>`));
+    i=j;
+  }
+  return out.join('');
+}
+
+/* ---- literature lane --------------------------------------------------- */
+const ROLE_LABEL = {
+  primary:'Printed passage', standing_assumption:'Inherited standing condition',
+  definition:'Definition established elsewhere', convention:'Source convention',
+  context:'Adjacent source context',
+};
+const SRCPIN = {current:['ok','source pinned & current'],moved:['bad','source passage moved since review'],
+  unpinned:['warn','source not pinned'],unresolved:['bad','source locator does not resolve']};
+
+function spansHtml(spans){
+  return (spans||[]).map(s => {
+    if (s.kind === 'math') return texEl(s.text, false);
+    if (s.kind === 'code') return `<code>${e(s.text)}</code>`;
+    if (s.kind === 'emph') return `<em>${e(s.text)}</em>`;
+    if (s.kind === 'strong') return `<strong>${e(s.text)}</strong>`;
+    return e(s.text);
+  }).join('');
+}
+function blocksHtml(blocks){
+  let h = '', list = false;
+  for (const b of blocks || []) {
+    if (b.kind === 'item' && !list) { h += '<ul>'; list = true; }
+    if (b.kind !== 'item' && list) { h += '</ul>'; list = false; }
+    if (b.kind === 'display')      h += `<div class="display">${b.tag?`<span class="tag">(${e(b.tag)})</span>`:''}${texEl(b.text, true)}</div>`;
+    else if (b.kind === 'heading') h += `<h5>${spansHtml(b.spans)}</h5>`;
+    else if (b.kind === 'anchor')  h += `<p class="anchor">${spansHtml(b.spans)}</p>`;
+    else if (b.kind === 'item')    h += `<li>${spansHtml(b.spans)}</li>`;
+    else                           h += `<p class="prose">${spansHtml(b.spans)}</p>`;
+  }
+  return h + (list ? '</ul>' : '');
+}
+function fragmentCard(entry){
+  const f = entry.fragment;
+  const role = entry.role || 'primary';
+  const cls = role === 'primary' ? 'primary' : 'inherited';
+  const [pc, ptitle] = SRCPIN[entry.pinStatus] || ['', entry.pinStatus || ''];
+  let h = `<div class="card frag ${cls}" data-fragment="${e(entry.id)}">`;
+  h += `<h4>${e(ROLE_LABEL[role] || role)}`
+     + `<span class="badge ${pc}" title="${e(ptitle)}" style="float:right">${e(entry.pinStatus||'')}</span></h4>`;
+  if (!f) {
+    return h + `<p class="empty">This review cites a passage that no configured source document resolves: `
+      + `<code>${e(JSON.stringify(entry.unresolved||{}))}</code></p></div>`;
+  }
+  h += `<div class="meta">${e(f.label || f.locator.marker || '')}`
+     + (f.citation ? ` · ${e(f.citation)}` : '') + `</div>`;
+  if (f.withheld) h += `<p class="empty">${e(f.withheld)}</p>`;
+  else h += blocksHtml(f.blocks);
+  h += `<div class="hash">${e(f.locator.file || f.document)}`
+     + (f.locator.lines ? `:${f.locator.lines[0]}–${f.locator.lines[1]}` : '')
+     + ` · content hash <code>${e(f.sha256.slice(0,16))}</code>`
+     + (f.visibility === 'private_source' ? ' · <b>private local source</b>' : '')
+     + `</div>`;
+  if (entry.why) h += `<p class="meta">${e(entry.why)}</p>`;
+  return h + '</div>';
+}
+function paraphraseCard(ss){
+  if (!ss) return '';
+  let h = '<details class="card"><summary>The review’s own normalized restatement</summary>';
+  for (const k of ['setup','hypotheses','conclusions','scope']) {
+    if (!ss[k] || !ss[k].length) continue;
+    h += `<h4>${e(k)}</h4><ul>` + ss[k].map(x => `<li>${inlineTex(x)}</li>`).join('') + '</ul>';
+  }
+  return h + '</details>';
+}
+
+/* ---- correspondence lane ---------------------------------------------- */
+const KIND_ORDER = ['setup','hypothesis','conclusion','scope','object','note',''];
+function clauseCard(c, rowId){
+  const rel = RELATIONS[c.relation] || {};
+  const evidence = (c.correspondenceDeclarations || []);
+  let h = `<div class="clause" data-row="${e(rowId)}" data-clause="${c.index}"`
+        + (c.sourceFragment ? ` data-fragment="${e(c.sourceFragment)}"` : '')
+        + (c.sourceExcerpt ? ` data-excerpt="${e(c.sourceExcerpt)}"` : '')
+        + ` data-decls="${e((c.leanDeclarations||[]).concat(evidence).join(' '))}">`;
+  h += `<p class="src">${inlineTex(c.sourceClause)}</p>`;
+  h += `<div class="arrow">↓ <span class="badge human" title="${e(rel.description||'reviewer judgment')}">`
+     + `${e(c.relationLabel || c.relation || c.status || 'claimed')}</span>`
+     + (c.status && c.status !== 'claimed_exact' ? `<span class="badge">${e(c.status)}</span>` : '')
+     + (c.leanBinder ? `<code>${e(c.leanBinder)}</code>` : '')
+     + `</div>`;
+  h += `<p class="lean">${inlineTex(c.leanRealization)}</p>`;
+  if (evidence.length)
+    h += `<div class="ev"><span class="meta">carried by</span> <span class="chips">`
+       + evidence.map(n => `<code class="jump" data-n="${e(n)}">${e(n)}</code>`).join('') + '</span></div>';
+  if (c.note) h += `<p class="why">${inlineTex(c.note)}</p>`;
+  return h + '</div>';
+}
+function correspondenceLane(row){
+  let h = '';
+  if (row.sourceInterpretation === 'nonlocal')
+    h += `<div class="note"><b>Nonlocal reading.</b> This row is read under source material outside the `
+       + `cited passage. ${row.nonlocalRationale ? inlineTex(row.nonlocalRationale) : ''}</div>`;
+  else if (row.sourceInterpretation === 'local')
+    h += `<div class="note info"><b>Local reading.</b> Every hypothesis and conclusion below is printed in the cited passage.</div>`;
+  const edges = row.edges || [];
+  if (!edges.length) return h + '<p class="empty">No clause-level correspondence is recorded for this row.</p>';
+  const byKind = {};
+  for (const c of edges) (byKind[c.kind || ''] ||= []).push(c);
+  for (const kind of KIND_ORDER) {
+    const list = byKind[kind];
+    if (!list) continue;
+    if (kind) h += `<div class="kindhead">${e(kind)}</div>`;
+    h += list.map(c => clauseCard(c, row.id)).join('');
+  }
+  if (row.note) h += `<div class="note info"><b>Review note.</b> ${inlineTex(row.note)}</div>`;
+  if (row.nextAction) h += `<div class="note"><b>Next action.</b> ${inlineTex(row.nextAction)}</div>`;
+  return h;
+}
+
+/* ---- Lean lane --------------------------------------------------------- */
+const PINCLS = {current:'ok','text-drift':'warn',drift:'bad',gone:'bad',unpinned:''};
+function treeNode(name, via, seen, depth){
+  const r = R[name]; const v = via ? `<span class="via">[${via}]</span>` : '';
+  if (!r) return `<li>${v}<code>${e(name)}</code> <span class="k2">(no record)</span></li>`;
+  if (r.missing) return `<li>${v}<code>${e(name)}</code> <span class="k2">(not in environment)</span></li>`;
+  if (seen.has(name)) return `<li>${v}<code>${e(name)}</code> <span class="k2">(above)</span></li>`;
+  seen.add(name);
+  const kind = (r.flags||[]).includes('class') ? 'class' : (r.flags||[]).includes('structure') ? 'structure' : r.kind;
+  if (r.boundary && depth > 0)
+    return `<li>${v}<code>${e(name)}</code> <span class="k2">(${e(kind)}, ${e(r.library||'')})</span></li>`;
+  let h = `<li>${v}<code>${e(name)}</code> <span class="k2">(${e(kind)}, ${e(r.module)}:${r.line||''})</span>`;
+  h += `<details${depth<2?' open':''}><summary>signature</summary><pre>${leanHl(r.signature||r.type||'')}</pre>`;
+  if (r.fields && r.fields.length)
+    h += '<ul>' + r.fields.map(f => `<li><code>${e(f.name)}</code> : <code>${e((f.type||'').replace(/\s+/g,' '))}</code></li>`).join('') + '</ul>';
+  if (r.docstring) h += `<div class="meta">${e(r.docstring)}</div>`;
+  h += '</details>';
+  if ((r.kind === 'def' || r.kind === 'inductive') && (depth === 0 || !r.boundary)) {
+    const kids = (r.typeDeps||[]).map(d => [d,'type'])
+      .concat((r.bodyDeps||[]).filter(d => !(r.typeDeps||[]).includes(d)).map(d => [d,'body']));
+    const plumb = [], rest = [];
+    for (const [d,w] of kids) {
+      const c = R[d];
+      if (c && !c.missing && ((c.flags||[]).includes('instance') || (c.flags||[]).includes('projection') || c.kind === 'ctor')) plumb.push(d);
+      else rest.push([d,w]);
+    }
+    if (rest.length) h += '<ul>' + rest.map(([d,w]) => treeNode(d,w,seen,depth+1)).join('') + '</ul>';
+    if (plumb.length) h += `<div class="k2">via instances/projections: ${plumb.map(e).join(', ')}</div>`;
+  }
+  return h + '</li>';
+}
+function declPanel(d){
+  const tabs = [], panels = [];
+  const add = (name, label, body) => { tabs.push([name,label]); panels.push([name,body]); };
+  if (d.source)
+    add('source','Source',
+      `<div class="meta"><code>${e(d.source.path)}:${d.source.line}</code></div>`
+      + `<pre>${leanHl(d.source.full || d.source.text || '')}</pre>`);
+  if (d.signature)
+    add('elab','Elaborated',
+      `<pre>${leanHl(d.signature)}</pre>`
+      + (d.docstring ? `<div class="meta">${e(d.docstring)}</div>` : '')
+      + `<div class="hash">structural type hash <code>${e((d.hashes||{}).expr||'')}</code>`
+      + ` · printed-type hash <code>${e(((d.hashes||{}).text||'').slice(0,16))}</code>`
+      + (d.pin ? ` · pinned ${e(d.pin.pinned_on||'?')}` : ' · not pinned') + '</div>');
+  if (d.closure) {
+    const s = d.closure.summary;
+    add('expanded','Expanded',
+      `<p class="meta">The statement unfolded through project definitions, stopping at the boundary `
+      + `library. ${s.unfolded.length} project constant(s) unfolded, ${s.leaves.length} leaf/leaves, `
+      + `${s.boundary.length} boundary.</p>`
+      + (d.undisclosed && d.undisclosed.length
+          ? `<div class="note"><b>Not disclosed by the row’s dictionary:</b> <span class="chips">`
+            + d.undisclosed.map(n => `<code class="jump" data-n="${e(n)}">${e(n)}</code>`).join('') + '</span></div>'
+          : (d.hasDictionary ? '<div class="note info">Every project constant in the statement closure is in the row’s dictionary.</div>' : ''))
+      + `<div class="tree"><ul>${treeNode(d.name,'',new Set(),0)}</ul></div>`
+      + `<p class="meta">Boundary vocabulary</p><div class="chips">`
+      + (s.boundary.length ? s.boundary.map(n => `<code>${e(n)}</code>`).join('') : '<span class="empty">none</span>') + '</div>');
+  }
+  if (!d.proof && d.proofMissing)
+    add('proof','Dependencies',
+      `<p class="empty">The saved dependency graph (<code>${e(d.proofMissing)}</code>) holds no `
+      + `declaration of this name. A graph index is a snapshot: if this declaration was renamed `
+      + `after it was built, rebuild with <code>leanq graph-index --out ${e(d.proofMissing)}</code>.</p>`);
+  if (d.proof) {
+    const p = d.proof;
+    add('proof','Dependencies',
+      (p.axioms ? `<p class="meta">Axioms</p><div class="chips">${p.axioms.map(n=>`<code>${e(n)}</code>`).join('') || '<span class="empty">none</span>'}</div>` : '')
+      + `<p class="meta">${p.nodeCount} project declaration(s), ${p.edgeCount} edge(s)</p>`
+      + `<table><tr><th>role</th><th>direct dependency</th><th>kind</th></tr>`
+      + (p.direct.map(x => `<tr><td><span class="badge ${x.role==='type'?'ok':''}">${e(x.role)}</span></td>`
+          + `<td><code class="jump" data-n="${e(x.name)}">${e(x.name)}</code></td><td>${e(x.kind||'')}</td></tr>`).join('')
+         || '<tr><td colspan="3" class="empty">none in project</td></tr>')
+      + '</table>'
+      + `<details><summary>by module</summary><table><tr><th>module</th><th>declarations</th></tr>`
+      + p.byModule.map(([m,c]) => `<tr><td><code>${e(m)}</code></td><td>${c}</td></tr>`).join('') + '</table></details>');
+  }
+  if (!tabs.length)
+    return `<div class="decl" data-name="${e(d.name)}"><div class="h"><code>${e(d.name)}</code></div>`
+         + `<div class="tabpanel"><p class="empty">Nothing is known about this declaration: no source location, `
+         + `no elaborated statement, no dependency graph entry.</p></div></div>`;
+  const pc = PINCLS[d.pinStatus] || '';
+  return `<div class="decl" data-name="${e(d.name)}">`
+    + `<div class="h"><code>${e(d.name)}</code> `
+    + `<span class="badge ${pc}" title="statement pin">pin: ${e(d.pinStatus||'n/a')}</span>`
+    + (d.kind ? ` <span class="badge">${e(d.kind)}</span>` : '') + '</div>'
+    + `<div class="tabs">` + tabs.map(([n,l],i) => `<button data-tab="${n}"${i?'':' class="on"'}>${e(l)}</button>`).join('') + '</div>'
+    + panels.map(([n,b],i) => `<div class="tabpanel" data-tab="${n}"${i?' hidden':''}>${b}</div>`).join('')
+    + '</div>';
+}
+function leanLane(row){
+  let h = row.canonical.length ? row.canonical.map(declPanel).join('')
+                               : '<p class="empty">No canonical declaration is registered.</p>';
+  if ((row.evidence || []).length)
+    h += `<div class="kindhead">Cited by the correspondence (${row.evidence.length})</div>`
+       + row.evidence.map(declPanel).join('');
+  if (row.supporting.length)
+    h += `<details><summary>supporting declarations (${row.supporting.length})</summary><ul>`
+       + row.supporting.map(s => `<li><code class="jump" data-n="${e(s.name)}">${e(s.name)}</code> <span class="badge">${e(s.status)}</span></li>`).join('')
+       + '</ul></details>';
+  if (row.context.length)
+    h += `<details><summary>local semantic dictionary (${row.context.length})</summary><table>`
+       + '<tr><th>declaration</th><th>role</th></tr>'
+       + row.context.map(c => `<tr><td><code class="jump" data-n="${e(c.name)}">${e(c.name)}</code>`
+           + (c.reachable === false ? ' <span class="badge warn">not in any statement closure</span>' : '')
+           + `</td><td>${e(c.role)}</td></tr>`).join('')
+       + '</table></details>';
+  for (const v of row.variants || [])
+    h += `<details><summary>derived variant: ${e(v.title)}</summary>`
+       + (v.claim ? `<p>${inlineTex(v.claim)}</p>` : '') + v.canonical.map(declPanel).join('') + '</details>';
+  return h;
+}
+
+/* ---- rows -------------------------------------------------------------- */
+/* A lane header toggles that lane to the full width of the row: three columns
+   is right for comparing, one column is right for reading a long elaborated
+   signature or a whole proof body. */
+function lane(index, title, badge, body){
+  return `<div class="lane"><h3 data-lane="${index}" title="Widen this lane">`
+       + `<span>${e(title)}</span><span>${badge} <span class="wide">\u2194</span></span></h3>`
+       + `<div class="inner">${body}</div></div>`;
+}
+function rowBody(row){
+  const sources = row.sources || [];
+  const primary = sources.filter(s => (s.role || 'primary') === 'primary');
+  const inherited = sources.filter(s => (s.role || 'primary') !== 'primary');
+  let src = primary.map(fragmentCard).join('');
+  if (inherited.length) {
+    src += `<div class="kindhead">Inherited from elsewhere in the source (${inherited.length})</div>`
+         + inherited.map(fragmentCard).join('');
+  }
+  if (!sources.length)
+    src += '<p class="empty">This row cites no source passage; only the review’s restatement is available.</p>';
+  src += paraphraseCard(row.sourceStatement);
+  return '<div class="lanes">'
+    + lane(0, 'Literature', '<span class="badge mech">file + hash</span>', src)
+    + lane(1, 'Correspondence', '<span class="badge human">reviewed</span>', correspondenceLane(row))
+    + lane(2, 'Lean', '<span class="badge mech">compiler</span>', leanLane(row))
+    + '</div>';
+}
+function rowShell(row){
+  const badges = [
+    row.importance ? `<span class="badge">${e(row.importance)}</span>` : '',
+    row.status ? `<span class="badge">${e(row.status)}</span>` : '',
+    row.sourcePinSummary ? `<span class="badge ${(SRCPIN[row.sourcePinSummary]||[''])[0]}" title="source pin">source: ${e(row.sourcePinSummary)}</span>` : '',
+    row.pinSummary ? `<span class="badge ${PINCLS[row.pinSummary]||''}" title="statement pin">statement: ${e(row.pinSummary)}</span>` : '',
+    row.sourceInterpretation === 'nonlocal' ? '<span class="badge warn">nonlocal reading</span>' : '',
+  ].join(' ');
+  return `<section class="row closed" id="${e(row.anchor)}" data-id="${e(row.id)}">`
+    + `<h2>${e(row.title)} ${badges}</h2>`
+    + `<div class="meta">${e(row.paper)} · <code>${e(row.id)}</code>`
+    + (row.sourceAnchor ? ` · ${e(row.sourceAnchor)}` : '')
+    + (row.verification ? ` · verification ${e(row.verification)}` : '') + '</div>'
+    + (row.claim ? `<p class="claim">${inlineTex(row.claim)}</p>` : '')
+    + '</section>';
+}
+
+/* Rows are built on demand: a page with every lane of every row expanded
+   would render hundreds of formulas nobody has asked to see. */
+const ROWS = {};
+function openRow(section, open){
+  const row = ROWS[section.dataset.id];
+  if (open && !section.dataset.built) {
+    section.insertAdjacentHTML('beforeend', rowBody(row));
+    section.dataset.built = '1';
+    wire(section);
+    renderMath(section);
+  }
+  section.classList.toggle('closed', !open);
+}
+
+/* ---- interaction ------------------------------------------------------- */
+function clearMarks(scope){
+  scope.querySelectorAll('mark[data-auto]').forEach(m => {
+    const t = document.createTextNode(m.textContent);
+    m.replaceWith(t);
+  });
+  scope.querySelectorAll('.card.hit,.decl.hit').forEach(x => x.classList.remove('hit'));
+}
+/* Highlight a quoted excerpt inside the rendered passage.  The quote is
+   compared on collapsed whitespace, because the fragment is reflowed prose. */
+/* The same folding the validator applies: a quote copied out of the TeX and a
+   quote copied off the page have to match the same passage. */
+function fold(s){
+  return s.replace(/[\u2013\u2014]/g,'-').replace(/[\u00a0~]/g,' ')
+          .replace(/[\u201c\u201d]/g,'"').replace(/\u2019/g,"'")
+          .replace(/--/g,'-').replace(/\s+/g,' ').toLowerCase();
+}
+function markExcerpt(card, excerpt){
+  const needle = fold(excerpt).trim();
+  if (!needle) return false;
+  const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+  const nodes = []; let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement.closest('.katex, .hash, h4')) continue;
+    nodes.push(node);
+  }
+  for (const n of nodes) {
+    const i = fold(n.textContent).indexOf(needle);
+    if (i < 0) continue;
+    const range = document.createRange();
+    range.setStart(n, i); range.setEnd(n, Math.min(n.textContent.length, i + needle.length));
+    const mark = document.createElement('mark');
+    mark.dataset.auto = '1';
+    try { range.surroundContents(mark); return true; } catch (_) { return false; }
+  }
+  return false;
+}
+function selectClause(el){
+  const section = el.closest('section.row');
+  const was = el.classList.contains('active');
+  section.querySelectorAll('.clause.active').forEach(c => c.classList.remove('active'));
+  clearMarks(section);
+  if (was) return;
+  el.classList.add('active');
+  const fid = el.dataset.fragment;
+  if (fid) {
+    const card = section.querySelector(`.card.frag[data-fragment="${CSS.escape(fid)}"]`);
+    if (card) {
+      card.classList.add('hit');
+      if (el.dataset.excerpt) markExcerpt(card, el.dataset.excerpt);
+      card.scrollIntoView({block:'nearest', behavior:'smooth'});
+    }
+  }
+  const names = (el.dataset.decls || '').split(' ').filter(Boolean);
+  let first = null;
+  for (const n of names) {
+    const panel = section.querySelector(`.decl[data-name="${CSS.escape(n)}"]`);
+    if (panel) { panel.classList.add('hit'); first ||= panel; }
+  }
+  if (first) first.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+function wire(scope){
+  scope.querySelectorAll('.clause').forEach(c => c.addEventListener('click', ev => {
+    if (ev.target.closest('code.jump')) return;
+    selectClause(c);
+  }));
+  scope.querySelectorAll('.lane>h3[data-lane]').forEach(h => h.addEventListener('click', () => {
+    const lanes = h.closest('.lanes');
+    const cls = 'wide-' + h.dataset.lane;
+    const on = lanes.classList.contains(cls);
+    lanes.className = 'lanes' + (on ? '' : ' ' + cls);
+  }));
+  scope.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    const box = b.closest('.decl');
+    box.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+    box.querySelectorAll('.tabpanel').forEach(p => { p.hidden = p.dataset.tab !== b.dataset.tab; });
+    renderMath(box);
+  }));
+  scope.querySelectorAll('code.jump').forEach(c => c.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const name = c.dataset.n;
+    const section = c.closest('section.row');
+    const panel = section && section.querySelector(`.decl[data-name="${CSS.escape(name)}"]`);
+    if (panel) { clearMarks(section); panel.classList.add('hit'); panel.scrollIntoView({block:'nearest',behavior:'smooth'}); return; }
+    /* Inside the served shell, hand the name to the workspace browser. */
+    if (window.top !== window.self) parent.postMessage({aiq:'declaration', name}, '*');
+  }));
+}
+
+/* ---- page -------------------------------------------------------------- */
+document.getElementById('title').textContent = P.title;
+const meta = [];
+if (P.statementMeta && P.statementMeta.toolchain) meta.push('toolchain ' + P.statementMeta.toolchain);
+if (P.graph) meta.push('proof graph: ' + P.graph.nodeCount + ' declarations');
+const docs = ((P.sources||{}).documents)||[];
+if (docs.length) meta.push(docs.length + ' source document(s)');
+if (P.includesPrivate) meta.push('LOCAL MODE: private source text included');
+if (!HAVE_KATEX) meta.push('math renderer unavailable; showing TeX');
+document.getElementById('subtitle').textContent = meta.join(' · ');
+
+const rowsEl = document.getElementById('rows'), navEl = document.getElementById('nav'), q = document.getElementById('search');
+function render(){
+  const needle = q.value.toLowerCase();
+  rowsEl.innerHTML = ''; navEl.innerHTML = '';
+  let firstId = null;
+  for (const paper of P.papers) {
+    const rows = paper.rows.filter(r => !needle || JSON.stringify(r).toLowerCase().includes(needle));
+    if (!rows.length) continue;
+    navEl.insertAdjacentHTML('beforeend', `<h3>${e(paper.title)}</h3>`);
+    for (const r of rows) {
+      ROWS[r.id] = r;
+      firstId ||= r.anchor;
+      navEl.insertAdjacentHTML('beforeend',
+        `<a data-anchor="${e(r.anchor)}">${e(r.title)}</a>`);
+      rowsEl.insertAdjacentHTML('beforeend', rowShell(r));
+    }
+  }
+  rowsEl.querySelectorAll('section.row>h2').forEach(h => h.addEventListener('click', () => {
+    const s = h.parentElement;
+    openRow(s, s.classList.contains('closed'));
+    if (!s.classList.contains('closed')) location.hash = s.id;
+  }));
+  navEl.querySelectorAll('a').forEach(a => a.addEventListener('click', () => show(a.dataset.anchor)));
+  const wanted = decodeURIComponent(location.hash.replace(/^#/,'')) || firstId;
+  if (wanted) show(wanted, false);
+}
+function show(anchor, scroll = true){
+  const s = document.getElementById(anchor);
+  if (!s) return;
+  openRow(s, true);
+  navEl.querySelectorAll('a').forEach(a => a.classList.toggle('sel', a.dataset.anchor === anchor));
+  if (scroll) s.scrollIntoView({behavior:'smooth', block:'start'});
+}
+q.addEventListener('input', render);
+addEventListener('hashchange', () => show(decodeURIComponent(location.hash.replace(/^#/,''))));
+render();
 </script></body></html>
