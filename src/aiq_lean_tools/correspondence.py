@@ -31,7 +31,11 @@ from typing import Any, Mapping, Sequence
 from .common import Finding
 
 #: The coarse status already in use on clause maps.  Kept, and still the default.
-CLAUSE_STATUSES = {"claimed_exact", "derived", "scope_companion"}
+#: `open` is for a clause whose correspondence is not yet established: the
+#: strongest evidence that exists may be recorded, but the clause is not being
+#: claimed.  Without it a census could only either assert a correspondence it
+#: did not have, or drop the evidence it did have.
+CLAUSE_STATUSES = {"claimed_exact", "derived", "scope_companion", "open"}
 
 #: What a clause claims about its two sides.  ``requires_evidence`` marks the
 #: relations that are assertions about *other theorems*, and so must name them.
