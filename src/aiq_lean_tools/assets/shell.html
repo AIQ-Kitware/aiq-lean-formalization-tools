@@ -203,8 +203,16 @@ function markNav(route_){
 function showPane(html){ frame.classList.add('hide'); pane.classList.add('show'); pane.innerHTML=html; pane.scrollTop=0; }
 function themedUrl(url){ return url + (url.includes('?')?'&':'?') + 'theme=' + (theme==='system'?systemTheme():theme); }
 function systemTheme(){ return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
-function showFrame(url, label){ pane.classList.remove('show'); frame.classList.remove('hide');
-  frameLoading(true, label); frame.src=themedUrl(url); }
+function showFrame(url, label){
+  pane.classList.remove('show'); frame.classList.remove('hide');
+  const want = themedUrl(url);
+  // Re-selecting the view already on screen should cost nothing: reassigning
+  // src reloads and re-parses up to a megabyte of embedded JSON.
+  if (frame.dataset.url === want) { frameLoading(false); return; }
+  frame.dataset.url = want;
+  frameLoading(true, label);
+  frame.src = want;
+}
 function pushTheme(){ try{ frame.contentWindow.postMessage({aiq:'theme', value: theme==='system'?systemTheme():theme}, '*'); }catch(_){} }
 
 /* ---- views ----------------------------------------------------------- */
@@ -502,7 +510,20 @@ async function loadCatalog(refresh){
       h += `<a data-route="view/${e(d.view)}/${e(d.slug)}" data-t="${e((d.title+' '+d.path).toLowerCase())}">${e(d.title)}<small>${e(d.path)}</small></a>`;
   }
   nav.innerHTML=h;
-  nav.querySelectorAll('a').forEach(a=>a.onclick=ev=>{ev.preventDefault(); go(a.dataset.route);});
+  const prefetched=new Set();
+  const prefetch=a=>{
+    const r=a.dataset.route||'';
+    if(!r.startsWith('view/')||prefetched.has(r)) return;
+    prefetched.add(r);
+    // Warms the server's page cache and the browser's, so the click is a
+    // conditional request instead of a render.
+    fetch(themedUrl('/'+r),{cache:'force-cache'}).catch(()=>{});
+  };
+  nav.querySelectorAll('a').forEach(a=>{
+    a.onclick=ev=>{ev.preventDefault(); go(a.dataset.route);};
+    a.addEventListener('mouseenter',()=>prefetch(a),{passive:true});
+    a.addEventListener('focus',()=>prefetch(a));
+  });
   $('#navfilter').oninput=ev=>{
     const t=ev.target.value.toLowerCase();
     nav.querySelectorAll('a').forEach(a=>a.style.display=(!t||a.dataset.t.includes(t))?'':'none');
@@ -512,19 +533,27 @@ async function loadCatalog(refresh){
 }
 
 /* ---- search ---------------------------------------------------------- */
-let timer=null;
+let timer=null, searchAbort=null;
 qIn.oninput=()=>{ clearTimeout(timer); const q=qIn.value.trim();
   if(q.length<2){ if(current) showFrame(`/view/${current.view}${current.slug?'/'+current.slug:''}`); return; }
-  timer=setTimeout(()=>runSearch(q),200); };
+  timer=setTimeout(()=>runSearch(q),120); };
 
 function hl(text,q){ const i=text.toLowerCase().indexOf(q.toLowerCase());
   return i<0?e(text):e(text.slice(0,i))+'<mark>'+e(text.slice(i,i+q.length))+'</mark>'+e(text.slice(i+q.length)); }
 
 async function runSearch(q){
-  const [decls, text] = await Promise.all([
-    api('/api/xref?q='+encodeURIComponent(q)+'&limit=12'),
-    api('/api/search?q='+encodeURIComponent(q)+'&limit=40')
-  ]);
+  // A keystroke supersedes the request before it; letting them race made
+  // results flicker back to an older query.
+  if(searchAbort) searchAbort.abort();
+  searchAbort = new AbortController();
+  const sig = searchAbort.signal;
+  let decls, text;
+  try{
+    [decls, text] = await Promise.all([
+      fetch('/api/xref?q='+encodeURIComponent(q)+'&limit=12',{signal:sig}).then(r=>r.json()),
+      fetch('/api/search?q='+encodeURIComponent(q)+'&limit=40',{signal:sig}).then(r=>r.json())
+    ]);
+  }catch(err){ if(err.name==='AbortError') return; throw err; }
   hits=[]; let h='';
   if(decls.names && decls.names.length){
     h+='<div class="group">Declarations</div>';

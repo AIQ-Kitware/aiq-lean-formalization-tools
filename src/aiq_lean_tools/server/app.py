@@ -14,6 +14,7 @@ served page and a written file cannot disagree.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -108,7 +109,9 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
         if hit and hit[0] == stamp:
             return hit[1], hit[2]
         ws = FormalizationWorkspace.discover(root)
-        data = ws.payload(include_source_audit=source_audit)
+        # Reuse the scan the declaration service already holds: building this
+        # from scratch rescanned every Lean file for an identical index.
+        data = ws.payload(include_source_audit=source_audit, source_index=decls.source_index())
         title = ws.payload_title(data)
         workspace_cache[source_audit] = (stamp, data, title)
         return data, title
@@ -159,8 +162,29 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
 
     # -- rendered viewers, identical to the static files ------------------
 
+    def _cached_page(key: tuple, build, request: Request) -> HTMLResponse:
+        """Serve a rendered page, letting the browser skip the bytes it has.
+
+        The pages are large -- a census is nearly a megabyte -- so revisiting a
+        view should cost a conditional request, not a re-download and re-parse.
+        The tag is derived from what the page is made of, so it changes exactly
+        when the page does.
+        """
+        page = page_cache.get(key)
+        if page is None:
+            page = build()
+            if len(page_cache) > 24:
+                page_cache.clear()
+            page_cache[key] = page
+        etag = '"' + hashlib.sha256(repr(key).encode()).hexdigest()[:24] + '"'
+        if request.headers.get("if-none-match") == etag:
+            from fastapi.responses import Response
+
+            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+        return HTMLResponse(page, headers={"ETag": etag, "Cache-Control": "no-cache"})
+
     @app.get("/view/{view}/{slug}", response_class=HTMLResponse)
-    def view_page(view: str, slug: str, theme: str | None = None) -> HTMLResponse:
+    def view_page(request: Request, view: str, slug: str, theme: str | None = None) -> HTMLResponse:
         spec = catalog.spec(view)
         if spec is None:
             raise HTTPException(404, f"unknown view {view}")
@@ -171,24 +195,13 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
         doc = catalog.get(view, slug)
         st = doc.path.stat() if doc else None
         key = (view, slug, st.st_mtime_ns if st else 0, theme)
-        page = page_cache.get(key)
-        if page is None:
-            page = _with_bridge(viewer_html(spec.asset, doc_title, payload), theme)
-            if len(page_cache) > 24:
-                page_cache.clear()
-            page_cache[key] = page
-        return HTMLResponse(page)
+        return _cached_page(key, lambda: _with_bridge(viewer_html(spec.asset, doc_title, payload), theme), request)
 
     @app.get("/view/workspace", response_class=HTMLResponse)
-    def workspace_page(source_audit: bool = False, theme: str | None = None) -> HTMLResponse:
+    def workspace_page(request: Request, source_audit: bool = False, theme: str | None = None) -> HTMLResponse:
         data, title = workspace_payload(source_audit)
         key = ("workspace", source_audit, ledger_fingerprint(), theme)
-        page = page_cache.get(key)
-        if page is None:
-            page = _with_bridge(viewer_html("workspace_viewer.html", title, data), theme)
-            page_cache.clear()
-            page_cache[key] = page
-        return HTMLResponse(page)
+        return _cached_page(key, lambda: _with_bridge(viewer_html("workspace_viewer.html", title, data), theme), request)
 
     # -- search across every ledger at once -------------------------------
 
@@ -329,8 +342,14 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
             app.state.sockets.discard(ws)
 
     def _warm() -> None:
-        """Pay the expensive costs once, at startup, in dependency order."""
-        ready.run("catalog", catalog.documents, describe=lambda d: f"{len(d)} ledger(s)")
+        """Pay the expensive costs once, at startup, in dependency order.
+
+        Deliberately sequential. Running the three independent chains in threads
+        was measured and made every stage roughly three times slower for exactly
+        the same wall clock -- this work is CPU-bound Python, so threads only
+        interleave on the GIL. The wins came from doing less instead: pruning
+        the discovery walk, and sharing one source scan.
+        """
         def read_all():
             n = 0
             for doc in catalog.documents():
@@ -340,6 +359,8 @@ def create_app(root: Path, *, title: str = "Formalization workspace"):
                 except Exception:
                     pass
             return n
+
+        ready.run("catalog", catalog.documents, describe=lambda d: f"{len(d)} ledger(s)")
         ready.run("payloads", read_all, describe=lambda n: f"{n} ledger(s) read")
         ready.run("xref", refresh_xref, describe=lambda x: f"{x.stats()['declarations']} declarations")
         ready.run("sources", decls.source_index, describe=lambda _: "Lean sources indexed")

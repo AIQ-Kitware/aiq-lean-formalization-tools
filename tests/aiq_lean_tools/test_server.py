@@ -281,3 +281,56 @@ def test_proof_closure_is_cached_per_declaration(tmp_path):
         assert calls == ["A.thing", "A.thing"]
     finally:
         alignment._proof_payload = original
+
+
+# -- discovery walk ------------------------------------------------------
+
+def test_pruned_discovery_matches_a_plain_glob(tmp_path):
+    """The pruned walk must find exactly what root.glob found, and no more."""
+    from aiq_lean_tools.workspace import _discovery_skip_parts, _glob_unique
+
+    (tmp_path / "dev").mkdir()
+    (tmp_path / "dev" / "a-full-source-census.json").write_text("{}")
+    (tmp_path / "nested" / "deep").mkdir(parents=True)
+    (tmp_path / "nested" / "deep" / "b-source-census.json").write_text("{}")
+    (tmp_path / "unrelated.json").write_text("{}")
+    # A skipped directory must not contribute, however many files it holds.
+    (tmp_path / ".lake" / "packages").mkdir(parents=True)
+    (tmp_path / ".lake" / "packages" / "c-full-source-census.json").write_text("{}")
+
+    patterns = ("**/*full-source-census.json", "**/*source-census.json")
+
+    def plain(root, pats):
+        skip = _discovery_skip_parts(root)
+        found = set()
+        for pattern in pats:
+            for path in root.glob(pattern):
+                if path.is_file() and not skip.intersection(path.relative_to(root).parts):
+                    found.add(path.resolve())
+        return sorted(found)
+
+    assert _glob_unique(tmp_path, patterns) == plain(tmp_path, patterns)
+    names = {p.name for p in _glob_unique(tmp_path, patterns)}
+    assert names == {"a-full-source-census.json", "b-source-census.json"}
+
+
+def test_discovery_star_does_not_cross_a_separator(tmp_path):
+    """`**/*literature*.json` matches a filename, not any path containing it."""
+    from aiq_lean_tools.workspace import _glob_unique
+
+    (tmp_path / "literature_notes").mkdir()
+    (tmp_path / "literature_notes" / "other.json").write_text("{}")
+    (tmp_path / "my-literature-index.json").write_text("{}")
+
+    names = {p.name for p in _glob_unique(tmp_path, ("**/*literature*.json",))}
+    assert names == {"my-literature-index.json"}, "a single fnmatch over the whole path would also match other.json"
+
+
+def test_workspace_accepts_an_injected_source_index(tmp_path):
+    """The server hands in the scan it already has instead of repeating it."""
+    import inspect
+
+    from aiq_lean_tools.workspace import FormalizationWorkspace
+
+    for name in ("overview", "payload", "render_html"):
+        assert "source_index" in inspect.signature(getattr(FormalizationWorkspace, name)).parameters

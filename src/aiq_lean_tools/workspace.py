@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import collections
+import fnmatch
 import html
 import json
+import os
 import pathlib
 
 import yaml
@@ -133,13 +135,24 @@ class FormalizationWorkspace:
                 findings.append(Finding(finding.level, finding.code, finding.message, f"formalization.yaml:{finding.location}" if finding.location else "formalization.yaml"))
         return findings
 
-    def overview(self, *, include_source_audit: bool = False) -> dict[str, Any]:
+    def overview(
+        self,
+        *,
+        include_source_audit: bool = False,
+        source_index: LeanSourceIndex | None = None,
+    ) -> dict[str, Any]:
+        """Totals across every ledger.
+
+        ``source_index`` lets a caller that has already scanned the project hand
+        that scan in. A long-lived server has one, and rescanning cost it ten
+        seconds per workspace build for an identical result.
+        """
         censuses = self.censuses()
         reviews = self.reviews()
         coverage = self.coverage_bundles()
         literature = self.literature_documents()
         foundation_maps = self.foundation_maps()
-        foundation_index = scan_lean_project(self.root) if foundation_maps else None
+        foundation_index = source_index or (scan_lean_project(self.root) if foundation_maps else None)
         status = collections.Counter()
         verification = collections.Counter()
         importance = collections.Counter()
@@ -219,8 +232,13 @@ class FormalizationWorkspace:
             data["source_audit"] = source_audit_summary(scan_lean_project(self.root))
         return data
 
-    def payload(self, *, include_source_audit: bool = False) -> dict:
-        data = self.overview(include_source_audit=include_source_audit)
+    def payload(
+        self,
+        *,
+        include_source_audit: bool = False,
+        source_index: LeanSourceIndex | None = None,
+    ) -> dict:
+        data = self.overview(include_source_audit=include_source_audit, source_index=source_index)
         # Carried inline so the static page can drill down with no server behind it.
         data["census_rows"] = [
             {
@@ -244,10 +262,10 @@ class FormalizationWorkspace:
         title = data.get("manifest", {}).get("project_name") if isinstance(data.get("manifest"), dict) else None
         return str(title or self.root.name)
 
-    def render_html(self, *, include_source_audit: bool = False) -> str:
+    def render_html(self, *, include_source_audit: bool = False, source_index: LeanSourceIndex | None = None) -> str:
         from .viewer import viewer_html
 
-        data = self.payload(include_source_audit=include_source_audit)
+        data = self.payload(include_source_audit=include_source_audit, source_index=source_index)
         return viewer_html("workspace_viewer.html", self.payload_title(data), data)
 
 
@@ -261,13 +279,41 @@ def _discovery_skip_parts(root: Path) -> set[str]:
     return SKIP_PARTS | set(SourceScope.load(root).exclude_dirs)
 
 
+def _pattern_tail(pattern: str) -> tuple[str, ...]:
+    """The components a ``**/``-prefixed glob must match at the end of a path."""
+    return tuple(pattern[3:].split("/")) if pattern.startswith("**/") else tuple(pattern.split("/"))
+
+
+def _tail_matches(rel_parts: Sequence[str], tail: Sequence[str]) -> bool:
+    if len(tail) > len(rel_parts):
+        return False
+    window = rel_parts[len(rel_parts) - len(tail):]
+    return all(fnmatch.fnmatch(part, pat) for part, pat in zip(window, tail))
+
+
 def _glob_unique(root: Path, patterns: Sequence[str]) -> list[Path]:
+    """Ledger files under ``root``, skipping directories that hold none.
+
+    ``root.glob("**/...")`` walks everything and discards afterwards, so a
+    repository with a populated ``.lake`` paid for 164k irrelevant paths on
+    every discovery -- fifteen seconds of the workspace view. Pruning during the
+    walk asks the filesystem for a fraction of that.
+
+    Matching is component-wise so ``**/`` keeps its glob meaning: a ``*`` never
+    crosses a path separator, which a single fnmatch over the whole relative
+    path would allow.
+    """
     skip = _discovery_skip_parts(root)
+    tails = [_pattern_tail(pattern) for pattern in patterns]
     found: set[Path] = set()
-    for pattern in patterns:
-        for path in root.glob(pattern):
-            if path.is_file() and not skip.intersection(path.relative_to(root).parts):
-                found.add(path.resolve())
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        rel_dir = Path(dirpath).relative_to(root)
+        base_parts = () if rel_dir == Path(".") else rel_dir.parts
+        for filename in filenames:
+            parts = (*base_parts, filename)
+            if any(_tail_matches(parts, tail) for tail in tails):
+                found.add((Path(dirpath) / filename).resolve())
     return sorted(found)
 
 
