@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+### The audit browser answers for what it is showing
+
+Review of the served browser found that a page could keep showing Lean evidence
+the repository no longer held, and that the private-source half stopped one step
+short of the thing it was built for.
+
+- Cache what a payload is *made of*, not how much of it there is.
+  `AlignmentService` keyed its cache on a record count and a node count, so
+  re-elaborating a theorem whose type had changed, or rebuilding a graph after a
+  rename, left both counts identical and the browser went on serving the previous
+  statement. `DeclarationService` now publishes `statement_revision()`,
+  `graph_revision()` and `source_revision()`, and the payload cache, the page
+  cache and the ETag are keyed on all three. Proof closures are invalidated on
+  the graph revision rather than on its (constant) path.
+- Rebuild the Lean source scan when the sources change. It was cached for the
+  life of the process and nothing refreshed it. The server's watcher now
+  recomputes the source revision on a slow cadence, in a thread, so requests
+  never pay the tree walk.
+- A private document may declare `overlay_for` and a `locator_map`, making it an
+  alternate *rendition* of a public document's passages rather than a separate
+  document. Configuring a lawful local transcription now puts the printed
+  passage beside the checked-in reconstruction on every row that cites it, behind
+  a **Reconstruction | Original** toggle, with independent hashes and with no
+  checked-in review naming a machine-local file. Private TeX macros travel with
+  private text: excluded from a public payload, included under
+  `--include-private`, where without them a transcription in its own notation
+  renders as broken formulas.
+- Show the semantic certification on the row. A census row's `status` and
+  `verification` say nothing about whether hostile semantic review accepted the
+  correspondence, so a blocked row read as `compiled_exact · proved_in_build`
+  until somebody expanded it. A census may point at its result inventory with
+  `result_inventory`, and the page states disposition, compiler evidence and
+  semantic review together, with an unaccepted certification as the loudest badge
+  on the row.
+- An uncurated row's fallback clause is `open`, not `claimed_exact`. It said in
+  one breath that no correspondence was registered and that the correspondence
+  was exact.
+- Require a quoted `source_excerpt` on a clause whose relation is a claim about
+  specific printed words (`representation_change`, `via_theorem`,
+  `inherited_standing_assumption`, `refutation`) and on any clause left `open`.
+  Without one the browser can reach the passage but not mark the sentence under
+  dispute.
+- Enforce *exactly* one primary source fragment. The message had always said
+  "exactly one"; the check accepted any number greater than zero.
+- Decide private-source containment on the resolved path. A relative path, a
+  `..` segment or a symlink back into the checkout defeated a rule applied to
+  the spelling.
+
 ### The literature half of a semantic review
 
 A semantic review claims a Lean declaration says what a paper says. The Lean half

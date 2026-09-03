@@ -49,6 +49,13 @@ PUBLIC = "public_reconstruction"
 #: A document that must stay on the machine it was configured on.
 PRIVATE = "private_source"
 
+#: The two renditions of one passage.  A repository's checked-in TeX is a
+#: transformative reconstruction of a paper it may not redistribute; a reviewer
+#: with a lawful copy wants to read the printed words beside it.  These are
+#: alternate renditions of the *same* logical passage, hashed independently.
+RECONSTRUCTION = "reconstruction"
+ORIGINAL = "original"
+
 #: What a fragment is to the review that cites it.
 FRAGMENT_ROLES = {
     "primary": "The printed passage the reviewed result states.",
@@ -216,6 +223,11 @@ class SourceFragment:
     title: str = ""
     role: str = "primary"
     note: str = ""
+    #: Which rendition of the passage this is.  ``reconstruction`` is the
+    #: checked-in distributable wording; ``original`` is a lawful local
+    #: transcription of the printed paper overlaid on it.  They are separate
+    #: texts with separate hashes, and neither substitutes for the other.
+    rendition: str = RECONSTRUCTION
 
     @property
     def private(self) -> bool:
@@ -260,6 +272,7 @@ class SourceFragment:
             "sha256": self.sha256,
             "role": self.role,
             "title": self.title,
+            "rendition": self.rendition,
         }
         if self.note:
             out["note"] = self.note
@@ -515,6 +528,16 @@ class SourceDocument:
     #: Extra files whose ``\newcommand`` definitions this document relies on.
     macro_files: tuple[str, ...] = ()
     note: str = ""
+    #: The id of the public document this one is an alternate rendition of.
+    #: Set on a private transcription of the printed paper: the checked-in
+    #: reconstruction stays the document reviews cite, and this is overlaid on
+    #: its passages rather than replacing them.
+    overlay_for: str = ""
+    #: How this document spells a passage the overlaid document names.  Keys are
+    #: the public document's markers; values are locators into this one -- a
+    #: ``{"marker": ...}`` or a ``{"lines": [first, last]}``.  A transcription
+    #: that carries the same markers needs no entries at all.
+    locator_map: dict[str, Any] = field(default_factory=dict)
 
     #: How this document is cited in output: a repository-relative path where
     #: the file is inside the checkout, and the bare name where it is not.
@@ -526,6 +549,28 @@ class SourceDocument:
     @property
     def private(self) -> bool:
         return self.visibility == PRIVATE
+
+    @property
+    def rendition(self) -> str:
+        return ORIGINAL if self.overlay_for else RECONSTRUCTION
+
+    def overlay_locator(self, locator: SourceLocator) -> SourceLocator | None:
+        """Where the passage ``locator`` names lives in *this* document.
+
+        Two spellings are supported because both occur: a transcription that
+        carries the same markers as the reconstruction needs nothing declared,
+        and one that does not is mapped passage by passage.  An unmapped passage
+        returns ``None`` -- an overlay that covers part of a paper is normal, and
+        must not invent a counterpart for the rest.
+        """
+        mapped = self.locator_map.get(locator.marker or locator.key)
+        if isinstance(mapped, Mapping):
+            return SourceLocator.parse(dict(mapped), document=self.id)
+        if locator.marker and locator.marker in self.markers():
+            return SourceLocator(document=self.id, marker=locator.marker,
+                                 section=locator.section, result=locator.result,
+                                 page=locator.page, anchor=locator.anchor)
+        return None
 
     # -- reading -----------------------------------------------------------
 
@@ -633,6 +678,7 @@ class SourceDocument:
             title=self.title,
             role=role,
             note=self.note,
+            rendition=self.rendition,
         )
 
     def rel_path(self) -> str:
@@ -751,11 +797,43 @@ class SourceLibrary:
 
     # -- use ---------------------------------------------------------------
 
+    def overlays_of(self, document_id: str) -> list[SourceDocument]:
+        """Documents declared as alternate renditions of ``document_id``."""
+        return [d for d in self.documents.values() if d.overlay_for == document_id]
+
+    def alternates(self, locator: Any, *, id: str = "",
+                   role: str = "primary") -> list[SourceFragment]:
+        """The same passage as every overlay renders it.
+
+        This is what makes a lawfully held copy of a paper usable: configure the
+        transcription once, and every review row that cites a reconstructed
+        passage gains the printed one beside it.  Nothing checked in has to name
+        the private file, which is the whole point -- a review that had to cite a
+        machine-local document in order to show it would be unshareable.
+        """
+        loc = SourceLocator.parse(locator)
+        doc = self.document_for(loc)
+        if doc is None:
+            return []
+        out: list[SourceFragment] = []
+        for overlay in self.overlays_of(doc.id):
+            mapped = overlay.overlay_locator(loc)
+            if mapped is None:
+                continue
+            fragment = overlay.resolve(mapped, id=id, role=role)
+            if fragment is not None:
+                out.append(fragment)
+        return out
+
     def document_for(self, locator: SourceLocator) -> SourceDocument | None:
         if locator.document and locator.document in self.documents:
             return self.documents[locator.document]
         if locator.marker:
-            named = [d for d in self.documents.values() if locator.marker in d.markers()]
+            # An overlay is reached through the document it overlays, never by a
+            # marker search: a transcription carrying the same markers would
+            # otherwise capture locators meant for the reconstruction.
+            named = [d for d in self.documents.values()
+                     if not d.overlay_for and locator.marker in d.markers()]
             if len(named) == 1:
                 return named[0]
             if named:
@@ -793,17 +871,25 @@ class SourceLibrary:
                 doc.display_path = str(doc.path)
         return doc.resolve(loc, id=id, role=role)
 
-    def macros(self) -> dict[str, str]:
+    def macros(self, *, include_private: bool = False) -> dict[str, str]:
+        """TeX macro definitions the page needs in order to render its sources.
+
+        Private definitions are source text and never belong in a public
+        payload.  They *do* belong in a local render that has already opted into
+        private text: a transcription written in its own notation renders as
+        broken formulas without them, which is the opposite of provenance.
+        """
         out: dict[str, str] = {}
         for doc in self.documents.values():
-            if not doc.private:
-                out.update(doc.macros())
+            if doc.private and not include_private:
+                continue
+            out.update(doc.macros())
         return out
 
-    def as_json(self) -> dict[str, Any]:
+    def as_json(self, *, include_private: bool = False) -> dict[str, Any]:
         return {
             "documents": [d.as_json() for d in self.documents.values()],
-            "macros": self.macros(),
+            "macros": self.macros(include_private=include_private),
         }
 
     @property
@@ -858,12 +944,21 @@ def private_documents(config: Mapping[str, Any] | None, *, root: Path) -> list[S
     for key, spec in entries.items():
         if not isinstance(spec, Mapping) or not spec.get("path"):
             continue
+        # Canonical paths, both sides.  `is_relative_to` is a string test: a
+        # relative path, a `..` segment, or a symlink pointing back into the
+        # checkout all defeat the containment rule when it is applied to the
+        # spelling instead of to where the path actually leads.
         path = Path(str(spec["path"])).expanduser()
-        if path.is_relative_to(root):
+        try:
+            resolved = path.resolve()
+        except OSError:  # pragma: no cover - resolution of a broken mount
+            resolved = path.absolute()
+        if resolved.is_relative_to(Path(root).resolve()):
             raise ValidationError(
-                f"private source {key} resolves inside the repository ({path}); "
+                f"private source {key} resolves inside the repository ({resolved}); "
                 "private material must live outside the checkout"
             )
+        path = resolved
         out.append(
             SourceDocument(
                 id=str(spec.get("id") or key),
@@ -875,6 +970,10 @@ def private_documents(config: Mapping[str, Any] | None, *, root: Path) -> list[S
                 marker_prefix=str(spec.get("marker_prefix") or ""),
                 macro_files=tuple(str(x) for x in spec.get("macro_files") or ()),
                 note=str(spec.get("note") or "Local provenance source; not distributable."),
+                overlay_for=str(spec.get("overlay_for") or ""),
+                locator_map={
+                    str(k): v for k, v in (spec.get("locator_map") or {}).items()
+                } if isinstance(spec.get("locator_map"), Mapping) else {},
             )
         )
     return out

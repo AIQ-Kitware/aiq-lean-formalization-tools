@@ -170,6 +170,35 @@ say the same thing; that a representation theorem is sufficient; that a nonlocal
 reading is faithful. `claimed_exact` is a claim, and the page never renders it as
 if the compiler had agreed.
 
+A clause whose relation is a claim about *specific printed words* — a
+representation change, an inherited standing assumption, a correspondence
+carried by another theorem, a refutation — must quote them in `source_excerpt`,
+and so must a clause whose status is `open`. Naming the passage is not enough:
+the browser can then jump to the passage but cannot mark the sentence under
+dispute, which is what the reader opened the row for.
+
+## The three completion axes
+
+A row carries three independent judgements, and a browser that shows only the
+first two can advertise `compiled_exact · proved_in_build` for a row whose
+hostile semantic review is blocked. The formal disposition and the compiler
+evidence live on the census row; whether the printed result has survived hostile
+semantic review is a different judgement, kept in a result inventory. A census
+says where that lives:
+
+```json
+"result_inventory": {"path": "<paper>-formalization-result-inventory.json",
+                     "collection": "results", "key": "id"}
+```
+
+Its rows are read for `disposition`, `verification`, `semantic_certification`
+and `semantic_certification_note` (renameable through an optional `fields` map),
+and the alignment page states all three on the collapsed row, with an
+unaccepted semantic certification as its loudest badge. A census's own
+`completion_certification` is shown separately and labelled as passage-level
+bookkeeping: it is a coarser thing than a printed result's certification. The
+pointer is optional, and a broken one costs an axis rather than the page.
+
 ## Public reconstruction and private source
 
 A repository may lawfully hold a distributable reconstruction of a paper while a
@@ -199,6 +228,34 @@ committed, published or shared.
 
 Tests for private behaviour use invented prose. Never put publisher text in a
 fixture.
+
+### Reading the printed paper beside the reconstruction
+
+A private document may declare itself an **overlay** of a public one. It is then
+an alternate rendition of the same logical passages rather than a separate
+document, and every review row that cites the reconstruction gains the printed
+passage beside it — without any checked-in review naming a machine-local file,
+which is what would make the review unshareable.
+
+```json
+{"documents": {"DavisKahan1970-original": {
+  "path": "/home/me/private/dk1970-transcription.tex",
+  "citation": "printed paper, local transcription",
+  "format": "tex",
+  "marker_prefix": "DK-CERT",
+  "overlay_for": "DavisKahan1970",
+  "locator_map": {"S2-sin-theta": {"lines": [214, 240]}}}}}
+```
+
+A transcription carrying the same markers as the reconstruction needs no
+`locator_map` at all; one that spells passages differently maps them, and a
+passage it does not cover simply has no counterpart. The two renditions are
+separate texts with separate hashes; the browser shows a
+**Reconstruction | Original** toggle and neither hash substitutes for the other.
+
+Overlays are disclosed even in a public payload — a reviewer must be able to see
+that a private provenance source was consulted — while their text, and their TeX
+macro definitions, travel only under `--include-private`.
 
 ## Reading it
 

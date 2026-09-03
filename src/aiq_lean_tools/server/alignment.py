@@ -54,6 +54,19 @@ class AlignmentService:
         """What the source documents look like right now, for a page cache key."""
         return self._documents_stamp(self.library())
 
+    def evidence_stamp(self) -> tuple:
+        """Every non-census input a rendered alignment page is made of.
+
+        The page cache and its ETag need the same revisions the payload cache
+        uses, or a served page can outlive the evidence it displays.
+        """
+        return (
+            self.documents_stamp(),
+            self.declarations.statement_revision(),
+            self.declarations.graph_revision(),
+            self.declarations.source_revision(),
+        )
+
     @staticmethod
     def _documents_stamp(library: SourceLibrary) -> tuple:
         out = []
@@ -76,19 +89,26 @@ class AlignmentService:
         except OSError as ex:
             raise KeyError(str(census_path)) from ex
         graph = self.declarations.graph()
+        graph_revision = self.declarations.graph_revision()
         key = (str(census_path), importance, rows)
+        # Every input this payload is made of, at the revision it is made from.
+        # Counting records and nodes is not enough: re-elaborating a theorem
+        # whose type changed leaves the record count identical, and rebuilding a
+        # graph after a rename can leave the node count identical, so a cache
+        # keyed on the counts kept serving the previous Lean evidence.
         stamp = (
             census_stamp,
             self._documents_stamp(library),
-            len(self.declarations.statements()),
-            (graph or {}).get("nodeCount"),
+            self.declarations.statement_revision(),
+            graph_revision,
+            self.declarations.source_revision(),
         )
         hit = self._cache.get(key)
         if hit and hit[0] == stamp:
             return hit[1], hit[2]
-        if self._proofs_stamp != (graph or {}).get("path"):
+        if self._proofs_stamp != graph_revision:
             self._proofs.clear()
-            self._proofs_stamp = (graph or {}).get("path")
+            self._proofs_stamp = graph_revision
         packet = build_alignment_packet(
             [census_path],
             root=self.root,

@@ -40,6 +40,14 @@ section.row.closed .lanes,section.row.closed .claim{display:none}
 .badge.bad{color:var(--bad);border-color:var(--bad)}
 .badge.mech{border-style:solid;color:var(--accent);border-color:var(--accent)}
 .badge.human{border-style:dashed}
+.renditions{display:flex;gap:0;margin:4px 0 8px}
+.renditions .rendition{font:inherit;font-size:11px;padding:2px 10px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);cursor:pointer}
+.renditions .rendition:first-child{border-radius:5px 0 0 5px}
+.renditions .rendition:last-child{border-radius:0 5px 5px 0;border-left:0}
+.renditions .rendition.on{background:var(--panel);color:var(--fg);border-color:var(--accent)}
+.badge.loud{font-weight:600;background:var(--bad);color:var(--bg);border-color:var(--bad)}
+.axes{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 2px;font-size:11px;color:var(--muted)}
+.axes b{font-weight:500;text-transform:uppercase;letter-spacing:.06em;margin-right:5px}
 
 .lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
 .lane{min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
@@ -221,6 +229,22 @@ function blocksHtml(blocks){
   }
   return h + (list ? '</ul>' : '');
 }
+/* One passage may exist in two renditions: the checked-in reconstruction the
+   reviews cite, and a lawfully held local transcription of the printed paper
+   overlaid on it. They are separate texts with separate hashes, so they are
+   shown as alternates behind a toggle rather than merged. */
+const RENDITION_LABEL = {reconstruction: 'Reconstruction', original: 'Original'};
+function fragmentBody(f){
+  let h = `<div class="meta">${e(f.label || f.locator.marker || '')}`
+        + (f.citation ? ` · ${e(f.citation)}` : '') + `</div>`;
+  if (f.withheld) h += `<p class="empty">${e(f.withheld)}</p>`;
+  else h += blocksHtml(f.blocks);
+  return h + `<div class="hash">${e(f.locator.file || f.document)}`
+     + (f.locator.lines ? `:${f.locator.lines[0]}–${f.locator.lines[1]}` : '')
+     + ` · content hash <code>${e(f.sha256.slice(0,16))}</code>`
+     + (f.visibility === 'private_source' ? ' · <b>private local source</b>' : '')
+     + `</div>`;
+}
 function fragmentCard(entry){
   const f = entry.fragment;
   const role = entry.role || 'primary';
@@ -233,15 +257,18 @@ function fragmentCard(entry){
     return h + `<p class="empty">This review cites a passage that no configured source document resolves: `
       + `<code>${e(JSON.stringify(entry.unresolved||{}))}</code></p></div>`;
   }
-  h += `<div class="meta">${e(f.label || f.locator.marker || '')}`
-     + (f.citation ? ` · ${e(f.citation)}` : '') + `</div>`;
-  if (f.withheld) h += `<p class="empty">${e(f.withheld)}</p>`;
-  else h += blocksHtml(f.blocks);
-  h += `<div class="hash">${e(f.locator.file || f.document)}`
-     + (f.locator.lines ? `:${f.locator.lines[0]}–${f.locator.lines[1]}` : '')
-     + ` · content hash <code>${e(f.sha256.slice(0,16))}</code>`
-     + (f.visibility === 'private_source' ? ' · <b>private local source</b>' : '')
-     + `</div>`;
+  const renditions = [f].concat(entry.alternates || []);
+  if (renditions.length > 1) {
+    h += '<div class="renditions">' + renditions.map((r, i) =>
+      `<button class="rendition${i ? '' : ' on'}" data-rendition="${i}">`
+      + `${e(RENDITION_LABEL[r.rendition] || r.rendition || 'Rendition ' + (i + 1))}</button>`
+    ).join('') + '</div>';
+    h += renditions.map((r, i) =>
+      `<div class="renditionBody"${i ? ' hidden' : ''} data-rendition="${i}">${fragmentBody(r)}</div>`
+    ).join('');
+  } else {
+    h += fragmentBody(f);
+  }
   if (entry.why) h += `<p class="meta">${e(entry.why)}</p>`;
   return h + '</div>';
 }
@@ -267,7 +294,9 @@ function clauseCard(c, rowId){
   h += `<p class="src">${inlineTex(c.sourceClause)}</p>`;
   h += `<div class="arrow">↓ <span class="badge human" title="${e(rel.description||'reviewer judgment')}">`
      + `${e(c.relationLabel || c.relation || c.status || 'claimed')}</span>`
-     + (c.status && c.status !== 'claimed_exact' ? `<span class="badge">${e(c.status)}</span>` : '')
+     + (c.status === 'open'
+          ? `<span class="badge loud" title="the correspondence is recorded but not established">not established</span>`
+          : c.status && c.status !== 'claimed_exact' ? `<span class="badge">${e(c.status)}</span>` : '')
      + (c.leanBinder ? `<code>${e(c.leanBinder)}</code>` : '')
      + `</div>`;
   h += `<p class="lean">${inlineTex(c.leanRealization)}</p>`;
@@ -439,19 +468,53 @@ function rowBody(row){
     + lane(2, 'Lean', '<span class="badge mech">compiler</span>', leanLane(row))
     + '</div>';
 }
+/* A row has three independent completion axes, and only the third says
+   whether the correspondence has survived hostile review. Showing the first
+   two alone let a semantically blocked row read as `compiled_exact ·
+   proved_in_build` until somebody expanded it and found an open clause, so the
+   semantic axis is stated on the collapsed row and shouts when it is not
+   accepted. */
+function semanticClass(value){
+  if (!value) return '';
+  if (value === 'accepted') return 'ok';
+  return value.startsWith('reopened') || value.indexOf('blocked') >= 0 ? 'loud' : 'warn';
+}
+function axes(row){
+  const c = row.certification || {};
+  const parts = [];
+  if (c.disposition) parts.push(`<span><b>disposition</b>${e(c.disposition)}</span>`);
+  if (c.verification || row.verification)
+    parts.push(`<span><b>compiler</b>${e(c.verification || row.verification)}</span>`);
+  if (c.semantic) {
+    const cls = semanticClass(c.semantic);
+    const label = cls === 'loud' ? c.semantic.replace(/_/g, ' ').toUpperCase() : c.semantic;
+    parts.push(`<span><b>semantic review</b><span class="badge ${cls}" `
+      + `title="${e(c.semanticNote || ('from ' + (c.inventory || 'the result inventory')))}">`
+      + `${e(label)}</span></span>`);
+  }
+  if (c.censusCertification && c.censusCertification !== c.semantic)
+    parts.push(`<span><b>census passage</b><span class="badge ${semanticClass(c.censusCertification) === 'loud' ? 'warn' : ''}" `
+      + `title="Source-fidelity bookkeeping for the whole cited passage, which is coarser than the printed result's semantic certification.">`
+      + `${e(c.censusCertification)}</span></span>`);
+  return parts.length ? `<div class="axes">${parts.join('')}</div>` : '';
+}
 function rowShell(row){
+  const c = row.certification || {};
+  const alarm = semanticClass(c.semantic) === 'loud'
+    ? `<span class="badge loud" title="hostile semantic review has not accepted this row">${e(c.semantic.replace(/_/g, ' '))}</span>` : '';
   const badges = [
+    alarm,
     row.importance ? `<span class="badge">${e(row.importance)}</span>` : '',
     row.status ? `<span class="badge">${e(row.status)}</span>` : '',
     row.sourcePinSummary ? `<span class="badge ${(SRCPIN[row.sourcePinSummary]||[''])[0]}" title="source pin">source: ${e(row.sourcePinSummary)}</span>` : '',
     row.pinSummary ? `<span class="badge ${PINCLS[row.pinSummary]||''}" title="statement pin">statement: ${e(row.pinSummary)}</span>` : '',
     row.sourceInterpretation === 'nonlocal' ? '<span class="badge warn">nonlocal reading</span>' : '',
-  ].join(' ');
+  ].filter(Boolean).join(' ');
   return `<section class="row closed" id="${e(row.anchor)}" data-id="${e(row.id)}">`
     + `<h2>${e(row.title)} ${badges}</h2>`
     + `<div class="meta">${e(row.paper)} · <code>${e(row.id)}</code>`
-    + (row.sourceAnchor ? ` · ${e(row.sourceAnchor)}` : '')
-    + (row.verification ? ` · verification ${e(row.verification)}` : '') + '</div>'
+    + (row.sourceAnchor ? ` · ${e(row.sourceAnchor)}` : '') + '</div>'
+    + axes(row)
     + (row.claim ? `<p class="claim">${inlineTex(row.claim)}</p>` : '')
     + '</section>';
 }
@@ -488,6 +551,26 @@ function fold(s){
           .replace(/--/g,'-').replace(/\s+/g,' ').toLowerCase();
 }
 function markExcerpt(card, excerpt){
+  /* Only the visible rendition may be marked: a hidden body's text nodes are
+     still in the DOM, so marking one puts the highlight where nobody can see
+     it. When the quote is not in the visible rendition but is in another --
+     a reviewer quoting the printed original -- switch to that one. */
+  const bodies = [...card.querySelectorAll('.renditionBody')];
+  if (bodies.length) {
+    const visible = bodies.find(b => !b.hidden) || bodies[0];
+    if (markIn(visible, excerpt)) return true;
+    for (const body of bodies) {
+      if (body === visible) continue;
+      if (!markIn(body, excerpt)) continue;
+      const button = card.querySelector(`.rendition[data-rendition="${body.dataset.rendition}"]`);
+      if (button) button.click();
+      return true;
+    }
+    return false;
+  }
+  return markIn(card, excerpt);
+}
+function markIn(card, excerpt){
   const needle = fold(excerpt).trim();
   if (!needle) return false;
   const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
@@ -541,6 +624,15 @@ function wire(scope){
     const cls = 'wide-' + h.dataset.lane;
     const on = lanes.classList.contains(cls);
     lanes.className = 'lanes' + (on ? '' : ' ' + cls);
+  }));
+  scope.querySelectorAll('.renditions .rendition').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const card = b.closest('.card.frag');
+    card.querySelectorAll('.renditions .rendition').forEach(x => x.classList.toggle('on', x === b));
+    card.querySelectorAll('.renditionBody').forEach(x => {
+      x.hidden = x.dataset.rendition !== b.dataset.rendition;
+    });
+    renderMath(card);
   }));
   scope.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
     const box = b.closest('.decl');

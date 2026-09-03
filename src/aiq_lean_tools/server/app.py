@@ -213,12 +213,15 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
             raise HTTPException(404, f"no census named {slug}")
         rows = tuple(row or ())
         data, doc_title = alignment.payload(doc.path, importance=importance, rows=rows)
-        # The source documents are part of what this page is made of, so they
-        # belong in the tag. Without them, editing the reconstruction left the
-        # cached page showing the passage the review was accepted against --
-        # precisely the drift a source pin exists to notice.
+        # Everything this page is made of belongs in the tag: the source
+        # documents, the elaborated statements, the dependency graph and the
+        # Lean sources. Without the documents, editing the reconstruction left
+        # the cached page showing the passage the review was accepted against --
+        # precisely the drift a source pin exists to notice. Without a statement
+        # *revision* -- the record count is not one -- re-elaborating a theorem
+        # whose type changed left the page showing the old signature.
         key = ("alignment", slug, importance, rows, doc.path.stat().st_mtime_ns,
-               alignment.documents_stamp(), len(decls.statements()), theme)
+               alignment.evidence_stamp(), theme)
         return _cached_page(
             key,
             lambda: _with_bridge(
@@ -424,7 +427,7 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
 
     @app.on_event("startup")
     async def _watch() -> None:
-        app.state.watch_task = asyncio.create_task(_watch_files(app, catalog))
+        app.state.watch_task = asyncio.create_task(_watch_files(app, catalog, decls=decls))
         # In a worker thread: these are blocking, and the server must answer
         # while they run so the UI can show what is still coming.
         app.state.warm_task = asyncio.create_task(asyncio.to_thread(_warm))
@@ -551,12 +554,27 @@ def _with_bridge(page: str, theme: str | None = None) -> str:
     return page + _BRIDGE
 
 
-async def _watch_files(app, catalog: Catalog, interval: float = 1.0) -> None:
-    """Poll the catalog's files and push a reload when one changes on disk."""
+async def _watch_files(app, catalog: Catalog, interval: float = 1.0, *,
+                       decls=None, source_every: int = 15) -> None:
+    """Poll the catalog's files and push a reload when one changes on disk.
+
+    The Lean sources are watched too, on a slower cadence and in a thread: the
+    scan behind them costs seconds, but without it an edited theorem stayed
+    invisible for as long as the staleness TTL, which is exactly the drift this
+    browser exists to expose.
+    """
     stamps: dict[Path, tuple[int, int]] = {}
+    source_stamp: tuple | None = None
+    tick = 0
     while True:
         try:
+            tick += 1
             changed: list[str] = []
+            if decls is not None and tick % source_every == 0:
+                revision = await asyncio.to_thread(decls.rescan_sources)
+                if source_stamp is not None and revision != source_stamp:
+                    changed.append(revision[1] or "Lean sources")
+                source_stamp = revision
             for path in catalog.watched_files():
                 try:
                     st = path.stat()

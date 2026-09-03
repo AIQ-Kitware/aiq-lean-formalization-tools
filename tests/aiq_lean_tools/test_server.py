@@ -437,3 +437,101 @@ def test_a_served_page_is_rerendered_only_when_its_inputs_change(tmp_path):
                             headers={"if-none-match": etag})
         assert edited.status_code == 200
         assert b"a weaker estimate holds" in edited.content
+
+
+# -- served evidence must not outlive the evidence it displays --------------
+
+def _sidecar(root, name, type_text, hash_text):
+    """One statement sidecar holding a single elaborated declaration."""
+    (root / ".leanq").mkdir(exist_ok=True)
+    path = root / ".leanq" / "paper.statements-main.jsonl"
+    path.write_text(json.dumps({
+        "name": name, "module": "Paper", "kind": "theorem", "role": "seed",
+        "type": type_text, "signature": type_text, "typeExprHash": hash_text,
+    }) + "\n", encoding="utf-8")
+    return path
+
+
+def test_statement_revision_changes_when_a_type_changes_but_the_count_does_not(tmp_path):
+    """A record count is not a revision.
+
+    Re-elaborating a theorem whose statement changed leaves the number of
+    records identical, so anything keyed on the count kept serving the previous
+    signature. This is the exact shape of that failure.
+    """
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    svc = DeclarationService(tmp_path)
+    _sidecar(tmp_path, "Paper.main", "a = b", "h1")
+    first = svc.statement_revision()
+    assert svc.detail("Paper.main", with_proof=False)["elaborated"]["type"] == "a = b"
+
+    _sidecar(tmp_path, "Paper.main", "a = c", "h2")
+    assert len(svc.statements()) == 1, "the count is unchanged, which is the point"
+    assert svc.statement_revision() != first
+    assert svc.detail("Paper.main", with_proof=False)["elaborated"]["type"] == "a = c"
+
+
+def test_graph_revision_changes_when_edges_change_but_nodes_do_not(tmp_path):
+    """The graph path is constant, so keying on it invalidates nothing."""
+    from aiq_lean_tools.server.declaration import DeclarationService, GRAPH_PATH
+
+    svc = DeclarationService(tmp_path)
+    path = tmp_path / GRAPH_PATH
+    path.parent.mkdir(parents=True)
+
+    def write(edges):
+        path.write_text(json.dumps({
+            "nodes": [{"name": "Paper.main"}, {"name": "Paper.helper"}],
+            "edges": edges,
+        }), encoding="utf-8")
+
+    write([])
+    first = svc.graph_revision()
+    assert first != ()
+    write([{"src": "Paper.main", "dst": "Paper.helper"}])
+    assert svc.graph_revision() != first, "same node count, different graph"
+
+
+def test_the_alignment_payload_cache_follows_the_statement_revision(tmp_path):
+    from aiq_lean_tools.server.alignment import AlignmentService
+    from aiq_lean_tools.server.declaration import DeclarationService
+
+    root = _alignment_repo(tmp_path)
+    decls = DeclarationService(root)
+    service = AlignmentService(root, decls)
+    census = root / "dev" / "paper-full-source-census.json"
+
+    _sidecar(root, "Paper.main", "‖E‖ ≤ δ", "h1")
+    first, _ = service.payload(census)
+    assert first["records"]["Paper.main"]["type"] == "‖E‖ ≤ δ"
+
+    _sidecar(root, "Paper.main", "‖E‖ ≤ 2 * δ", "h2")
+    second, _ = service.payload(census)
+    assert second["records"]["Paper.main"]["type"] == "‖E‖ ≤ 2 * δ", \
+        "the served payload showed the statement the theorem used to have"
+
+
+def test_a_served_page_follows_an_edited_lean_source(tmp_path):
+    """The Lean scan is cached; it must not be cached past an edit."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from aiq_lean_tools.server.app import create_app
+
+    root = _alignment_repo(tmp_path)
+    (root / "Paper").mkdir()
+    lean = root / "Paper" / "Main.lean"
+    lean.write_text("theorem Paper.main : True := trivial\n", encoding="utf-8")
+    with TestClient(create_app(root)) as client:
+        first = client.get("/view/alignment/paper-full-source-census")
+        assert b"trivial" in first.content
+        lean.write_text("theorem Paper.main : True := by exact trivial\n", encoding="utf-8")
+        # What the background watcher does on its slow cadence: recompute the
+        # source revision without waiting out the staleness TTL.
+        client.app.state.declarations.rescan_sources()
+        second = client.get("/view/alignment/paper-full-source-census",
+                            headers={"if-none-match": first.headers["etag"]})
+        assert second.status_code == 200, "the tag survived an edit to the Lean source"
+        assert b"by exact trivial" in second.content

@@ -87,6 +87,7 @@ def _repo(tmp_path: Path, *, private: bool = False) -> tuple[Path, SourceLibrary
                     {"source_clause": "the bound", "lean_realization": "corner gauge",
                      "status": "claimed_exact", "relation": "representation_change",
                      "kind": "conclusion", "source_fragment": "printed",
+                     "source_excerpt": "for every unitary-invariant norm",
                      "correspondence_declarations": ["Paper.corner_singular_values"]},
                 ],
             },
@@ -197,3 +198,132 @@ def test_a_review_with_no_source_library_still_builds(tmp_path: Path):
     assert [s["id"] for s in row["sources"]] == ["printed", "standing"]
     assert all("fragment" not in s for s in row["sources"])
     assert all("unresolved" in s for s in row["sources"])
+
+
+# -- the private original, overlaid on the public reconstruction -------------
+
+ORIGINAL = """% Q-CERT-CLAIM-BEGIN T-1
+% Q-CERT-SOURCE-BEGIN
+Suppose the spectra are separated by $\\delta$.  Then in any unitarily
+invariant norm the printed bound holds.
+% Q-CERT-SOURCE-END
+% Q-CERT-CLAIM-END T-1
+"""
+
+
+def _with_overlay(tmp_path: Path, *, locator_map=None, include_private=False):
+    """The repository, plus a lawfully held local transcription overlaid on it."""
+    census, library = _repo(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-original.tex"
+    outside.write_text(ORIGINAL, encoding="utf-8")
+    library.add(SourceDocument(
+        id="Paper-original", path=outside, format="tex", visibility=PRIVATE,
+        marker_prefix="Q-CERT", citation="Printed paper, local transcription",
+        overlay_for="Paper", locator_map=locator_map or {},
+    ))
+    packet = build_alignment_packet([census], root=tmp_path, sources=library,
+                                    include_private=include_private)
+    return alignment_payload(packet)
+
+
+def _printed(data):
+    return next(s for s in data["papers"][0]["rows"][0]["sources"] if s["id"] == "printed")
+
+
+def test_configuring_a_private_original_overlays_it_on_the_public_passage(tmp_path: Path):
+    """The feature this exists for: configure a lawful copy, read it beside the
+    reconstruction, without any checked-in review naming a machine-local file."""
+    printed = _printed(_with_overlay(tmp_path, include_private=True))
+    assert printed["fragment"]["rendition"] == "reconstruction"
+    alternates = printed["alternates"]
+    assert [a["rendition"] for a in alternates] == ["original"]
+    text = json.dumps(alternates[0])
+    assert "Suppose the spectra are separated" in text
+    assert alternates[0]["sha256"] != printed["fragment"]["sha256"], \
+        "two renditions of a passage are two texts, hashed independently"
+
+
+def test_an_overlay_discloses_itself_but_withholds_its_text(tmp_path: Path):
+    printed = _printed(_with_overlay(tmp_path, include_private=False))
+    original = printed["alternates"][0]
+    assert original["visibility"] == PRIVATE
+    assert original["sha256"] and "withheld" in original
+    assert "Suppose the spectra" not in json.dumps(original)
+
+
+def test_an_overlay_may_spell_a_passage_differently(tmp_path: Path):
+    """A transcription that does not carry the reconstruction's markers is
+    mapped passage by passage rather than being unusable."""
+    outside_map = {"T-1": {"lines": [1, 6]}}
+    data = _with_overlay(tmp_path, locator_map=outside_map, include_private=True)
+    assert _printed(data)["alternates"][0]["locator"]["lines"] == [1, 6]
+
+
+def test_a_passage_the_overlay_does_not_cover_gets_no_counterpart(tmp_path: Path):
+    data = _with_overlay(tmp_path, include_private=True)
+    standing = next(s for s in data["papers"][0]["rows"][0]["sources"] if s["id"] == "standing")
+    assert "alternates" not in standing, \
+        "an overlay covering part of a paper must not invent the rest"
+
+
+def test_private_macros_travel_only_in_a_local_render(tmp_path: Path):
+    """A transcription written in its own notation renders as broken formulas
+    without its macros, and its macro definitions are source text."""
+    census, library = _repo(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-macros.tex"
+    outside.write_text("\\newcommand{\\priv}[1]{\\mathbf{#1}}\n" + ORIGINAL, encoding="utf-8")
+    library.add(SourceDocument(
+        id="Paper-original", path=outside, format="tex", visibility=PRIVATE,
+        marker_prefix="Q-CERT", citation="local", overlay_for="Paper",
+    ))
+    public = alignment_payload(build_alignment_packet(
+        [census], root=tmp_path, sources=library))["sources"]["macros"]
+    assert "\\priv" not in public, "a private macro definition is private source text"
+    assert "\\norm" in public
+
+    local = alignment_payload(build_alignment_packet(
+        [census], root=tmp_path, sources=library, include_private=True))["sources"]["macros"]
+    assert local["\\priv"] == "\\mathbf{#1}"
+
+
+# -- the third completion axis ----------------------------------------------
+
+def test_a_row_shows_its_semantic_certification_beside_its_compiler_evidence(tmp_path: Path):
+    """A row whose hostile review is blocked must not read as merely compiled.
+
+    `status` and `verification` are the formal disposition and the compiler; a
+    row could satisfy both while its semantic correspondence was unaccepted, and
+    the collapsed row said so nowhere.
+    """
+    census, library = _repo(tmp_path)
+    data = json.loads(census.read_text(encoding="utf-8"))
+    data["result_inventory"] = {"path": "results.json", "collection": "results"}
+    census.write_text(json.dumps(data), encoding="utf-8")
+    (census.parent / "results.json").write_text(json.dumps({"results": [{
+        "id": "T-1", "disposition": "proved_exact", "verification": "proved_in_build",
+        "semantic_certification": "hostile_review_blocked",
+        "semantic_certification_note": "the directed clause is not established",
+    }]}), encoding="utf-8")
+
+    packet = build_alignment_packet([census], root=tmp_path, sources=library)
+    row = alignment_payload(packet)["papers"][0]["rows"][0]
+    assert row["certification"]["semantic"] == "hostile_review_blocked"
+    assert row["certification"]["disposition"] == "proved_exact"
+    assert row["certification"]["semanticNote"]
+    assert row["certification"]["inventory"] == "results.json"
+
+
+def test_a_census_with_no_result_inventory_simply_has_one_axis_fewer(tmp_path: Path):
+    data, _ = _payload(tmp_path)
+    certification = data["papers"][0]["rows"][0]["certification"]
+    assert "semantic" not in certification
+    assert certification["disposition"] == "done"
+
+
+def test_a_broken_inventory_pointer_does_not_take_the_page_down(tmp_path: Path):
+    census, library = _repo(tmp_path)
+    data = json.loads(census.read_text(encoding="utf-8"))
+    data["result_inventory"] = {"path": "absent.json"}
+    census.write_text(json.dumps(data), encoding="utf-8")
+    packet = build_alignment_packet([census], root=tmp_path, sources=library)
+    assert alignment_payload(packet)["papers"][0]["rows"][0]["certification"]["disposition"] == "done"

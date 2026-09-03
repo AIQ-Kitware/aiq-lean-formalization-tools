@@ -23,6 +23,7 @@ stat, so an edit to a Lean file shows up on the next request.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -41,6 +42,7 @@ class DeclarationService:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self._index: Any = None
+        self._index_stamp: tuple | None = None
         self._statements: dict[str, Any] | None = None
         self._statement_stamp: tuple | None = None
         self._graph: Any = None
@@ -55,23 +57,88 @@ class DeclarationService:
     # -- lazily built inputs ----------------------------------------------
 
     def source_index(self):
-        if self._index is None:
-            from ..lean_source import scan_lean_project
+        """The Lean source scan, rebuilt when a source file has changed.
 
-            self._index = scan_lean_project(self.root)
+        The scan costs seconds, so it is cached -- but it used to be cached
+        *forever*, and nothing refreshed it.  A long-running server therefore
+        kept serving whatever a theorem said when the process started.  The
+        newest-source stamp already computed for graph staleness is the cheap
+        revision to key it on.
+        """
+        stamp = self.source_revision()
+        if self._index is not None and stamp == self._index_stamp:
+            return self._index
+        from ..lean_source import scan_lean_project
+
+        self._index = scan_lean_project(self.root)
+        self._index_stamp = stamp
         return self._index
 
     def refresh_source_index(self) -> None:
         self._index = None
+        self._index_stamp = None
+        self._newest = None
+
+    def source_revision(self) -> tuple[int, str]:
+        """What the Lean sources look like now, for a cache key."""
+        return self._newest_source()
+
+    def rescan_sources(self) -> tuple[int, str]:
+        """Recompute the source revision now, ignoring the staleness TTL.
+
+        The server calls this from its watcher on a slow cadence, in a thread,
+        so a request never pays the tree walk and a Lean edit is still noticed
+        within seconds instead of within the TTL.
+        """
+        self._newest = None
+        return self._newest_source()
 
     def _sidecar_files(self) -> list[Path]:
         d = self.root / SIDECAR_DIR
         return sorted(d.glob("*.statements-*.jsonl")) if d.is_dir() else []
 
+    def statement_revision(self) -> str:
+        """A short digest of every statement sidecar on disk.
+
+        A count of records is *not* a revision: regenerating a sidecar after a
+        theorem's type changes leaves the count identical, and anything keyed on
+        the count went on serving the previous elaborated statement.  This is
+        keyed on the same (name, mtime) stamp the sidecar cache itself uses, and
+        digested so it stays cheap to put in a page key or an ETag.
+        """
+        files = self._sidecar_files()
+        stamp = repr(self._sidecar_stamp(files)).encode()
+        return hashlib.sha256(stamp).hexdigest()[:16]
+
+    def graph_revision(self) -> tuple:
+        """What the saved dependency graph looks like now, for a cache key.
+
+        Its path is constant, so keying on the path never invalidates anything;
+        mtime and size do.
+        """
+        path = self.root / GRAPH_PATH
+        try:
+            st = path.stat()
+        except OSError:
+            return ()
+        return (st.st_mtime_ns, st.st_size)
+
+    @staticmethod
+    def _sidecar_stamp(files: list[Path]) -> tuple:
+        out = []
+        for f in files:
+            try:
+                st = f.stat()
+            except OSError:
+                out.append((f.name, 0))
+                continue
+            out.append((f.name, st.st_mtime_ns))
+        return tuple(out)
+
     def statements(self) -> dict[str, Any]:
         """Every elaborated record any sidecar holds, newest file winning."""
         files = self._sidecar_files()
-        stamp = tuple((f.name, f.stat().st_mtime_ns) for f in files)
+        stamp = self._sidecar_stamp(files)
         if self._statements is not None and stamp == self._statement_stamp:
             return self._statements
         from leanq.statement import load_statement_sidecar
@@ -91,7 +158,7 @@ class DeclarationService:
         path = self.root / GRAPH_PATH
         if not path.is_file():
             return None
-        stamp = (path.stat().st_mtime_ns, path.stat().st_size)
+        stamp = self.graph_revision()
         if self._graph is not None and stamp == self._graph_stamp:
             return self._graph
         # A rebuilt graph is exactly the event that can clear staleness.

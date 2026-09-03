@@ -23,6 +23,7 @@ from aiq_lean_tools.source_model import (
     parse_macros,
     parse_markdown,
     parse_tex,
+    private_documents,
 )
 
 TEX = r"""
@@ -216,3 +217,33 @@ def test_library_reads_a_locator_no_manifest_declares(tmp_path: Path):
 def test_parse_tex_and_markdown_agree_on_display_math():
     assert [b.kind for b in parse_tex(r"text\n\[x\]")][-1] == "display"
     assert [b.kind for b in parse_markdown("text\n\n$$x$$")][-1] == "display"
+
+
+def test_private_containment_is_decided_on_the_resolved_path(tmp_path: Path):
+    """Containment is a fact about where a path leads, not how it is spelled.
+
+    A relative path, a `..` segment or a symlink all defeat the rule when it is
+    applied to the spelling, and the rule is the only thing keeping private
+    material out of a checkout.
+    """
+    inside = tmp_path / "prose"
+    inside.mkdir()
+    (inside / "secret.md").write_text("local prose\n", encoding="utf-8")
+
+    def config(path):
+        return {"documents": {"Local": {"path": str(path), "format": "markdown"}}}
+
+    with pytest.raises(ValidationError):
+        private_documents(config(tmp_path / "sub" / ".." / "prose" / "secret.md"), root=tmp_path)
+
+    link = tmp_path.parent / f"{tmp_path.name}-link.md"
+    link.symlink_to(inside / "secret.md")
+    try:
+        with pytest.raises(ValidationError):
+            private_documents(config(link), root=tmp_path)
+    finally:
+        link.unlink()
+
+    outside = tmp_path.parent / f"{tmp_path.name}-elsewhere.md"
+    outside.write_text("elsewhere\n", encoding="utf-8")
+    assert private_documents(config(outside), root=tmp_path)[0].id == "Local"

@@ -39,6 +39,12 @@ CLAUSE_STATUSES = {"claimed_exact", "derived", "scope_companion", "open"}
 
 #: What a clause claims about its two sides.  ``requires_evidence`` marks the
 #: relations that are assertions about *other theorems*, and so must name them.
+#: ``requires_excerpt`` marks the ones a reviewer cannot check without seeing the
+#: exact printed words: a clause that says the Lean statement changes the source's
+#: representation, borrows a condition from elsewhere, leans on another theorem,
+#: or refutes what is printed, is a claim *about a specific sentence*.  Naming the
+#: passage is not enough -- the browser can jump to the passage but cannot mark
+#: the statement under dispute, which is the one thing the reader came for.
 RELATIONS: dict[str, dict[str, Any]] = {
     "literal": {
         "label": "literal",
@@ -54,12 +60,14 @@ RELATIONS: dict[str, dict[str, Any]] = {
         "label": "equivalent via theorem",
         "description": "A named theorem establishes that the two clauses agree.",
         "requires_evidence": True,
+        "requires_excerpt": True,
     },
     "representation_change": {
         "label": "representation change",
         "description": "The Lean statement uses a different representation of the same object; "
                        "a correspondence theorem must carry the relevant semantics.",
         "requires_evidence": True,
+        "requires_excerpt": True,
     },
     "specialization": {
         "label": "specialization",
@@ -86,6 +94,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
         "description": "The Lean hypothesis realizes a condition imposed earlier in the source, "
                        "not one printed in this passage.",
         "requires_evidence": False,
+        "requires_excerpt": True,
     },
     "object_representation": {
         "label": "source object represented by",
@@ -97,6 +106,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
         "description": "The Lean development refutes the printed clause; the row is terminal by "
                        "counterexample rather than by proof.",
         "requires_evidence": True,
+        "requires_excerpt": True,
     },
 }
 
@@ -275,9 +285,14 @@ def validate_correspondence(
             findings.append(Finding("error", "source-fragment-role",
                                     f"unknown fragment role {role!r}; expected one of "
                                     f"{sorted(FRAGMENT_ROLES)}", loc))
-    if fragments and not any(str(f.get("role") or "primary") == "primary" for f in fragments):
+    primaries = [f for f in fragments if str(f.get("role") or "primary") == "primary"]
+    if fragments and len(primaries) != 1:
+        # "Exactly one" is the whole content of the rule: a row with two primary
+        # passages has not said which passage its statement is, and every source
+        # pin and drift check downstream assumes it has.
         findings.append(Finding("error", "source-fragment-primary",
-                                "a review with source fragments needs exactly one primary passage",
+                                f"a review with source fragments needs exactly one primary "
+                                f"passage; this one declares {len(primaries)}",
                                 location))
 
     interpretation = _text(review.get("source_interpretation"))
@@ -303,6 +318,23 @@ def validate_correspondence(
                                     f"clause cites undeclared source fragment "
                                     f"{edge.source_fragment!r}", loc))
         spec = vocabulary.get(edge.relation) or {}
+        if (spec.get("requires_excerpt") or edge.status == "open") and not edge.source_excerpt:
+            what = (f"relation {edge.relation!r}" if spec.get("requires_excerpt")
+                    else "an unestablished correspondence")
+            findings.append(Finding(
+                "error", "clause-excerpt-required",
+                f"{what} is a claim about specific printed words, so the clause must quote them "
+                "in source_excerpt; without one a reader can reach the passage but not the "
+                "sentence under dispute",
+                loc,
+            ))
+        if edge.source_excerpt and not edge.source_fragment and fragment_ids:
+            findings.append(Finding(
+                "warning", "clause-excerpt-fragment",
+                "the clause quotes the source but does not say which fragment it quotes, so the "
+                "quote is never checked against the passage",
+                loc,
+            ))
         if spec.get("requires_evidence") and not edge.correspondence_declarations:
             findings.append(Finding(
                 "error", "clause-evidence",

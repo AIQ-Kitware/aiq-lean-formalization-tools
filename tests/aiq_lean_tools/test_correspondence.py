@@ -56,6 +56,7 @@ def test_a_representation_change_must_name_its_correspondence_theorem():
     review = _review(clause_map=[{
         "source_clause": "tan 2 Theta", "lean_realization": "corner gauge",
         "relation": "representation_change", "source_fragment": "printed",
+        "source_excerpt": "the estimate",
     }])
     assert "clause-evidence" in _codes(validate_correspondence(review, location="r"))
     review["clause_map"][0]["correspondence_declarations"] = ["Paper.corner_singular_values"]
@@ -65,7 +66,7 @@ def test_a_representation_change_must_name_its_correspondence_theorem():
 def test_a_clause_realization_must_be_registered_but_evidence_need_only_be_flagged():
     review = _review(clause_map=[{
         "source_clause": "c", "lean_realization": "l", "relation": "via_theorem",
-        "source_fragment": "printed",
+        "source_fragment": "printed", "source_excerpt": "the estimate",
         "lean_declarations": ["Paper.unregistered"],
         "correspondence_declarations": ["Paper.bridge"],
     }])
@@ -84,6 +85,7 @@ def test_a_local_reading_may_not_quietly_inherit_a_standing_condition():
         clause_map=[{
             "source_clause": "(3.5)", "lean_realization": "hCross",
             "relation": "inherited_standing_assumption", "source_fragment": "standing",
+            "source_excerpt": "the estimate",
         }],
     )
     assert _codes(validate_correspondence(review, location="r"), "error") == [
@@ -170,3 +172,76 @@ def test_cited_declarations_collects_both_sides():
         "lean_declarations": ["A"], "correspondence_declarations": ["B", "A"],
     }])
     assert cited_declarations(review) == ["A", "B"]
+
+
+def test_a_consequential_relation_must_quote_the_words_it_disputes():
+    """Naming the passage is not enough for a claim about a specific sentence.
+
+    The browser can jump to a cited passage without an excerpt, but it cannot
+    mark the printed statement the clause is actually about -- which is the one
+    thing a reviewer opened the row to see.
+    """
+    for relation in ("representation_change", "via_theorem",
+                     "inherited_standing_assumption", "refutation"):
+        review = _review(clause_map=[{
+            "source_clause": "c", "lean_realization": "l", "relation": relation,
+            "source_fragment": "printed",
+            "correspondence_declarations": ["Paper.bridge"],
+        }])
+        codes = _codes(validate_correspondence(review, location="r"), "error")
+        assert "clause-excerpt-required" in codes, relation
+        review["clause_map"][0]["source_excerpt"] = "the estimate"
+        assert "clause-excerpt-required" not in _codes(
+            validate_correspondence(review, location="r")), relation
+
+
+def test_an_unestablished_clause_must_quote_what_is_unestablished():
+    review = _review(clause_map=[{
+        "source_clause": "c", "lean_realization": "l", "status": "open",
+        "relation": "literal", "source_fragment": "printed",
+    }])
+    assert _codes(validate_correspondence(review, location="r"), "error") == [
+        "clause-excerpt-required"
+    ]
+
+
+def test_an_ordinary_relation_still_needs_no_excerpt():
+    assert validate_correspondence(_review(), location="r") == []
+
+
+def test_a_quote_that_names_no_fragment_is_never_checked():
+    review = _review(clause_map=[{
+        "source_clause": "c", "lean_realization": "l", "relation": "literal",
+        "source_excerpt": "the estimate",
+    }])
+    assert _codes(validate_correspondence(review, location="r"), "warning") == [
+        "clause-excerpt-fragment"
+    ]
+
+
+def test_two_primary_passages_are_rejected_as_firmly_as_none():
+    """`exactly one` was only ever enforcing `at least one`."""
+    fragments = [
+        {"id": "printed", "role": "primary", "locator": {"marker": "T-1"}},
+        {"id": "also", "role": "primary", "locator": {"marker": "T-2"}},
+    ]
+    review = _review(source_fragments=fragments)
+    assert _codes(validate_correspondence(review, location="r"), "error") == [
+        "source-fragment-primary"
+    ]
+    review = _review(source_fragments=[
+        {"id": "printed", "role": "definition", "locator": {"marker": "T-1"}},
+    ])
+    assert _codes(validate_correspondence(review, location="r"), "error") == [
+        "source-fragment-primary"
+    ]
+
+
+def test_an_uncurated_row_is_shown_as_open_not_as_exact():
+    from aiq_lean_tools.alignment import _fallback_review
+
+    review = _fallback_review({"id": "T-9", "summary": "a bound", "lean_declarations": ["A.b"]})
+    clause = review["clause_map"][0]
+    assert clause["status"] == "open", \
+        "a row with no registered correspondence must not advertise exactness"
+    assert "No curated correspondence" in clause["lean_realization"]

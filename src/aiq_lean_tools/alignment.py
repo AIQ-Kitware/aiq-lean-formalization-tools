@@ -11,6 +11,7 @@ review readable without treating a structural Python scan as semantic evidence.
 from __future__ import annotations
 
 import collections
+import json
 import pathlib
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
@@ -559,6 +560,24 @@ def _source_payload(
             entry["unresolved"] = spec.get("locator")
         else:
             entry["fragment"] = fragment.as_json(include_private=packet.include_private)
+            # An overlay is an alternate rendition of the same logical passage:
+            # the printed paper beside the distributable reconstruction. Its
+            # existence is always disclosed -- a reviewer must be able to see
+            # that a private provenance source was consulted -- while its text
+            # travels only in a local render that asked for it.
+            alternates = []
+            if packet.library is not None and spec.get("locator"):
+                try:
+                    alternates = packet.library.alternates(
+                        spec["locator"], id=fid,
+                        role=str(spec.get("role") or "primary"),
+                    )
+                except Exception:
+                    alternates = []
+            if alternates:
+                entry["alternates"] = [
+                    a.as_json(include_private=packet.include_private) for a in alternates
+                ]
         out.append(entry)
     if not statuses:
         return out, None
@@ -649,7 +668,11 @@ def alignment_payload(
     """
     papers: collections.OrderedDict[str, dict[str, Any]] = collections.OrderedDict()
     used_records: set[str] = set()
+    # One read per census, not one per row.
+    inventories: dict[int, dict[str, dict[str, Any]]] = {}
     for entry in packet.entries:
+        if id(entry.census) not in inventories:
+            inventories[id(entry.census)] = load_result_inventory(entry.census)
         paper = papers.setdefault(
             entry.census.title, {"title": entry.census.title, "path": str(entry.census.path), "rows": []}
         )
@@ -734,6 +757,7 @@ def alignment_payload(
             "importance": row.get("importance"),
             "status": row.get("status"),
             "verification": row.get("verification"),
+            "certification": _certification(row, inventories.get(id(entry.census), {})),
             "sourceAnchor": row.get("source_anchor"),
             "sourceStatement": review.get("source_statement"),
             "clauses": review.get("clause_map") or [],
@@ -762,7 +786,8 @@ def alignment_payload(
         "records": records,
         # The literature side: which documents were read, and the TeX macros the
         # page needs in order to render their mathematics.
-        "sources": (packet.library.as_json() if packet.library else {"documents": [], "macros": {}}),
+        "sources": (packet.library.as_json(include_private=packet.include_private)
+                    if packet.library else {"documents": [], "macros": {}}),
         "includesPrivate": packet.include_private,
         "relations": relations or relation_legend(),
     }
@@ -778,6 +803,78 @@ def render_alignment_html(payload: Mapping[str, Any]) -> str:
     from .viewer import viewer_html
 
     return viewer_html("alignment_viewer.html", payload.get("title", ""), payload, math=True)
+
+
+#: Default field names of the three completion axes in a result inventory.
+CERTIFICATION_FIELDS = {
+    "disposition": "disposition",
+    "verification": "verification",
+    "semantic": "semantic_certification",
+    "note": "semantic_certification_note",
+}
+
+
+def load_result_inventory(census: CensusDocument) -> dict[str, dict[str, Any]]:
+    """The result inventory a census points at, indexed by row id.
+
+    A census row carries the *source-fidelity* bookkeeping for a whole passage.
+    Whether the printed result it contains has passed hostile semantic review is
+    a different judgement kept in a different file, and a browser that shows
+    only the first can advertise `compiled_exact` for a row whose semantic
+    correspondence is blocked.  A census says where the second lives:
+
+    ``"result_inventory": {"path": "...json", "collection": "results"}``
+
+    and this reads it.  Absent, or unreadable, the browser simply has one axis
+    fewer -- an inventory is optional, and a broken pointer must not take the
+    page down.
+    """
+    spec = census.data.get("result_inventory")
+    if not isinstance(spec, Mapping) or not spec.get("path"):
+        return {}
+    path = census.path.parent / str(spec["path"])
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    rows = data.get(str(spec.get("collection") or "results"))
+    if not isinstance(rows, list):
+        return {}
+    key = str(spec.get("key") or "id")
+    fields = dict(CERTIFICATION_FIELDS)
+    if isinstance(spec.get("fields"), Mapping):
+        fields.update({str(k): str(v) for k, v in spec["fields"].items()})
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not row.get(key):
+            continue
+        out[str(row[key])] = {
+            axis: str(row.get(field) or "") for axis, field in fields.items()
+        } | {"inventory": path.name}
+    return out
+
+
+def _certification(row: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
+    """The three completion axes of one row, as a reviewer must read them.
+
+    ``status`` and ``verification`` used to be all a row showed, so a row whose
+    hostile semantic review was blocked still read as `compiled_exact ·
+    proved_in_build` until you opened it and found an `open` clause.  The
+    semantic axis is the one a reviewer is entitled to see first.
+    """
+    entry = inventory.get(str(row.get("id"))) or {}
+    out = {
+        "disposition": entry.get("disposition") or row.get("status") or "",
+        "verification": entry.get("verification") or row.get("verification") or "",
+        "semantic": entry.get("semantic") or "",
+        "semanticNote": entry.get("note") or "",
+        # The census keeps its own passage-level bookkeeping, which is a
+        # coarser thing than the printed result's semantic certification and
+        # must not be shown as if it were the same judgement.
+        "censusCertification": str(row.get("completion_certification") or ""),
+        "inventory": entry.get("inventory") or "",
+    }
+    return {k: v for k, v in out.items() if v}
 
 
 def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -798,9 +895,14 @@ def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:
         "context_declarations": [],
         "clause_map": [
             {
+                # `open`, not `claimed_exact`: the clause says in the same breath
+                # that no correspondence is registered, and an audit browser must
+                # never let an unreviewed row inherit an exactness label merely to
+                # satisfy a schema.
                 "source_clause": summary,
                 "lean_realization": "No curated correspondence is registered for this broader-tier row.",
-                "status": "claimed_exact",
+                "status": "open",
+                "note": "Uncurated: this clause is the census summary, not a reviewed correspondence.",
             }
         ],
         "note": "This row is outside the curated headline surface; showing the census fallback.",
