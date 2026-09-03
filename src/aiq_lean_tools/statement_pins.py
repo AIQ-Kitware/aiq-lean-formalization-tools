@@ -20,8 +20,9 @@ Mathlib or toolchain change worth a glance.
 
 The mechanism reads and writes the ``statement_pins`` list of an embedded
 ``semantic_review`` or of a standalone review row.  Which declarations a row
-pins is the row's own claim: the canonical declarations of an embedded review,
-every registered declaration of a standalone review row.
+pins is the row's own claim: the canonical declarations of an embedded review
+together with every declaration its clause map names as correspondence or
+transport evidence, and every registered declaration of a standalone review row.
 """
 from __future__ import annotations
 
@@ -67,8 +68,49 @@ class PinTarget:
         return pins if isinstance(pins, list) else []
 
 
+#: Clause-map fields whose declarations a review claims as *bridging* evidence:
+#: theorems asserted to carry a correspondence or a transport between the
+#: object a canonical theorem is stated on and the object the source names.
+CLAUSE_BRIDGE_FIELDS = ("correspondence_declarations", "transport_declarations")
+
+
+def claimed_pin_declarations(review: Mapping[str, Any]) -> tuple[str, ...]:
+    """The declarations an embedded review claims, in claim order.
+
+    The canonical declarations first, then every declaration a clause of the
+    review names as bridging evidence (``correspondence_declarations`` and
+    ``transport_declarations``).  A clause that says "this other theorem carries
+    the correspondence" is making a claim about that theorem's type, and a review
+    whose bridge silently changed shape has been accepted over a chain that no
+    longer composes -- so those are pinned with the canonical ones.  Supporting
+    declarations that no clause relies on are not claimed.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(name: object) -> None:
+        text = str(name)
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+
+    for name in review.get("canonical_declarations") or review.get("declarations") or []:
+        add(name)
+    for clause in review.get("clause_map") or []:
+        if not isinstance(clause, Mapping):
+            continue
+        for field in CLAUSE_BRIDGE_FIELDS:
+            for name in clause.get(field) or []:
+                add(name)
+    return tuple(out)
+
+
 def census_pin_targets(census, *, row_ids: Sequence[str] = ()) -> list[PinTarget]:
-    """Rows of a census with an embedded review; pins live inside that review."""
+    """Rows of a census with an embedded review; pins live inside that review.
+
+    A row claims its canonical declarations and every declaration its clause map
+    names as bridging evidence; see :func:`claimed_pin_declarations`.
+    """
     wanted = set(row_ids)
     out: list[PinTarget] = []
     for row in census.items:
@@ -78,8 +120,7 @@ def census_pin_targets(census, *, row_ids: Sequence[str] = ()) -> list[PinTarget
         review = row.get("semantic_review")
         if not isinstance(review, dict):
             continue
-        canonical = review.get("canonical_declarations") or review.get("declarations") or []
-        decls = tuple(str(x) for x in canonical)
+        decls = claimed_pin_declarations(review)
         if not decls:
             continue
         out.append(PinTarget(str(census.path), rid, review, decls))

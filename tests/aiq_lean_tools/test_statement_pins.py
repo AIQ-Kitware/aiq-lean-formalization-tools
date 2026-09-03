@@ -6,6 +6,7 @@ from aiq_lean_tools.cli import main
 from aiq_lean_tools.semantic_review import load_semantic_review
 from aiq_lean_tools.statement_pins import (
     census_pin_targets,
+    claimed_pin_declarations,
     check_pins,
     pin_targets,
     review_pin_targets,
@@ -268,3 +269,50 @@ def test_seed_modules_keep_ambiguous_candidates_and_report_unplaced(tmp_path: Pa
     (built / "B.olean").unlink()
     modules, _ = _seed_modules(project, ["Lib.A.twin"])
     assert modules == ["Lib.A"]
+
+
+def test_census_rows_claim_clause_bridging_declarations(tmp_path: Path):
+    """A clause's correspondence and transport theorems are pinned with the canonical ones.
+
+    Before this, a census row pinned only its canonical declarations, so the
+    theorem a clause named as *the* bridge between the Lean object and the paper's
+    object could change shape -- or be replaced by a lemma about a different
+    object -- with every pin still current.
+    """
+    data = _census_data()
+    review = data["items"][0]["semantic_review"]
+    review["supporting_declarations"] = ["Paper.helper", "Paper.bridge", "Paper.carry"]
+    review["clause_map"] = [
+        {"source_clause": "claim", "lean_realization": "claim", "status": "claimed_exact",
+         "relation": "representation_change",
+         "correspondence_declarations": ["Paper.bridge"],
+         "transport_declarations": ["Paper.carry", "Paper.bridge"]},
+    ]
+    path = tmp_path / "paper-full-source-census.json"
+    path.write_text(json.dumps(data))
+    census = load_census(path)
+    assert claimed_pin_declarations(review) == ("Paper.main", "Paper.bridge", "Paper.carry")
+    targets = census_pin_targets(census)
+    assert [t.declarations for t in targets] == [("Paper.main", "Paper.bridge", "Paper.carry")]
+    records = by_name([
+        _record("Paper.main", "x > 0 → claim", "h1"),
+        _record("Paper.bridge", "obj = paper_obj", "h2"),
+        _record("Paper.carry", "gauge (complexify T) = gauge T", "h3"),
+    ])
+    written, findings = pin_targets(targets, records, toolchain="t")
+    assert written == 3 and not findings
+    pinned = targets[0].container
+    assert [p["declaration"] for p in pinned["statement_pins"]] == [
+        "Paper.main", "Paper.bridge", "Paper.carry",
+    ]
+    # the bridge changing shape is drift, and a dropped bridge pin is reported
+    moved = by_name([
+        _record("Paper.main", "x > 0 → claim", "h1"),
+        _record("Paper.bridge", "obj' = paper_obj", "h2-moved"),
+        _record("Paper.carry", "gauge (complexify T) = gauge T", "h3"),
+    ])
+    codes = {(f.code, f.message.split(":")[0]) for f in check_pins(targets, moved)}
+    assert ("statement-drift", "Paper.bridge") in codes
+    pinned["statement_pins"] = [p for p in pinned["statement_pins"] if p["declaration"] != "Paper.carry"]
+    unpinned = [f for f in check_pins(targets, records) if f.code == "statement-unpinned"]
+    assert [f.message.split(" ")[0] for f in unpinned] == ["Paper.carry"]
