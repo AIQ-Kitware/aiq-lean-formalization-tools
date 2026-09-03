@@ -117,6 +117,15 @@ th{background:var(--panel2)}
 .tree li{margin:2px 0}.tree .via{color:var(--muted);font-size:10.5px;margin-right:4px}
 .tree .k2{color:var(--muted);font-size:11.5px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.triage{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 20px;border-bottom:1px solid var(--line);background:var(--panel2);font-size:12px}
+.triage .lead{color:var(--muted);margin-right:2px}
+.triage button{font:inherit;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--muted);cursor:pointer;white-space:nowrap}
+.triage button:hover{border-color:var(--accent);color:var(--fg)}
+.triage button.on{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+.triage button.alarm{color:var(--bad);border-color:var(--bad)}
+.triage button.alarm.on{background:var(--bad);color:var(--bg)}
+.triage button.clean{color:var(--ok);border-color:var(--ok)}
+.triage .count{opacity:.75;margin-left:5px;font-variant-numeric:tabular-nums}
 .katex{font-size:1.03em}
 .katex-display{margin:.35em 0}
 @media(max-width:900px){main{grid-template-columns:1fr}nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}}
@@ -130,7 +139,7 @@ th{background:var(--panel2)}
 </header>
 <main>
   <nav><input id="search" type="search" placeholder="filter rows and declarations"><div id="nav"></div></nav>
-  <div id="rows"></div>
+  <div><div id="triage" class="triage"></div><div id="rows"></div></div>
 </main>
 <script type="application/json" id="payload">__PAYLOAD__</script>
 <script>
@@ -284,7 +293,7 @@ function paraphraseCard(ss){
 
 /* ---- correspondence lane ---------------------------------------------- */
 const KIND_ORDER = ['setup','hypothesis','conclusion','scope','object','note',''];
-function clauseCard(c, rowId){
+function clauseCard(c, rowId, uncurated){
   const rel = RELATIONS[c.relation] || {};
   const evidence = (c.correspondenceDeclarations || []);
   let h = `<div class="clause" data-row="${e(rowId)}" data-clause="${c.index}"`
@@ -295,7 +304,9 @@ function clauseCard(c, rowId){
   h += `<div class="arrow">↓ <span class="badge human" title="${e(rel.description||'reviewer judgment')}">`
      + `${e(c.relationLabel || c.relation || c.status || 'claimed')}</span>`
      + (c.status === 'open'
-          ? `<span class="badge loud" title="the correspondence is recorded but not established">not established</span>`
+          ? `<span class="badge ${uncurated ? '' : 'loud'}" title="${uncurated
+              ? 'no curated correspondence is registered for this row'
+              : 'the correspondence is recorded but not established'}">not established</span>`
           : c.status && c.status !== 'claimed_exact' ? `<span class="badge">${e(c.status)}</span>` : '')
      + (c.leanBinder ? `<code>${e(c.leanBinder)}</code>` : '')
      + `</div>`;
@@ -321,7 +332,7 @@ function correspondenceLane(row){
     const list = byKind[kind];
     if (!list) continue;
     if (kind) h += `<div class="kindhead">${e(kind)}</div>`;
-    h += list.map(c => clauseCard(c, row.id)).join('');
+    h += list.map(c => clauseCard(c, row.id, row.uncurated)).join('');
   }
   if (row.note) h += `<div class="note info"><b>Review note.</b> ${inlineTex(row.note)}</div>`;
   if (row.nextAction) h += `<div class="note"><b>Next action.</b> ${inlineTex(row.nextAction)}</div>`;
@@ -504,6 +515,7 @@ function rowShell(row){
     ? `<span class="badge loud" title="hostile semantic review has not accepted this row">${e(c.semantic.replace(/_/g, ' '))}</span>` : '';
   const badges = [
     alarm,
+    row.uncurated ? '<span class="badge warn" title="no curated semantic review is registered for this row">uncurated</span>' : '',
     row.importance ? `<span class="badge">${e(row.importance)}</span>` : '',
     row.status ? `<span class="badge">${e(row.status)}</span>` : '',
     row.sourcePinSummary ? `<span class="badge ${(SRCPIN[row.sourcePinSummary]||[''])[0]}" title="source pin">source: ${e(row.sourcePinSummary)}</span>` : '',
@@ -662,13 +674,69 @@ if (P.includesPrivate) meta.push('LOCAL MODE: private source text included');
 if (!HAVE_KATEX) meta.push('math renderer unavailable; showing TeX');
 document.getElementById('subtitle').textContent = meta.join(' · ');
 
-const rowsEl = document.getElementById('rows'), navEl = document.getElementById('nav'), q = document.getElementById('search');
+const rowsEl = document.getElementById('rows'), navEl = document.getElementById('nav'),
+      q = document.getElementById('search'), triageEl = document.getElementById('triage');
+
+/* ---- triage -----------------------------------------------------------
+   A reviewer opening this page wants one question answered first: what,
+   if anything, needs attention. Scrolling every row to find out is the
+   thing the page was worst at, so the facets below both count and filter.
+   `certified` is deliberately not the first chip: an audit browser should
+   lead with what is unresolved. */
+const FACETS = [
+  {key: 'blocked',   label: 'semantic review not accepted', alarm: true,
+   test: r => r.certification && r.certification.semantic
+              && r.certification.semantic !== 'accepted'},
+  {key: 'open',      label: 'reviewed clause not established', alarm: true,
+   test: r => !r.uncurated && (r.edges || []).some(c => c.status === 'open')},
+  {key: 'uncurated', label: 'no curated correspondence',
+   test: r => !!r.uncurated},
+  {key: 'drift',     label: 'statement pin moved', alarm: true,
+   test: r => r.pinSummary === 'drift' || r.pinSummary === 'text-drift'},
+  {key: 'sourcedrift', label: 'source passage moved', alarm: true,
+   test: r => r.sourcePinSummary === 'moved' || r.sourcePinSummary === 'unresolved'},
+  {key: 'unpinned',  label: 'unpinned',
+   test: r => r.pinSummary === 'unpinned' || r.sourcePinSummary === 'unpinned'},
+  {key: 'nonlocal',  label: 'nonlocal reading',
+   test: r => r.sourceInterpretation === 'nonlocal'},
+  {key: 'certified', label: 'hostile review accepted', clean: true,
+   test: r => r.certification && r.certification.semantic === 'accepted'},
+];
+const active = new Set();
+function allRows(){ return P.papers.flatMap(p => p.rows); }
+function renderTriage(){
+  const rows = allRows();
+  const chips = FACETS.map(f => {
+    const n = rows.filter(f.test).length;
+    if (!n && !active.has(f.key)) return '';
+    const cls = (f.alarm ? 'alarm ' : f.clean ? 'clean ' : '') + (active.has(f.key) ? 'on' : '');
+    return `<button class="${cls}" data-facet="${e(f.key)}" `
+         + `aria-pressed="${active.has(f.key)}">${e(f.label)}<span class="count">${n}</span></button>`;
+  }).filter(Boolean).join('');
+  const clean = FACETS.filter(f => f.alarm).every(f => !rows.some(f.test));
+  triageEl.innerHTML =
+    `<span class="lead">${rows.length} row(s)${clean ? ' · nothing outstanding' : ''}</span>` + chips
+    + (active.size ? '<button data-facet="__clear">clear filters</button>' : '');
+  triageEl.querySelectorAll('button[data-facet]').forEach(b =>
+    b.addEventListener('click', () => {
+      const k = b.dataset.facet;
+      if (k === '__clear') active.clear();
+      else active.has(k) ? active.delete(k) : active.add(k);
+      render();
+    }));
+}
+function passesFacets(r){
+  if (!active.size) return true;
+  return FACETS.some(f => active.has(f.key) && f.test(r));
+}
 function render(){
   const needle = q.value.toLowerCase();
   rowsEl.innerHTML = ''; navEl.innerHTML = '';
+  renderTriage();
   let firstId = null;
   for (const paper of P.papers) {
-    const rows = paper.rows.filter(r => !needle || JSON.stringify(r).toLowerCase().includes(needle));
+    const rows = paper.rows.filter(r => passesFacets(r))
+      .filter(r => !needle || JSON.stringify(r).toLowerCase().includes(needle));
     if (!rows.length) continue;
     navEl.insertAdjacentHTML('beforeend', `<h3>${e(paper.title)}</h3>`);
     for (const r of rows) {
@@ -685,6 +753,11 @@ function render(){
     if (!s.classList.contains('closed')) location.hash = s.id;
   }));
   navEl.querySelectorAll('a').forEach(a => a.addEventListener('click', () => show(a.dataset.anchor)));
+  if (!firstId) {
+    rowsEl.innerHTML = '<section class="row"><h2>No row matches</h2>'
+      + '<div class="meta">Clear the filters or the search box to see the rest.</div></section>';
+    return;
+  }
   const wanted = decodeURIComponent(location.hash.replace(/^#/,'')) || firstId;
   if (wanted) show(wanted, false);
 }

@@ -327,3 +327,28 @@ def test_a_broken_inventory_pointer_does_not_take_the_page_down(tmp_path: Path):
     census.write_text(json.dumps(data), encoding="utf-8")
     packet = build_alignment_packet([census], root=tmp_path, sources=library)
     assert alignment_payload(packet)["papers"][0]["rows"][0]["certification"]["disposition"] == "done"
+
+
+# -- triage: an unreviewed row is not a disputed one ------------------------
+
+def test_an_uncurated_row_is_marked_as_such(tmp_path: Path):
+    """A row nobody reviewed and a row a reviewer left open are both "not
+    established", and a triage view that cannot tell them apart reports the
+    whole uncurated tail as if it were disputed."""
+    data, _ = _payload(tmp_path, importance="major")
+    rows = {r["id"]: r for r in data["papers"][0]["rows"]}
+    assert rows["T-1"]["uncurated"] is False
+    assert rows["T-2"]["uncurated"] is True, "T-2 has no semantic_review"
+    assert [c["status"] for c in rows["T-2"]["edges"]] == ["open"]
+
+
+def test_a_curated_row_left_open_is_not_marked_uncurated(tmp_path: Path):
+    census, library = _repo(tmp_path)
+    data = json.loads(census.read_text(encoding="utf-8"))
+    clause = data["items"][0]["semantic_review"]["clause_map"][0]
+    clause["status"] = "open"
+    census.write_text(json.dumps(data), encoding="utf-8")
+    packet = build_alignment_packet([census], root=tmp_path, sources=library)
+    row = alignment_payload(packet)["papers"][0]["rows"][0]
+    assert row["uncurated"] is False
+    assert any(c["status"] == "open" for c in row["edges"])

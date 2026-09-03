@@ -762,6 +762,7 @@ def alignment_payload(
             "sourceStatement": review.get("source_statement"),
             "clauses": review.get("clause_map") or [],
             "note": review.get("note"),
+            "uncurated": bool(review.get("uncurated")),
             "nextAction": row.get("next_action"),
             "canonical": canonical,
             "supporting": supporting,
@@ -906,6 +907,10 @@ def _fallback_review(row: Mapping[str, Any]) -> dict[str, Any]:
             }
         ],
         "note": "This row is outside the curated headline surface; showing the census fallback.",
+        # A row nobody has reviewed and a row a reviewer left open are both
+        # "not established", and a triage view that cannot tell them apart
+        # reports the whole uncurated tail as if it were disputed.
+        "uncurated": True,
     }
 
 

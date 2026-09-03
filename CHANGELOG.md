@@ -46,6 +46,18 @@ short of the thing it was built for.
   dispute.
 - Enforce *exactly* one primary source fragment. The message had always said
   "exactly one"; the check accepted any number greater than zero.
+- Triage first. A reviewer opening an alignment page wants one question answered
+  before any other: what, if anything, needs attention. The page answered it only
+  by scrolling. It now leads with a facet bar that both counts and filters --
+  semantic review not accepted, a reviewed clause left open, a moved statement or
+  source pin, unpinned, a nonlocal reading, accepted -- and says "nothing
+  outstanding" when no alarm facet matches. Filtering to nothing says so instead
+  of showing a blank page.
+- Distinguish an unreviewed row from a disputed one. Both are "not established",
+  and after the fallback clause became `open` a triage view that could not tell
+  them apart reported the entire uncurated tail as disputed -- 23 of 29 rows on
+  the Davis--Kahan census. The fallback marks its row `uncurated`, which the row
+  header shows as its own badge and which keeps the clause badge quiet.
 - Decide private-source containment on the resolved path. A relative path, a
   `..` segment or a symlink back into the checkout defeated a rule applied to
   the spelling.
