@@ -107,6 +107,14 @@ def claimed_pin_declarations(review: Mapping[str, Any]) -> tuple[str, ...]:
         for field in CLAUSE_BRIDGE_FIELDS:
             for name in clause.get(field) or []:
                 add(name)
+        # A target may explicitly point at a non-canonical declaration.  That
+        # declaration is part of the accepted correspondence and must therefore
+        # drift with the review just like a named bridge theorem.  Targets that
+        # omit ``declaration`` inherit the canonical declaration, already pinned
+        # above, so the common case adds no duplicate ledger text.
+        for target in clause.get("lean_targets") or []:
+            if isinstance(target, Mapping) and target.get("declaration"):
+                add(target["declaration"])
     return tuple(out)
 
 

@@ -105,6 +105,7 @@ clause may now say where it came from and what it claims:
   "source_fragment": "standing-3-5",
   "source_excerpt": "(3.5) is assumed as well as (1.5), except where the contrary is stated",
   "lean_declarations": ["…theorem8_2_branch_source_maximalAngle_lt_of_crossedDefects"],
+  "lean_targets": [{"kind": "binder", "name": "hCross"}],
   "correspondence_declarations": ["…subspaceGap_eq_directedGap_of_crossedDefects"]
 }
 ```
@@ -122,6 +123,78 @@ validation says so.
 
 `kind` groups clauses into `setup` / `hypothesis` / `conclusion` / `scope` /
 `object` / `note`, so the browser can show hypotheses apart from conclusions.
+
+### Source-side clause targets
+
+`source_targets` gives the literature side the same explicit focus model as the
+Lean side without copying whole source sentences into the review ledger.  A
+clause can point at a compact TeX token inside a declared fragment:
+
+```json
+"source_fragment": "block-residual",
+"source_targets": [
+  {"kind": "math", "text": "A"},
+  {"kind": "math", "text": "A_0"},
+  {"kind": "math", "text": "E_0"}
+]
+```
+
+The available kinds are `math`, `excerpt`, and `fragment`.  `math` resolves a
+small TeX token against the parsed math spans of the freshly located fragment;
+`excerpt` is the structured form of the older `source_excerpt` field; and
+`fragment` focuses the entire passage.  `occurrence` is a zero-based disambiguator
+when a token occurs more than once in the same fragment.
+
+This pointer is deliberately not another source pin.  The fragment's content
+hash remains the authority for whether the accepted source passage moved.  A
+source target only records where, inside the current resolved fragment, the
+reviewer meant to look.  Consequently the viewer can distinguish a moved source
+fragment from a still-current fragment in which a particular focus token no
+longer resolves.  The first is source drift; the second is source-target drift.
+
+`source_excerpt` remains supported and is treated as a one-element `excerpt`
+target, so existing reviews do not need to duplicate data.
+
+### Lean-side clause targets
+
+`lean_targets` is the Lean analogue of pointing at the exact source words, but it
+usually does **not** copy Lean text. `leanq statement` exports the top-level
+elaborated binders and final result as structure. A clause can point at them:
+
+```json
+"lean_targets": [
+  {"kind": "binder", "name": "hgap"},
+  {"kind": "result"}
+]
+```
+
+The target's `declaration` may be omitted when the clause has exactly one
+`lean_declarations` entry or the review has exactly one canonical declaration.
+This keeps the common case non-redundant. Available target kinds are:
+
+- `binder`: a top-level elaborated binder by its user name;
+- `binder_type_dep`: binder(s) whose elaborated type uses a named constant, useful
+  for generated instance binders such as an `RCLike` assumption;
+- `result`: the final proposition after the top-level telescope;
+- `declaration`: the whole declaration;
+- `text`: an exact-text escape hatch for a subterm with no structural address.
+
+The browser keeps the reviewer's current Lean tab selected and projects the
+same structured target into that view. In **Source**, named binders are located
+in the handwritten declaration and the top-level result clause is located
+lexically; in **Elaborated**, the exported binder/result segment is highlighted
+directly. Other views are never replaced just to satisfy a correspondence click:
+if the target has a visible textual representative there it is marked, otherwise
+the declaration reports that the selected clause is not rendered in that view.
+These source-view locations are derived at render time and are not persisted as
+a second copy of Lean text.
+
+`alignment check` resolves the pointer against a fresh statement sidecar. A
+removed/renamed binder or result that can no longer be resolved is reported as
+`lean-target-drift`. The existing statement pin remains the declaration-level
+guard: structural type drift is an error, printed-only drift is a warning. Thus
+a target pointer is not a second copy of the theorem and does not replace
+statement pins.
 
 ## What this makes checkable
 
@@ -152,6 +225,21 @@ typed.
 records the content hash of every declared fragment beside the elaborated-type
 hashes; `alignment check` compares both. Editing the reconstruction is
 `source-drift`; a marker that no longer exists is `source-pin-unresolved`.
+
+**A source focus pointer that moves is localized drift.** `source_targets` are
+resolved against the freshly parsed source fragment.  If the fragment pin is
+current but a selected math token or excerpt no longer lands, the clause reports
+source-target drift.  If the target still lands but the fragment content hash
+moved, it reports source drift instead.  This keeps focus coordinates separate
+from the evidence hash that guards the passage as a whole.
+
+**A Lean clause pointer that moves invalidates that pointer.** With a current
+statement sidecar, `alignment check` resolves each `lean_targets` selector against
+the elaborated telescope/result. If the declaration still compiles but the
+reviewed binder was renamed, removed, or moved behind a different abstraction, the
+localized target reports drift. This is deliberately separate from the whole-type
+statement pin so the report can say both *the statement moved* and *this specific
+review pointer no longer lands*.
 
 ## The three evidence layers
 
@@ -290,4 +378,8 @@ its mathematics. That costs about 700 KB, paid only by pages that ask for it.
    `why`, and set `source_interpretation`.
 4. Add `relation`, `kind`, `source_fragment` and `source_excerpt` to the clauses
    that carry weight — a representation change or an inherited condition first.
-5. `aiq-lean alignment pin <document>` and commit what it writes.
+5. Add `source_targets` for source math/phrases that should be highlighted from a clause.
+6. Add `lean_targets` where a reviewer should be able to click through to a
+   specific binder or result. Prefer structural selectors; use `text` only when no
+   structural address describes the intended subterm.
+6. `aiq-lean alignment pin <document>` and commit what it writes.

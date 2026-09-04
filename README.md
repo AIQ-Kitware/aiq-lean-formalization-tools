@@ -61,7 +61,9 @@ aiq-lean alignment render dev/paper-full-source-census.json --importance headlin
 aiq-lean alignment render dev/paper-full-source-census.json --statements
 # One self-contained review page per census: the literature passage with its
 # mathematics rendered, the clause-by-clause correspondence, and each Lean
-# declaration's source, elaborated signature, statement closure and dependencies
+# declaration's source, elaborated signature, structured binder/result targets,
+# statement closure and dependencies. Clicking a correspondence can highlight the
+# matching source excerpt and Lean binder/result when `lean_targets` are curated.
 aiq-lean alignment html dev/paper-full-source-census.json --statements \
     --graph build/leanq/project-semantic-graph.json -o build/paper-alignment.html
 aiq-lean alignment html dev/paper-full-source-census.json --row theorem-2 -o build/one.html
@@ -71,7 +73,7 @@ aiq-lean alignment adopt-source dev/paper-full-source-census.json
 # passage -- and fail when either moves
 aiq-lean alignment pin dev/paper-full-source-census.json --id theorem-2
 aiq-lean alignment check dev/paper-full-source-census.json
-aiq-lean alignment check dev/paper-result-semantic-review.json --sidecar .leanq/MyLibrary.statements-v1.jsonl
+aiq-lean alignment check dev/paper-result-semantic-review.json --sidecar .leanq/MyLibrary.statements-v2.jsonl
 
 # Python-only source audits
 aiq-lean source scan --root .

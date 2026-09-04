@@ -6,8 +6,11 @@ from aiq_lean_tools.correspondence import (
     display_fragments,
     edges_of,
     relation_legend,
+    resolve_lean_targets,
     validate_correspondence,
+    validate_lean_targets,
 )
+from leanq.statement import StatementBinder, StatementRecord
 
 
 def _codes(findings, level=None):
@@ -135,6 +138,49 @@ def test_excerpt_matching_folds_tex_dashes_and_ties():
     assert validate_correspondence(review, location="r", fragment_text=rendered) == []
 
 
+def test_structured_source_targets_point_into_declared_fragments_without_copying_passages():
+    review = _review(
+        source_fragments=[
+            {"id": "printed", "role": "primary", "locator": {"marker": "T-1"}},
+            {"id": "setup", "role": "definition", "locator": {"marker": "S-1"}},
+        ],
+        clause_map=[{
+            "source_clause": "A and E0 are the source objects",
+            "lean_realization": "A / E₀",
+            "source_fragment": "setup",
+            "source_targets": [
+                {"kind": "math", "text": "A"},
+                {"kind": "math", "text": "E_0"},
+            ],
+        }],
+    )
+    edge = edges_of(review)[0]
+    assert [t.as_json() for t in edge.effective_source_targets] == [
+        {"kind": "math", "text": "A"},
+        {"kind": "math", "text": "E_0"},
+    ]
+    assert validate_correspondence(review, location="r") == []
+
+
+def test_bad_source_target_shapes_are_reported():
+    review = _review(clause_map=[{
+        "source_clause": "c", "lean_realization": "l", "source_fragment": "printed",
+        "source_targets": [
+            {"kind": "math"},
+            {"kind": "made_up", "text": "x"},
+            {"kind": "excerpt", "fragment": "missing", "text": "x"},
+            {"kind": "math", "text": "x", "occurrence": -1},
+        ],
+    }])
+    codes = _codes(validate_correspondence(review, location="r"))
+    assert codes == [
+        "source-target-fragment",
+        "source-target-kind",
+        "source-target-occurrence",
+        "source-target-text",
+    ]
+
+
 def test_fragments_need_an_id_a_locator_a_known_role_and_one_primary():
     review = _review(source_fragments=[
         {"role": "primary"},
@@ -172,6 +218,91 @@ def test_cited_declarations_collects_both_sides():
         "lean_declarations": ["A"], "correspondence_declarations": ["B", "A"],
     }])
     assert cited_declarations(review) == ["A", "B"]
+
+
+def _statement(name="Paper.main", *, binders=(), result="Q"):
+    return StatementRecord(
+        name=name, module="Paper", kind="theorem", library="Paper", role="seed",
+        binders=tuple(binders), result=result, signature=f"{name} ... : {result}",
+        type="Prop", type_expr_hash="1",
+    )
+
+
+def test_structured_lean_targets_resolve_without_copying_theorem_text():
+    review = _review(
+        canonical_declarations=["Paper.main"],
+        clause_map=[{
+            "source_clause": "gap", "lean_realization": "hgap",
+            "source_fragment": "printed",
+            "lean_targets": [{"kind": "binder", "name": "hgap"}, {"kind": "result"}],
+        }],
+    )
+    statements = {"Paper.main": _statement(binders=(
+        StatementBinder(0, "hgap", "explicit", "Gap A B δ", ("Paper.Gap",)),
+    ), result="δ * N s ≤ N R")}
+    edge = edges_of(review)[0]
+    resolved = resolve_lean_targets(edge, review, statements)
+    assert [r["state"] for r in resolved] == ["current", "current"]
+    assert resolved[0]["matches"] == [{"kind": "binder", "index": 0, "name": "hgap"}]
+    assert resolved[1]["matches"] == [{"kind": "result"}]
+    assert validate_lean_targets(review, statements=statements, location="r") == []
+
+
+def test_type_dependency_target_survives_generated_instance_names():
+    review = _review(
+        canonical_declarations=["Paper.main"],
+        clause_map=[{
+            "source_clause": "real or complex", "lean_realization": "RCLike",
+            "source_fragment": "printed",
+            "lean_targets": [{"kind": "binder_type_dep", "constant": "RCLike"}],
+        }],
+    )
+    statements = {"Paper.main": _statement(binders=(
+        StatementBinder(0, "𝕜", "implicit", "Type u", ()),
+        StatementBinder(1, "inst✝", "instance", "RCLike 𝕜", ("RCLike",)),
+    ))}
+    resolved = resolve_lean_targets(edges_of(review)[0], review, statements)
+    assert resolved[0]["state"] == "current"
+    assert resolved[0]["matches"] == [{"kind": "binder", "index": 1, "name": "inst✝"}]
+
+
+def test_a_moved_lean_target_is_reported_as_drift():
+    review = _review(
+        canonical_declarations=["Paper.main"],
+        clause_map=[{
+            "source_clause": "gap", "lean_realization": "hgap",
+            "source_fragment": "printed",
+            "lean_targets": [{"kind": "binder", "name": "hgap"}],
+        }],
+    )
+    statements = {"Paper.main": _statement(binders=(
+        StatementBinder(0, "hseparation", "explicit", "Gap A B δ", ("Paper.Gap",)),
+    ))}
+    findings = validate_lean_targets(review, statements=statements, location="r")
+    assert _codes(findings, "error") == ["lean-target-drift"]
+    assert "no longer resolves" in findings[0].message
+
+
+def test_target_schema_is_checked_before_elaboration():
+    review = _review(clause_map=[{
+        "source_clause": "c", "lean_realization": "l", "source_fragment": "printed",
+        "lean_targets": [{"kind": "binder"}, {"kind": "made_up"}],
+    }])
+    assert _codes(validate_correspondence(review, location="r"), "error") == [
+        "lean-target-kind", "lean-target-name",
+    ]
+
+
+def test_legacy_lean_binder_becomes_a_structured_target():
+    review = _review(
+        canonical_declarations=["Paper.main"],
+        clause_map=[{
+            "source_clause": "gap", "lean_realization": "hgap",
+            "source_fragment": "printed", "lean_binder": "hgap",
+        }],
+    )
+    edge = edges_of(review)[0]
+    assert edge.as_json()["leanTargets"] == [{"kind": "binder", "name": "hgap"}]
 
 
 def test_a_consequential_relation_must_quote_the_words_it_disputes():

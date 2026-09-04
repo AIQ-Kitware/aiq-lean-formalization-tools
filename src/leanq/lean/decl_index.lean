@@ -211,6 +211,35 @@ def ppType (e : Expr) : MetaM String := do
     pure (fmt.pretty (width := 100))
   catch _ => pure ""
 
+def binderInfoString : BinderInfo → String
+  | .default => "explicit"
+  | .implicit => "implicit"
+  | .strictImplicit => "strictImplicit"
+  | .instImplicit => "instance"
+
+/-- Split the elaborated declaration type into stable top-level binder records and
+its final result.  The review UI uses these structural addresses instead of
+copying fragments of pretty-printed Lean into the semantic ledger. -/
+def statementShapeJson (type : Expr) : MetaM (String × String) := do
+  forallTelescopeReducing type fun xs body => do
+    let mut parts : List String := []
+    let mut index := 0
+    for x in xs do
+      let decl ← x.fvarId!.getDecl
+      let typeStr ← ppType decl.type
+      let deps := decl.type.getUsedConstants.toList
+        |>.filter (fun d => !d.isInternal) |>.eraseDups
+      parts := parts ++ ["{"
+        ++ "\"index\":" ++ toString index ++ ","
+        ++ "\"name\":" ++ jsonStr decl.userName.toString ++ ","
+        ++ "\"binderInfo\":" ++ jsonStr (binderInfoString decl.binderInfo) ++ ","
+        ++ "\"type\":" ++ jsonStr typeStr ++ ","
+        ++ "\"typeDeps\":" ++ jsonNames deps
+        ++ "}"]
+      index := index + 1
+    let resultStr ← ppType body
+    pure ("[" ++ String.intercalate "," parts ++ "]", resultStr)
+
 def fieldsJson (env : Environment) (n : Name) : MetaM String := do
   match getStructureInfo? env n with
   | none => pure "null"
@@ -238,6 +267,7 @@ def emitStatement (root : Name) (n : Name) (ci : ConstantInfo) (role : String)
       let fmt ← PrettyPrinter.ppSignature n
       pure (fmt.1.pretty (width := 100))
     catch _ => pure ""
+  let (binders, result) ← try statementShapeJson ci.type catch _ => pure ("[]", "")
   let doc ← try findDocString? env n catch _ => pure none
   let docStr := match doc with
     | some d => jsonStr d
@@ -272,6 +302,8 @@ def emitStatement (root : Name) (n : Name) (ci : ConstantInfo) (role : String)
     ++ "\"bodyDeps\":" ++ jsonNames bodyDeps ++ ","
     ++ "\"type\":" ++ jsonStr typeStr ++ ","
     ++ "\"signature\":" ++ jsonStr sigStr ++ ","
+    ++ "\"binders\":" ++ binders ++ ","
+    ++ "\"result\":" ++ jsonStr result ++ ","
     ++ "\"typeExprHash\":" ++ jsonStr (toString ci.type.hash) ++ ","
     ++ "\"docstring\":" ++ docStr ++ ","
     ++ "\"fields\":" ++ fields

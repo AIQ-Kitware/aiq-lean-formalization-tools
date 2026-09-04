@@ -3,6 +3,7 @@ import unittest
 
 from leanq.index import Decl
 from leanq.statement import (
+    StatementBinder,
     StatementRecord,
     by_name,
     closure_edges,
@@ -14,13 +15,13 @@ from leanq.statement import (
 
 def rec(name, *, kind="theorem", type_deps=(), body_deps=(), boundary=False,
         role="unfolded", module="Pkg.Main", library="Pkg", type="Prop", fields=(),
-        docstring=None, flags=(), signature=""):
+        docstring=None, flags=(), signature="", binders=(), result=""):
     return StatementRecord(
         name=name, module=module, kind=kind, library=library, role=role,
         boundary=boundary, is_prop=kind == "theorem", line=3,
         type_deps=tuple(type_deps), body_deps=tuple(body_deps), type=type,
-        signature=signature, type_expr_hash="42", docstring=docstring,
-        fields=tuple(fields), flags=tuple(flags),
+        signature=signature, binders=tuple(binders), result=result,
+        type_expr_hash="42", docstring=docstring, fields=tuple(fields), flags=tuple(flags),
     )
 
 
@@ -116,6 +117,22 @@ class ClosureTests(unittest.TestCase):
         self.assertEqual(back[0].type_deps, ("Pkg.IsGood", "IsSelfAdjoint", "Real.instLE"))
         self.assertEqual(back[0].signature, "Pkg.main (x : ℝ) : Pkg.IsGood x")
         self.assertEqual(back[0].to_json()["typeTextSha256"], sample()["Pkg.main"].type_text_sha256)
+
+    def test_structured_statement_shape_round_trips(self):
+        record = rec(
+            "Pkg.bound",
+            signature="Pkg.bound (x : ℝ) (hx : 0 < x) : x <= x",
+            binders=(
+                StatementBinder(0, "x", "explicit", "ℝ", ("Real",)),
+                StatementBinder(1, "hx", "explicit", "0 < x", ("LT.lt",)),
+            ),
+            result="x ≤ x",
+        )
+        back = StatementRecord.from_json(json.loads(json.dumps(record.to_json())))
+        self.assertEqual(back.binders, record.binders)
+        self.assertEqual(back.result, "x ≤ x")
+        self.assertEqual(back.binders[1].name, "hx")
+        self.assertEqual(back.binders[1].type_deps, ("LT.lt",))
 
     def test_missing_record_round_trip(self):
         missing = StatementRecord.from_json({"name": "Pkg.gone", "role": "seed", "missing": True})

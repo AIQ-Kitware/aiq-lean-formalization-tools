@@ -11,7 +11,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from leanq.statement import StatementBinder, StatementRecord
+
+from aiq_lean_tools.correspondence import edges_of
 from aiq_lean_tools.alignment import (
+    _resolve_source_targets,
+    _source_target_summary,
     alignment_payload,
     build_alignment_packet,
     load_graph_table,
@@ -69,7 +74,8 @@ def _graph(tmp_path: Path, nodes: dict[str, list[str]] = NODES) -> dict[str, Any
     return load_graph_table(path)
 
 
-def _payload(tmp_path: Path, presentation: Any | None, *, graph: Any = None) -> dict[str, Any]:
+def _payload(tmp_path: Path, presentation: Any | None, *, graph: Any = None,
+             statement_map: Any = None) -> dict[str, Any]:
     census = tmp_path / "dev" / "paper-full-source-census.json"
     census.parent.mkdir(exist_ok=True)
     census.write_text(json.dumps(_census(presentation)), encoding="utf-8")
@@ -77,7 +83,7 @@ def _payload(tmp_path: Path, presentation: Any | None, *, graph: Any = None) -> 
         "/-- Printed. -/\ntheorem printed (x : Nat) : x = x := rfl\n"
         "/-- Canonical. -/\ntheorem main (x : Nat) : x = x := rfl\n",
         encoding="utf-8")
-    packet = build_alignment_packet([census], root=tmp_path)
+    packet = build_alignment_packet([census], root=tmp_path, statement_map=statement_map)
     return alignment_payload(packet, graph=graph)
 
 
@@ -119,7 +125,7 @@ def test_the_presentation_form_carries_a_full_declaration_payload(tmp_path: Path
     assert [s["name"] for s in row["supporting"]] == []
 
 
-def test_the_presentation_form_precedes_the_canonical_one(tmp_path: Path):
+def test_html_leads_with_the_reviewed_theorem_and_collapses_presentation(tmp_path: Path):
     census_dir = tmp_path / "dev"
     census_dir.mkdir()
     path = census_dir / "paper-full-source-census.json"
@@ -134,7 +140,95 @@ def test_the_presentation_form_precedes_the_canonical_one(tmp_path: Path):
     assert f"Fronts `{CANONICAL}` (unstated)." in body
 
     html = render_alignment_html(alignment_payload(packet))
-    assert html.index("Presentation form (") < html.index("The API-canonical statement it fronts")
+    assert html.index("Reviewed theorem (") < html.index("Readable presentation form (")
+    assert 'Bridge / correspondence evidence (' in html
+    assert 'data-direct-decls=' in html and 'data-evidence-decls=' in html
+
+
+def test_source_math_targets_resolve_to_renderable_source_coordinates():
+    review = {
+        "source_fragments": [{"id": "setup", "role": "primary", "locator": {"marker": "S-1"}}],
+        "clause_map": [{
+            "source_clause": "A, A0, and E0",
+            "lean_realization": "binders",
+            "source_fragment": "setup",
+            "source_targets": [
+                {"kind": "math", "text": "A"},
+                {"kind": "math", "text": "A_0"},
+                {"kind": "math", "text": "E_0"},
+            ],
+        }],
+    }
+    sources = [{
+        "id": "setup",
+        "pinStatus": "current",
+        "fragment": {"blocks": [
+            {"kind": "paragraph", "spans": [
+                {"kind": "text", "text": "Let "},
+                {"kind": "math", "text": "A=A^*"},
+                {"kind": "text", "text": " and "},
+                {"kind": "math", "text": "E_0"},
+            ]},
+            {"kind": "display", "text": "A_0=E_0^* A E_0"},
+        ]},
+    }]
+    resolutions = _resolve_source_targets(edges_of(review)[0], sources)
+    assert [r["state"] for r in resolutions] == ["current", "current", "current"]
+    assert resolutions[0]["matches"] == [{
+        "kind": "math", "block": 0, "span": 1, "text": "A",
+    }]
+    assert resolutions[1]["matches"] == [{
+        "kind": "math", "block": 1, "text": "A_0",
+    }]
+    assert resolutions[2]["matches"] == [{
+        "kind": "math", "block": 0, "span": 3, "text": "E_0",
+    }]
+    assert _source_target_summary(resolutions) == "current"
+
+    sources[0]["pinStatus"] = "moved"
+    moved = _resolve_source_targets(edges_of(review)[0], sources)
+    assert _source_target_summary(moved) == "source-drift"
+
+    review["clause_map"][0]["source_targets"][0]["text"] = "B"
+    missing = _resolve_source_targets(edges_of(review)[0], sources)
+    assert missing[0]["state"] == "target-missing"
+    assert _source_target_summary(missing) == "target-drift"
+
+
+def test_alignment_viewer_opens_inherited_source_and_can_mark_source_targets(tmp_path: Path):
+    html = render_alignment_html(_payload(tmp_path, None))
+    assert '<details class="source-secondary" open>' in html
+    assert 'function markSourceTargets' in html
+    assert 'source-target-hit' in html
+
+
+def test_clause_targets_are_resolved_into_elaborated_statement_segments(tmp_path: Path):
+    census = _census(None)
+    census["items"][0]["semantic_review"]["clause_map"][0]["lean_targets"] = [
+        {"kind": "binder", "name": "hgap"}, {"kind": "result"},
+    ]
+    path = tmp_path / "dev" / "paper-full-source-census.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps(census), encoding="utf-8")
+    (tmp_path / "Paper.lean").write_text(
+        "theorem main (hgap : True) : True := trivial\n", encoding="utf-8")
+    record = StatementRecord(
+        name=CANONICAL, module="Paper", kind="theorem", library="Paper", role="seed",
+        signature="Paper.main (hgap : True) : True", type="True", type_expr_hash="7",
+        binders=(StatementBinder(0, "hgap", "explicit", "True", ()),), result="True",
+    )
+    packet = build_alignment_packet([path], root=tmp_path, statement_map={CANONICAL: record})
+    data = alignment_payload(packet)
+    edge = _row(data)["edges"][0]
+    assert edge["leanTargetSummary"] == "unpinned"
+    assert edge["leanTargetResolutions"][0]["matches"] == [
+        {"kind": "binder", "index": 0, "name": "hgap"}
+    ]
+    assert edge["leanTargetResolutions"][1]["matches"] == [{"kind": "result"}]
+    html = render_alignment_html(data)
+    assert 'class="lean-segment binder"' in html
+    assert 'function markLeanTargets' in html
+    assert 'Lean target drift' in html
 
 
 def test_a_delegating_front_is_read_from_the_graph(tmp_path: Path):

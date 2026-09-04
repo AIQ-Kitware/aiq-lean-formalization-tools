@@ -1279,6 +1279,7 @@ def _load_pin_document(path: str, root: str | None):
 
 
 def _statement_targets_and_records(args, doc, target_fn):
+    from .correspondence import cited_declarations
     from .statement_pins import statement_records
 
     targets = target_fn(doc, row_ids=args.id or ())
@@ -1286,6 +1287,10 @@ def _statement_targets_and_records(args, doc, target_fn):
         raise SystemExit("no reviewed rows with declarations to pin in " + args.document)
     seeds = [name for target in targets for name in target.declarations]
     for target in targets:
+        # Clause targets and correspondence declarations need fresh statement
+        # records for localized drift checks even when they are not themselves
+        # part of the row's pin set.
+        seeds.extend(cited_declarations(target.container))
         seeds.extend(
             str(p.get("declaration")) for p in target.pins if isinstance(p, Mapping)
         )
@@ -1332,7 +1337,7 @@ def cmd_alignment_pin(args) -> int:
 
 def cmd_alignment_check(args) -> int:
     """Has either side of an accepted review moved since it was accepted?"""
-    from .correspondence import validate_correspondence
+    from .correspondence import validate_correspondence, validate_lean_targets
     from .source_pins import check_source_targets, resolve_target
     from .statement_pins import check_pins
 
@@ -1342,6 +1347,10 @@ def cmd_alignment_check(args) -> int:
     if not args.source_only:
         targets, records, _ = _statement_targets_and_records(args, doc, target_fn)
         findings += check_pins(targets, records)
+        for target in targets:
+            findings += validate_lean_targets(
+                target.container, statements=records, location=target.location,
+            )
         pinned = sum(len(t.pins) for t in targets)
         rows = len(targets)
     if not args.statements_only:

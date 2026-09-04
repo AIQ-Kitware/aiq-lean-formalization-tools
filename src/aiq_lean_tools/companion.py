@@ -128,7 +128,10 @@ def _clause(clause: Mapping[str, Any]) -> dict[str, Any]:
         "relation": str(clause.get("relation") or ""),
         "source_fragment": "printed",
     }
-    for field in ("status", "kind", "source_excerpt", "note"):
+    for field in (
+        "status", "kind", "source_excerpt", "lean_binder", "lean_targets",
+        "lean_declarations", "correspondence_declarations", "note",
+    ):
         if clause.get(field):
             out[field] = clause[field]
     return out

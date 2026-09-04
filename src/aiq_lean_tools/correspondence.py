@@ -113,6 +113,108 @@ RELATIONS: dict[str, dict[str, Any]] = {
 #: Clause roles, so a browser can group hypotheses apart from conclusions.
 CLAUSE_KINDS = ("setup", "hypothesis", "conclusion", "scope", "object", "note")
 
+#: Stable selectors into an elaborated theorem statement.  These are deliberately
+#: structural pointers rather than copied Lean text.  Binder names and the final
+#: result are exported by ``leanq statement``; ``binder_type_dep`` is useful for
+#: implicit typeclass binders whose generated local names are less meaningful than
+#: the constant in their type.  ``text`` is an explicit escape hatch for the rare
+#: subterm that has no better structural address.
+LEAN_TARGET_KINDS = {"binder", "binder_type_dep", "result", "declaration", "text"}
+
+#: Stable selectors into a resolved source fragment.  ``math`` intentionally
+#: points at a compact TeX token rather than copying a sentence or equation.
+#: The fragment content hash remains the authority for drift; these selectors
+#: only say which part of a current fragment the reviewer meant to focus.
+#: ``excerpt`` is the structured form of the legacy ``source_excerpt`` field,
+#: and ``fragment`` is useful when a whole inherited passage is the evidence.
+SOURCE_TARGET_KINDS = {"math", "excerpt", "fragment"}
+
+
+@dataclass(frozen=True)
+class SourceTarget:
+    """A reviewer's pointer to a visible part of a source fragment.
+
+    Source prose does not have an elaborator, so the target model is deliberately
+    smaller than :class:`LeanTarget`.  Math tokens are resolved against the parsed
+    TeX spans produced by :mod:`source_model`; the source pin decides whether the
+    fragment is still the one the review accepted.  ``occurrence`` is zero-based
+    and only needed when the same token occurs repeatedly in one fragment.
+    """
+
+    kind: str
+    fragment: str = ""
+    text: str = ""
+    occurrence: int = 0
+
+    @classmethod
+    def parse(cls, value: object) -> "SourceTarget":
+        if not isinstance(value, Mapping):
+            return cls(kind="")
+        raw_occurrence = value.get("occurrence", 0)
+        try:
+            occurrence = int(raw_occurrence)
+        except (TypeError, ValueError):
+            occurrence = -1
+        return cls(
+            kind=_text(value.get("kind")),
+            fragment=_text(value.get("fragment")),
+            text=_text(value.get("text") or value.get("excerpt")),
+            occurrence=occurrence,
+        )
+
+    def as_json(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"kind": self.kind}
+        if self.fragment:
+            out["fragment"] = self.fragment
+        if self.text:
+            out["text"] = self.text
+        if self.occurrence:
+            out["occurrence"] = self.occurrence
+        return out
+
+
+@dataclass(frozen=True)
+class LeanTarget:
+    """A reviewer's pointer to the part of a Lean statement realizing a clause.
+
+    The pointer intentionally does not duplicate the theorem text.  The statement
+    sidecar supplies the current elaborated binder/result text, while statement pins
+    say whether the declaration is still the one the review accepted.
+    """
+
+    kind: str
+    declaration: str = ""
+    name: str = ""
+    constant: str = ""
+    excerpt: str = ""
+
+    @classmethod
+    def parse(cls, value: object) -> "LeanTarget":
+        if isinstance(value, str):
+            # A compact shorthand is convenient for the common case and is
+            # backwards-compatible with the old single ``lean_binder`` field.
+            return cls(kind="binder", name=value.strip())
+        if not isinstance(value, Mapping):
+            return cls(kind="")
+        return cls(
+            kind=_text(value.get("kind")),
+            declaration=_text(value.get("declaration")),
+            name=_text(value.get("name")),
+            constant=_text(value.get("constant")),
+            excerpt=_text(value.get("excerpt")),
+        )
+
+    def as_json(self) -> dict[str, Any]:
+        out = {
+            "kind": self.kind,
+            "declaration": self.declaration,
+            "name": self.name,
+            "constant": self.constant,
+            "excerpt": self.excerpt,
+        }
+        return {k: v for k, v in out.items() if v}
+
+
 #: How a row says it reads its source passage.
 INTERPRETATIONS = {
     "local": "Every hypothesis and conclusion is printed in the cited passage.",
@@ -144,8 +246,10 @@ class CorrespondenceEdge:
     kind: str = ""
     source_fragment: str = ""
     source_excerpt: str = ""
+    source_targets: tuple[SourceTarget, ...] = ()
     lean_declarations: tuple[str, ...] = ()
     lean_binder: str = ""
+    lean_targets: tuple[LeanTarget, ...] = ()
     correspondence_declarations: tuple[str, ...] = ()
     note: str = ""
 
@@ -160,8 +264,18 @@ class CorrespondenceEdge:
             kind=_text(clause.get("kind")),
             source_fragment=_text(clause.get("source_fragment")),
             source_excerpt=_text(clause.get("source_excerpt")),
+            source_targets=tuple(
+                SourceTarget.parse(value)
+                for value in (clause.get("source_targets") or ())
+            ) if isinstance(clause.get("source_targets"), Sequence)
+               and not isinstance(clause.get("source_targets"), (str, bytes)) else (),
             lean_declarations=tuple(_names(clause.get("lean_declarations"))),
             lean_binder=_text(clause.get("lean_binder")),
+            lean_targets=tuple(
+                LeanTarget.parse(value)
+                for value in (clause.get("lean_targets") or ())
+            ) if isinstance(clause.get("lean_targets"), Sequence)
+               and not isinstance(clause.get("lean_targets"), (str, bytes)) else (),
             correspondence_declarations=tuple(_names(clause.get("correspondence_declarations"))),
             note=_text(clause.get("note")),
         )
@@ -169,6 +283,25 @@ class CorrespondenceEdge:
     @property
     def inherited(self) -> bool:
         return self.relation == "inherited_standing_assumption"
+
+    @property
+    def effective_source_targets(self) -> tuple[SourceTarget, ...]:
+        """Structured source targets, with the legacy excerpt as a shorthand."""
+        if self.source_targets:
+            return self.source_targets
+        if self.source_excerpt:
+            return (SourceTarget(kind="excerpt", fragment=self.source_fragment,
+                                 text=self.source_excerpt),)
+        return ()
+
+    @property
+    def effective_lean_targets(self) -> tuple[LeanTarget, ...]:
+        """Structured targets, with the legacy binder field as a shorthand."""
+        if self.lean_targets:
+            return self.lean_targets
+        if self.lean_binder:
+            return (LeanTarget(kind="binder", name=self.lean_binder),)
+        return ()
 
     def as_json(self) -> dict[str, Any]:
         out = {
@@ -181,8 +314,10 @@ class CorrespondenceEdge:
             "kind": self.kind,
             "sourceFragment": self.source_fragment,
             "sourceExcerpt": self.source_excerpt,
+            "sourceTargets": [target.as_json() for target in self.effective_source_targets],
             "leanDeclarations": list(self.lean_declarations),
             "leanBinder": self.lean_binder,
+            "leanTargets": [target.as_json() for target in self.effective_lean_targets],
             "correspondenceDeclarations": list(self.correspondence_declarations),
             "note": self.note,
         }
@@ -194,6 +329,10 @@ def cited_declarations(review: Mapping[str, Any]) -> list[str]:
     out: list[str] = []
     for edge in edges_of(review):
         out.extend(edge.lean_declarations)
+        out.extend(
+            target.declaration for target in edge.effective_lean_targets
+            if target.declaration
+        )
         out.extend(edge.correspondence_declarations)
     return list(dict.fromkeys(out))
 
@@ -241,6 +380,157 @@ _FOLD = str.maketrans({"\u2013": "-", "\u2014": "-", "\u00a0": " ", "~": " ",
 
 def _normalized(text: str) -> str:
     return " ".join(text.translate(_FOLD).replace("--", "-").split()).lower()
+
+
+def _record_value(record: object, name: str, default: object = None) -> object:
+    if isinstance(record, Mapping):
+        return record.get(name, default)
+    return getattr(record, name, default)
+
+
+def _binder_value(binder: object, name: str, default: object = None) -> object:
+    if isinstance(binder, Mapping):
+        return binder.get(name, default)
+    return getattr(binder, name, default)
+
+
+def _target_declaration(
+    edge: CorrespondenceEdge, target: LeanTarget, review: Mapping[str, Any]
+) -> tuple[str, str]:
+    """Return ``(declaration, state)`` for one structured target.
+
+    Omitting ``declaration`` is intentionally allowed when the clause has exactly
+    one Lean realization or the review exactly one canonical declaration.  That
+    removes the most common piece of redundant ledger text while refusing to guess
+    when either side is genuinely ambiguous.
+    """
+    if target.declaration:
+        return target.declaration, "current"
+    if len(edge.lean_declarations) == 1:
+        return edge.lean_declarations[0], "current"
+    canonical = _names(review.get("canonical_declarations") or review.get("declarations"))
+    if len(canonical) == 1:
+        return canonical[0], "current"
+    return "", "ambiguous-declaration"
+
+
+def resolve_lean_targets(
+    edge: CorrespondenceEdge, review: Mapping[str, Any], statements: Mapping[str, object]
+) -> list[dict[str, Any]]:
+    """Resolve clause target selectors against a fresh elaborated statement sidecar.
+
+    The returned states are UI- and checker-facing evidence, not semantic verdicts.
+    A ``current`` target means only that the reviewed structural pointer still
+    names a part of the current declaration.  The declaration's statement pin is
+    checked separately.
+    """
+    out: list[dict[str, Any]] = []
+    for target in edge.effective_lean_targets:
+        item = target.as_json()
+        declaration, state = _target_declaration(edge, target, review)
+        item["declaration"] = declaration
+        if state != "current":
+            item["state"] = state
+            item["matches"] = []
+            out.append(item)
+            continue
+        record = statements.get(declaration)
+        if record is None or bool(_record_value(record, "missing", False)):
+            item["state"] = "declaration-missing"
+            item["matches"] = []
+            out.append(item)
+            continue
+
+        matches: list[dict[str, Any]] = []
+        if target.kind == "declaration":
+            matches = [{"kind": "declaration"}]
+        elif target.kind == "result":
+            result = str(_record_value(record, "result", "") or "")
+            if result:
+                matches = [{"kind": "result"}]
+            else:
+                state = "shape-unavailable"
+        elif target.kind in {"binder", "binder_type_dep"}:
+            binders = tuple(_record_value(record, "binders", ()) or ())
+            if not binders:
+                state = "shape-unavailable"
+            elif target.kind == "binder":
+                matches = [
+                    {
+                        "kind": "binder",
+                        "index": int(_binder_value(b, "index", i) or 0),
+                        "name": str(_binder_value(b, "name", "") or ""),
+                    }
+                    for i, b in enumerate(binders)
+                    if str(_binder_value(b, "name", "") or "") == target.name
+                ]
+                if not matches:
+                    state = "target-missing"
+            else:
+                matches = [
+                    {
+                        "kind": "binder",
+                        "index": int(_binder_value(b, "index", i) or 0),
+                        "name": str(_binder_value(b, "name", "") or ""),
+                    }
+                    for i, b in enumerate(binders)
+                    if target.constant in tuple(_binder_value(b, "type_deps", ()) or ())
+                ]
+                if not matches:
+                    state = "target-missing"
+        elif target.kind == "text":
+            signature = str(_record_value(record, "signature", "") or _record_value(record, "type", "") or "")
+            if target.excerpt and _normalized(target.excerpt) in _normalized(signature):
+                matches = [{"kind": "text", "excerpt": target.excerpt}]
+            else:
+                state = "target-missing"
+        else:
+            state = "invalid-target"
+
+        item["state"] = state if state != "current" or matches else "target-missing"
+        item["matches"] = matches
+        out.append(item)
+    return out
+
+
+def validate_lean_targets(
+    review: Mapping[str, Any],
+    *,
+    statements: Mapping[str, object],
+    location: str = "review",
+) -> list[Finding]:
+    """Check that each structured Lean pointer still resolves after elaboration."""
+    findings: list[Finding] = []
+    for edge in edges_of(review):
+        for i, resolved in enumerate(resolve_lean_targets(edge, review, statements)):
+            state = str(resolved.get("state") or "")
+            if state == "current":
+                continue
+            loc = f"{location}.clause_map[{edge.index}].lean_targets[{i}]"
+            declaration = resolved.get("declaration") or "<ambiguous declaration>"
+            target = resolved.get("name") or resolved.get("constant") or resolved.get("kind")
+            if state == "shape-unavailable":
+                message = (
+                    f"the current statement sidecar for {declaration} has no structured "
+                    f"binder/result shape, so Lean target {target!r} cannot be checked; "
+                    "regenerate the statement sidecar with the current leanq exporter"
+                )
+            elif state == "ambiguous-declaration":
+                message = (
+                    f"Lean target {target!r} does not name a declaration and the clause/review "
+                    "does not determine exactly one; add an explicit declaration"
+                )
+            elif state == "declaration-missing":
+                message = f"Lean target {target!r} points at missing declaration {declaration}"
+            elif state == "invalid-target":
+                message = f"unknown Lean target kind {resolved.get('kind')!r}"
+            else:
+                message = (
+                    f"Lean target {target!r} no longer resolves inside {declaration}; "
+                    "the reviewed clause pointer has drifted"
+                )
+            findings.append(Finding("error", "lean-target-drift", message, loc))
+    return findings
 
 
 def validate_correspondence(
@@ -342,6 +632,64 @@ def validate_correspondence(
                 "correspondence, so it must name that theorem in correspondence_declarations",
                 loc,
             ))
+        raw_source_targets = edge.effective_source_targets
+        for target_index, target in enumerate(raw_source_targets):
+            tloc = f"{loc}.source_targets[{target_index}]"
+            if target.kind not in SOURCE_TARGET_KINDS:
+                findings.append(Finding(
+                    "error", "source-target-kind",
+                    f"unknown source target kind {target.kind!r}; expected one of "
+                    f"{sorted(SOURCE_TARGET_KINDS)}", tloc,
+                ))
+                continue
+            fragment = target.fragment or edge.source_fragment
+            if not fragment:
+                findings.append(Finding(
+                    "error", "source-target-fragment",
+                    "source target needs a fragment, directly or through source_fragment", tloc,
+                ))
+            elif fragment_ids and fragment not in fragment_ids:
+                findings.append(Finding(
+                    "error", "source-target-fragment",
+                    f"source target cites undeclared source fragment {fragment!r}", tloc,
+                ))
+            if target.kind in {"math", "excerpt"} and not target.text:
+                findings.append(Finding(
+                    "error", "source-target-text",
+                    f"{target.kind} source target needs non-empty text", tloc,
+                ))
+            if target.occurrence < 0:
+                findings.append(Finding(
+                    "error", "source-target-occurrence",
+                    "source target occurrence must be a non-negative integer", tloc,
+                ))
+
+        raw_targets = edge.effective_lean_targets
+        for target_index, target in enumerate(raw_targets):
+            tloc = f"{loc}.lean_targets[{target_index}]"
+            if target.kind not in LEAN_TARGET_KINDS:
+                findings.append(Finding(
+                    "error", "lean-target-kind",
+                    f"unknown Lean target kind {target.kind!r}; expected one of "
+                    f"{sorted(LEAN_TARGET_KINDS)}", tloc,
+                ))
+                continue
+            if target.kind == "binder" and not target.name:
+                findings.append(Finding("error", "lean-target-name",
+                                        "binder target needs a non-empty name", tloc))
+            if target.kind == "binder_type_dep" and not target.constant:
+                findings.append(Finding("error", "lean-target-constant",
+                                        "binder_type_dep target needs a constant", tloc))
+            if target.kind == "text" and not target.excerpt:
+                findings.append(Finding("error", "lean-target-excerpt",
+                                        "text target needs an excerpt", tloc))
+            if target.declaration and registered and target.declaration not in registered:
+                findings.append(Finding(
+                    "error", "lean-target-declaration",
+                    f"{target.declaration} is an explicit Lean target but is not registered in "
+                    "lean_declarations, so it is never elaborated or pinned", tloc,
+                ))
+
         for name in edge.lean_declarations:
             if registered and name not in registered:
                 findings.append(Finding(

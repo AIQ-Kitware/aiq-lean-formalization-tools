@@ -19,7 +19,9 @@ from typing import Any, Mapping, Sequence
 from .census import CensusDocument, load_census
 from .companion import companion_reviews
 from .common import Path, md_escape, unique_in_order
-from .correspondence import cited_declarations, display_fragments, edges_of, relation_legend
+from .correspondence import (
+    cited_declarations, display_fragments, edges_of, relation_legend, resolve_lean_targets,
+)
 from .source_model import SourceFragment, SourceLibrary, SourceLocator
 from .source_pins import SOURCE_PIN_FIELD, source_pin_status
 from .lean_backend import LeanBackend, LeanQueryProbe, SubprocessLeanBackend
@@ -538,6 +540,8 @@ def _declaration_payload(
         )
         out.update(
             signature=record.signature or record.type,
+            binders=[binder.to_json() for binder in record.binders],
+            result=record.result,
             kind=record.kind,
             module=record.module,
             typeDeps=list(record.type_deps),
@@ -825,6 +829,157 @@ def load_graph_table(path: str | pathlib.Path) -> dict[str, Any]:
     return {"table": {d.name: d for d in decls}, "nodeCount": len(decls), "path": str(path)}
 
 
+def _source_math_token_occurs(raw: str, token: str) -> bool:
+    """Whether ``token`` occurs as a TeX-level math token in ``raw``.
+
+    This is deliberately modest rather than a TeX parser.  Source fragments are
+    already parsed into math spans, so all that remains is to keep a selector
+    such as ``A`` from accidentally matching the ``A`` in ``A_0``.  Source pins
+    remain the drift authority; this resolver only supplies a focus coordinate.
+    """
+    if not token:
+        return False
+    at = 0
+    while True:
+        i = raw.find(token, at)
+        if i < 0:
+            return False
+        before = raw[i - 1] if i else ""
+        j = i + len(token)
+        after = raw[j] if j < len(raw) else ""
+        ident = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+        if (not before or before not in ident) and (not after or after not in ident):
+            return True
+        at = i + 1
+
+
+def _resolve_source_targets(edge, sources: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Resolve structured source focus selectors against freshly parsed fragments.
+
+    The result mirrors Lean target resolution: a semantic review stores a small
+    selector, the generated page stores the current display coordinates, and the
+    content hash independently says whether the source passage itself drifted.
+    """
+    source_by_id = {str(item.get("id") or ""): item for item in sources}
+    out: list[dict[str, Any]] = []
+    for target in edge.effective_source_targets:
+        item = target.as_json()
+        fid = target.fragment or edge.source_fragment
+        item["fragment"] = fid
+        source = source_by_id.get(fid)
+        if source is None or source.get("unresolved") or not source.get("fragment"):
+            item["state"] = "fragment-missing"
+            item["matches"] = []
+            out.append(item)
+            continue
+        fragment = source["fragment"]
+        matches: list[dict[str, Any]] = []
+        if target.kind == "fragment":
+            matches = [{"kind": "fragment"}]
+        elif target.kind == "excerpt":
+            # Legacy prose excerpts are still rendered by the browser's folded
+            # whitespace matcher.  The source validator checks their text.
+            matches = [{"kind": "excerpt", "text": target.text}]
+        elif target.kind == "math":
+            candidates: list[dict[str, Any]] = []
+            for block_index, block in enumerate(fragment.get("blocks") or []):
+                if block.get("kind") == "display":
+                    raw = str(block.get("text") or "")
+                    if _source_math_token_occurs(raw, target.text):
+                        candidates.append({
+                            "kind": "math", "block": block_index,
+                            "text": target.text,
+                        })
+                    continue
+                for span_index, span in enumerate(block.get("spans") or []):
+                    if span.get("kind") != "math":
+                        continue
+                    raw = str(span.get("text") or "")
+                    if _source_math_token_occurs(raw, target.text):
+                        candidates.append({
+                            "kind": "math", "block": block_index,
+                            "span": span_index, "text": target.text,
+                        })
+            if 0 <= target.occurrence < len(candidates):
+                matches = [candidates[target.occurrence]]
+        item["matches"] = matches
+        item["state"] = "current" if matches else "target-missing"
+        item["pinState"] = str(source.get("pinStatus") or "")
+        out.append(item)
+    return out
+
+
+def _source_target_summary(resolutions: Sequence[Mapping[str, Any]]) -> str | None:
+    if not resolutions:
+        return None
+    states = [str(r.get("state") or "") for r in resolutions]
+    if any(s != "current" for s in states):
+        return "target-drift"
+    pins = [str(r.get("pinState") or "") for r in resolutions]
+    if any(s in {"moved", "unresolved"} for s in pins):
+        return "source-drift"
+    if any(s == "unpinned" for s in pins):
+        return "unpinned"
+    return "current"
+
+
+def _edge_payload(
+    edge,
+    review: Mapping[str, Any],
+    statements: Mapping[str, Any],
+    sources: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Viewer payload for one clause, including mechanically resolved Lean targets.
+
+    Target resolution and statement pins are separate axes.  A binder can still
+    exist in a statement whose elaborated type drifted, and a structurally current
+    statement can lose a binder name under text-only drift; the UI should make both
+    facts visible rather than compress them into one green/red bit.
+    """
+    out = edge.as_json()
+    source_resolutions = _resolve_source_targets(edge, sources)
+    if source_resolutions:
+        out["sourceTargetResolutions"] = source_resolutions
+        out["sourceTargetSummary"] = _source_target_summary(source_resolutions)
+    if edge.effective_lean_targets and not statements:
+        out["leanTargetResolutions"] = [
+            target.as_json() | {"state": "evidence-unavailable", "matches": []}
+            for target in edge.effective_lean_targets
+        ]
+        out["leanTargetSummary"] = "unavailable"
+        return out
+    resolutions = resolve_lean_targets(edge, review, statements)
+    if not resolutions:
+        return out
+    out["leanTargetResolutions"] = resolutions
+    states = [str(r.get("state") or "") for r in resolutions]
+    if any(state != "current" for state in states):
+        out["leanTargetSummary"] = "target-drift"
+        return out
+
+    pin_states: list[str] = []
+    pins = review.get(PIN_FIELD) or []
+    for declaration in dict.fromkeys(str(r.get("declaration") or "") for r in resolutions):
+        if not declaration:
+            continue
+        record = statements.get(declaration)
+        pin = next((p for p in pins if isinstance(p, Mapping)
+                    and p.get("declaration") == declaration), None)
+        if record is None:
+            pin_states.append("gone")
+        else:
+            pin_states.append(pin_status(pin, record))
+    if any(s in {"drift", "gone"} for s in pin_states):
+        out["leanTargetSummary"] = "statement-drift"
+    elif any(s == "text-drift" for s in pin_states):
+        out["leanTargetSummary"] = "text-drift"
+    elif any(s == "unpinned" for s in pin_states):
+        out["leanTargetSummary"] = "unpinned"
+    else:
+        out["leanTargetSummary"] = "current"
+    return out
+
+
 def alignment_payload(
     packet: AlignmentPacket,
     *,
@@ -874,7 +1029,8 @@ def alignment_payload(
                     "title": variant.title,
                     "claim": variant.review.get("claim"),
                     "sources": variant_sources,
-                    "edges": [edge.as_json() for edge in edges_of(variant.review)],
+                    "edges": [_edge_payload(edge, variant.review, packet.statements, variant_sources)
+                              for edge in edges_of(variant.review)],
                     "canonical": [
                         _declaration_payload(packet, name, variant.review, variant.context, graph)
                         for name in variant.canonical
@@ -916,10 +1072,41 @@ def alignment_payload(
                 status = "source located" if packet.source_declarations.get(name) else "source not located"
             supporting.append({"name": name, "status": status})
         sources, source_pin_summary = _source_payload(packet, review, row)
+        edge_payloads = [_edge_payload(edge, review, packet.statements, sources)
+                         for edge in edges_of(review)]
+        target_states = [edge.get("leanTargetSummary") for edge in edge_payloads
+                         if edge.get("leanTargetSummary")]
+        if any(state == "target-drift" for state in target_states):
+            lean_target_summary = "target-drift"
+        elif any(state == "statement-drift" for state in target_states):
+            lean_target_summary = "statement-drift"
+        elif any(state == "text-drift" for state in target_states):
+            lean_target_summary = "text-drift"
+        elif any(state == "unpinned" for state in target_states):
+            lean_target_summary = "unpinned"
+        elif any(state == "unavailable" for state in target_states):
+            lean_target_summary = "unavailable"
+        elif target_states:
+            lean_target_summary = "current"
+        else:
+            lean_target_summary = None
+        source_target_states = [edge.get("sourceTargetSummary") for edge in edge_payloads
+                                if edge.get("sourceTargetSummary")]
+        if any(state == "target-drift" for state in source_target_states):
+            source_target_summary = "target-drift"
+        elif any(state == "source-drift" for state in source_target_states):
+            source_target_summary = "source-drift"
+        elif any(state == "unpinned" for state in source_target_states):
+            source_target_summary = "unpinned"
+        elif source_target_states:
+            source_target_summary = "current"
+        else:
+            source_target_summary = None
         paper["rows"].append({
             "evidence": evidence,
             "sources": sources,
             "sourcePinSummary": source_pin_summary,
+            "sourceTargetSummary": source_target_summary,
             "sourceInterpretation": review.get("source_interpretation"),
             # A standalone review states a verdict on the whole row -- "REPAIR
             # source mismatch", and whether the printed statement is covered
@@ -930,7 +1117,8 @@ def alignment_payload(
             "literalSourceCovered": review.get("literal_source_covered"),
             "fromCompanionReview": bool(review.get("companion")),
             "nonlocalRationale": review.get("nonlocal_rationale"),
-            "edges": [edge.as_json() for edge in edges_of(review)],
+            "edges": edge_payloads,
+            "leanTargetSummary": lean_target_summary,
             "id": str(row.get("id")),
             "anchor": f"{len(papers)}-{row.get('id')}",
             "paper": entry.census.title,
@@ -962,7 +1150,7 @@ def alignment_payload(
     for entry in packet.entries:
         relations.update(relation_legend(entry.census.data.get("relation_definitions")))
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "payloadKind": "alignment-review",
         "title": title,
         "statementMeta": dict(packet.statement_meta),

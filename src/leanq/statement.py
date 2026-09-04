@@ -9,9 +9,11 @@ The exporter's ``statement`` mode walks the constants a statement *means*: a
 definition is unfolded through its body, a structure or class through its
 constructor fields, a theorem is a leaf, and anything in a boundary library
 (Mathlib and the Lean core by default) is emitted with its type and docstring but
-never unfolded.  Each record carries the pretty-printed type and a structural hash
-of the elaborated type, so an accepted review can pin the statement it accepted
-and notice when it changes.
+never unfolded.  Each record carries the pretty-printed type, a structural hash
+of the elaborated type, and a structured top-level telescope (binders plus final
+result). The hashes let an accepted review notice declaration drift; the telescope
+lets clause-level review pointers land on the current elaborated statement without
+copying fragile snippets of Lean text into the review document.
 
 The sidecar is optional and separate from the ordinary index: pretty-printing every
 declaration of a library is far more expensive than recording its dependencies,
@@ -34,12 +36,42 @@ from ._profile import profile
 from .index import LEAN_SCRIPT, graph_scope_fingerprint, index_path
 from .project import LeanProject, ProjectError
 
-STATEMENT_CACHE_VERSION = 1
+STATEMENT_CACHE_VERSION = 2
 
 DEFAULT_BOUNDARY = (
     "Init", "Lean", "Std", "Mathlib", "Batteries", "Aesop", "Qq", "ProofWidgets",
     "Plausible", "LeanSearchClient", "ImportGraph",
 )
+
+
+@dataclass(frozen=True)
+class StatementBinder:
+    """One top-level binder of an elaborated declaration type."""
+
+    index: int
+    name: str
+    binder_info: str = "explicit"
+    type: str = ""
+    type_deps: tuple[str, ...] = ()
+
+    @classmethod
+    def from_json(cls, obj: Mapping) -> "StatementBinder":
+        return cls(
+            index=int(obj.get("index", 0)),
+            name=str(obj.get("name", "") or ""),
+            binder_info=str(obj.get("binderInfo", "explicit") or "explicit"),
+            type=str(obj.get("type", "") or ""),
+            type_deps=tuple(obj.get("typeDeps", ())),
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "index": self.index,
+            "name": self.name,
+            "binderInfo": self.binder_info,
+            "type": self.type,
+            "typeDeps": list(self.type_deps),
+        }
 
 
 @dataclass(frozen=True)
@@ -58,6 +90,8 @@ class StatementRecord:
     body_deps: tuple[str, ...] = ()
     type: str = ""
     signature: str = ""
+    binders: tuple[StatementBinder, ...] = ()
+    result: str = ""
     type_expr_hash: str = ""
     docstring: str | None = None
     fields: tuple[Mapping[str, str], ...] = ()
@@ -81,6 +115,8 @@ class StatementRecord:
             body_deps=tuple(obj.get("bodyDeps", ())),
             type=obj.get("type", "") or "",
             signature=obj.get("signature", "") or "",
+            binders=tuple(StatementBinder.from_json(b) for b in obj.get("binders") or ()),
+            result=obj.get("result", "") or "",
             type_expr_hash=str(obj.get("typeExprHash", "") or ""),
             docstring=obj.get("docstring"),
             fields=tuple(dict(f) for f in obj.get("fields") or ()),
@@ -103,6 +139,8 @@ class StatementRecord:
             "bodyDeps": list(self.body_deps),
             "type": self.type,
             "signature": self.signature,
+            "binders": [binder.to_json() for binder in self.binders],
+            "result": self.result,
             "typeExprHash": self.type_expr_hash,
             "typeTextSha256": self.type_text_sha256,
             "docstring": self.docstring,
