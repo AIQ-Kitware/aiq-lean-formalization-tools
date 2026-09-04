@@ -106,7 +106,7 @@ def normalize_review(row: Mapping[str, Any], *, document: Mapping[str, Any] | No
         "reviewer_note": str(row.get("review") or ""),
         "note": str(row.get("notes") or ""),
     }
-    for field in ("statement_pins", "source_pins", "source_statement"):
+    for field in ("statement_pins", "source_pins", "source_statement", "source_fragments"):
         value = row.get(field)
         if value:
             review[field] = value
@@ -135,7 +135,10 @@ def _clause(clause: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _fragments(row: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The row's locator as a primary fragment, or nothing to show."""
+    """The row's declared fragments, or its single locator read as one."""
+    declared = row.get("source_fragments")
+    if isinstance(declared, list) and declared:
+        return [dict(f) for f in declared if isinstance(f, Mapping)]
     locator = row.get("source_locator")
     if not isinstance(locator, Mapping) or not locator:
         return []

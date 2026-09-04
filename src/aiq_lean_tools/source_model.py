@@ -748,6 +748,15 @@ class SourceLibrary:
             if not note:
                 continue
             path = Path(note) if Path(note).is_absolute() else (note_root / note)
+            # A distilled note sits beside the manifest; a retained transcription
+            # sits with the package it belongs to. Falling back to the repository
+            # root is what lets the second kind be a registered document at all,
+            # instead of resolving only through a bare file locator that carries
+            # no citation, no title and no visibility.
+            if not path.is_file() and not Path(note).is_absolute():
+                candidate = base / note
+                if candidate.is_file():
+                    path = candidate
             if not path.is_file() and not spec:
                 continue
             fmt = str(spec.get("format") or ("tex" if str(note).endswith(".tex") else "markdown"))
