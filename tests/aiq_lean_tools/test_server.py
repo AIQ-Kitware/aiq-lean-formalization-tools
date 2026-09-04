@@ -494,14 +494,22 @@ def test_source_context_names_the_printed_result_and_addresses_its_clauses(tmp_p
         assert row["sourceStatement"]["hypotheses"] == ["gap"]
         clause = row["clauses"][0]
         assert clause["sourceClause"] == "the estimate"
-        # The pointer is what an annotation writes through; a wrong index writes
+        # A pointer is what an annotation writes through; a wrong index writes
         # to a different row than the one on screen.
-        assert clause["pointer"] == "/items/0/semantic_review/clause_map/0/status"
-        wrote = client.post("/api/annotate", json={
-            "view": "census", "slug": "paper-full-source-census",
-            "pointer": clause["pointer"], "value": "open", "author": "test"})
-        assert wrote.status_code == 200, wrote.text
-        assert client.get("/api/context/Paper.main").json()["rows"][0]["clauses"][0]["status"] == "open"
+        assert clause["pointers"] == {
+            "status": "/items/0/semantic_review/clause_map/0/status",
+            "leanRealization": "/items/0/semantic_review/clause_map/0/lean_realization",
+            "sourceClause": "/items/0/semantic_review/clause_map/0/source_clause",
+        }
+        for field, value in [("status", "open"), ("leanRealization", "Paper.other"),
+                             ("sourceClause", "the estimate, restated")]:
+            wrote = client.post("/api/annotate", json={
+                "view": "census", "slug": "paper-full-source-census",
+                "pointer": clause["pointers"][field], "value": value, "author": "test"})
+            assert wrote.status_code == 200, wrote.text
+        again = client.get("/api/context/Paper.main").json()["rows"][0]["clauses"][0]
+        assert (again["status"], again["leanRealization"], again["sourceClause"]) == (
+            "open", "Paper.other", "the estimate, restated")
 
 
 def test_a_statement_reports_the_vocabulary_it_is_written_in(tmp_path):

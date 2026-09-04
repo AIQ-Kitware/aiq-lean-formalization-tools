@@ -211,6 +211,7 @@ class HeadlineService:
             "section": str(item.get("section") or ""),
             "summary": item.get("summary") or "",
             "nextAction": item.get("next_action") or "",
+            "hasReview": bool(review),
             "clauseCount": len(clauses),
             "clauseOpen": sum(1 for c in clauses if c.get("status") not in SETTLED_CLAUSE_STATUSES),
             "canonicalTotal": len(_names(canonical)),
@@ -250,7 +251,16 @@ class HeadlineService:
                         "kind": clause.get("kind") or "",
                         "relation": clause.get("relation") or "",
                         "sourceExcerpt": clause.get("source_excerpt") or "",
-                        "pointer": f"/items/{pos}/semantic_review/clause_map/{i}/status",
+                        # Each writable field addressed separately: the verdict,
+                        # the sentence, and the Lean it is said to become are
+                        # three different claims and are journaled as three.
+                        "pointers": {
+                            "status": f"/items/{pos}/semantic_review/clause_map/{i}/status",
+                            "leanRealization":
+                                f"/items/{pos}/semantic_review/clause_map/{i}/lean_realization",
+                            "sourceClause":
+                                f"/items/{pos}/semantic_review/clause_map/{i}/source_clause",
+                        },
                     })
                 out.append({
                     "paper": doc.title,
@@ -266,7 +276,9 @@ class HeadlineService:
                     "sourceAnchor": item.get("source_anchor") or "",
                     "sourceStatement": review.get("source_statement") or None,
                     "clauses": clauses,
+                    "hasReview": bool(review),
                     "notePointer": f"/items/{pos}/notes",
+                    "note": item.get("notes") or "",
                 })
         # A curated row is the one a reviewer wants first; a row that merely
         # lists the name among dozens is context.

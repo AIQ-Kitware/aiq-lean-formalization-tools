@@ -288,6 +288,7 @@ function pushTheme(){ try{ frame.contentWindow.postMessage({aiq:'theme', value: 
    Everything deeper -- the clause map, the elaboration, the vocabulary -- is
    one click from a card rather than several from a sidebar. */
 let homeShowMajor=false;
+const prefetched=new Set();
 
 const TERMINAL=new Set(['compiled_exact','proved_in_build','accepted','established','exact']);
 function tag(value, label){
@@ -311,6 +312,7 @@ function headlineCard(x){
       ${e(x.sourceAnchor||('Section '+(x.section||'?')))}
       ${x.clauseCount?` · ${x.clauseCount} clause${x.clauseCount===1?'':'s'}`:''}
       ${x.clauseOpen?` · <b style="color:var(--warn)">${x.clauseOpen} not established</b>`:''}
+      ${x.hasReview?'':' · <span class="tag warn" title="no curated prose-to-Lean correspondence exists for this row">no semantic review</span>'}
       ${x.canonicalTotal?` · ${x.canonicalTotal} canonical declaration${x.canonicalTotal===1?'':'s'}`:''}
       ${x.canonicalTotal>decls.length?` <span class="chip">showing ${decls.length}</span>`:''}</div>
     ${(x.claim||x.summary)?`<p class="claim">${e(x.claim||x.summary)}</p>`:''}
@@ -350,6 +352,14 @@ async function showHome(){
   const majorBtn=$('#majorBtn');
   if(majorBtn) majorBtn.onclick=()=>{ homeShowMajor=!homeShowMajor; showHome(); };
   pane.querySelectorAll('.declname').forEach(d=>d.onclick=()=>go('audit/'+encodeURIComponent(d.dataset.n)));
+  // Warms the server's page cache and the browser's before the click.
+  pane.querySelectorAll('.card .acts button[data-a="align"]').forEach(b=>
+    b.addEventListener('mouseenter', ()=>{
+      const slug=b.closest('.card').dataset.slug;
+      if(prefetched.has(slug)) return;
+      prefetched.add(slug);
+      fetch(themedUrl('/view/alignment/'+slug),{cache:'force-cache'}).catch(()=>{});
+    }, {passive:true, once:true}));
   pane.querySelectorAll('.card .acts button').forEach(b=>b.onclick=()=>{
     const card=b.closest('.card'), slug=card.dataset.slug, row=card.dataset.row;
     if(b.dataset.a==='audit') return go('audit/'+encodeURIComponent(b.dataset.n));
@@ -641,39 +651,104 @@ function wireChips(){
 
 const CLAUSE_STATUS = ['claimed_exact','claimed_generalized','claimed_weaker','open','unreviewed'];
 
+/* A clause is three claims -- the sentence, the Lean it becomes, and the
+   verdict on that correspondence -- and each is written and journaled on its
+   own, so a reviewer who only changes the verdict leaves no trace on the
+   prose. */
 function clauseCard(c, slug){
-  return `<div class="clause" data-slug="${e(slug)}" data-ptr="${e(c.pointer||'')}">
-    <p class="src">${e(c.sourceClause||'')}</p>
+  const P = c.pointers || {};
+  const opts = CLAUSE_STATUS.concat(c.status && !CLAUSE_STATUS.includes(c.status) ? [c.status] : []);
+  return `<div class="clause" data-slug="${e(slug)}" data-p='${e(JSON.stringify(P))}'>
+    <p class="src" data-f="sourceClause">${e(c.sourceClause||'')}</p>
     <div class="arrow">↓ realized in Lean
       ${c.relation?`<span class="chip">${e(c.relation)}</span>`:''}
       ${c.kind?`<span class="chip">${e(c.kind)}</span>`:''}
-      ${tag(c.status)}</div>
-    <p class="lean">${e(c.leanRealization||'')}</p>
+      <span class="statushere">${tag(c.status)}</span>
+      ${P.status?'<button class="cedit" style="margin-left:auto;padding:1px 8px;font-size:11px">Annotate</button>':''}</div>
+    <p class="lean" data-f="leanRealization">${e(c.leanRealization||'')}</p>
     ${c.sourceExcerpt?`<p class="ex">${e(c.sourceExcerpt)}</p>`:''}
-    ${c.pointer?`<div class="edit"><select class="cs">
-        ${CLAUSE_STATUS.concat(c.status&&!CLAUSE_STATUS.includes(c.status)?[c.status]:[])
-          .map(v=>`<option${v===c.status?' selected':''}>${e(v)}</option>`).join('')}
-      </select><button class="csave">Save status</button><span class="saved" hidden>written and journaled</span></div>`:''}
+    <div class="edit" hidden>
+      <select class="cs" data-f="status" data-was="${e(c.status||'')}">${opts.map(v=>`<option${v===c.status?' selected':''}>${e(v)}</option>`).join('')}</select>
+      <button class="csave">Save</button><button class="ccancel">Cancel</button>
+      <span class="saved" hidden></span></div>
   </div>`;
 }
 
 function wireClauseEditing(scope){
-  scope.querySelectorAll('.clause .csave').forEach(btn=>btn.onclick=async ()=>{
-    const box=btn.closest('.clause'), sel=box.querySelector('.cs'), note=box.querySelector('.saved');
-    btn.disabled=true;
-    try{
-      const r=await fetch('/api/annotate',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({view:'census', slug:box.dataset.slug, pointer:box.dataset.ptr,
-                             value:sel.value, author:'browser', note:'clause status, audit page'})});
-      const d=await r.json();
-      if(!r.ok||d.ok===false){ note.textContent=d.error||'refused'; note.style.color='var(--warn)'; }
-      else{ note.textContent = (d.warnings&&d.warnings.length)
-              ? 'written; ' + d.warnings.join('; ') : 'written and journaled';
-            note.style.color='var(--accent)'; }
-      note.hidden=false;
-    }catch(err){ note.textContent=String(err); note.style.color='var(--warn)'; note.hidden=false; }
-    btn.disabled=false;
+  const say=(box,text,ok)=>{ const n=box.querySelector('.saved');
+    n.textContent=text; n.style.color=ok?'var(--accent)':'var(--warn)'; n.hidden=false; };
+  scope.querySelectorAll('.clause .cedit').forEach(btn=>btn.onclick=()=>{
+    const box=btn.closest('.clause');
+    box.querySelectorAll('[data-f="sourceClause"],[data-f="leanRealization"]').forEach(el=>{
+      el.contentEditable='true'; el.dataset.was=el.textContent;
+      el.style.outline='1px dashed var(--line)'; el.style.padding='3px 5px'; el.style.borderRadius='5px';
+    });
+    box.querySelector('.edit').hidden=false;
+    btn.hidden=true;
   });
+  scope.querySelectorAll('.clause .ccancel').forEach(btn=>btn.onclick=()=>{
+    const box=btn.closest('.clause');
+    box.querySelectorAll('[data-f][data-was]').forEach(el=>{
+      if(el.tagName==='SELECT'){ el.value=el.dataset.was; return; }
+      el.textContent=el.dataset.was; el.contentEditable='false'; el.style.outline=''; });
+    box.querySelector('.edit').hidden=true;
+    box.querySelector('.cedit').hidden=false;
+  });
+  scope.querySelectorAll('.clause .csave').forEach(btn=>btn.onclick=async ()=>{
+    const box=btn.closest('.clause'), pointers=JSON.parse(box.dataset.p||'{}');
+    const sel=box.querySelector('.cs');
+    const edits=[...box.querySelectorAll('[data-f][data-was]')].map(el=>
+      [el.dataset.f, el.tagName==='SELECT'?el.value:el.textContent, el.dataset.was]);
+    btn.disabled=true;
+    const done=[], failed=[];
+    for(const [field, value, before] of edits){
+      if(value===before) continue;
+      const ok=await annotate(box.dataset.slug, pointers[field], value, 'clause '+field);
+      (ok===true?done:failed).push(ok===true?field:`${field}: ${ok}`);
+    }
+    btn.disabled=false;
+    if(failed.length) return say(box, failed.join('; '), false);
+    say(box, done.length?`written and journaled (${done.join(', ')})`:'nothing changed', true);
+    box.querySelectorAll('[data-f][data-was]').forEach(el=>{
+      el.dataset.was = el.tagName==='SELECT' ? el.value : el.textContent;
+      if(el.tagName!=='SELECT'){ el.contentEditable='false'; el.style.outline=''; } });
+    box.querySelector('.statushere').innerHTML=tag(sel.value);
+    box.querySelector('.edit').hidden=true;
+    box.querySelector('.cedit').hidden=false;
+  });
+}
+
+function wireRowNote(scope){
+  scope.querySelectorAll('.noteedit').forEach(btn=>btn.onclick=()=>{
+    btn.closest('.sec').querySelector('.rownote').hidden=false; btn.hidden=true; });
+  scope.querySelectorAll('.notecancel').forEach(btn=>btn.onclick=()=>{
+    const sec=btn.closest('.sec');
+    sec.querySelector('.rownote').hidden=true; sec.querySelector('.noteedit').hidden=false; });
+  scope.querySelectorAll('.notesave').forEach(btn=>btn.onclick=async ()=>{
+    const sec=btn.closest('.sec'), bar=sec.querySelector('.edit'), note=sec.querySelector('.saved');
+    btn.disabled=true;
+    const ok=await annotate(bar.dataset.slug, bar.dataset.ptr,
+                            sec.querySelector('.rownote textarea').value, 'row note');
+    btn.disabled=false;
+    note.textContent = ok===true ? 'written and journaled' : ok;
+    note.style.color = ok===true ? 'var(--accent)' : 'var(--warn)';
+    note.hidden=false;
+    if(ok===true){ sec.querySelector('.rownote').hidden=true; sec.querySelector('.noteedit').hidden=false; }
+  });
+}
+
+/* One write, through the gated writer. Returns true, or the refusal to show. */
+async function annotate(slug, pointer, value, why){
+  if(!pointer) return 'this field is not addressable';
+  try{
+    const r=await fetch('/api/annotate',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({view:'census', slug, pointer, value, author:'browser',
+                           note:why+', audit page'})});
+    const d=await r.json();
+    if(!r.ok||d.ok===false) return d.error||('refused ('+r.status+')');
+    if(d.warnings&&d.warnings.length) return true;
+    return true;
+  }catch(err){ return String(err); }
 }
 
 function sourceStatementHtml(st){
@@ -699,9 +774,20 @@ function contextSection(ctx){
     + sourceStatementHtml(row.sourceStatement)
     + (row.clauses&&row.clauses.length
         ? `<b style="font-size:11.5px">Clause by clause — printed prose against the Lean that answers it</b>`
-          + `<div style="margin-top:6px">${row.clauses.map(c=>clauseCard(c,row.slug)).join('')}</div>`
-        : '<p class="empty" style="padding:0">No clause-level correspondence is recorded for this row.</p>')
-    + `<button data-align="${e(row.slug)}" data-row="${e(row.id)}" style="margin-top:4px">Open the full source ↔ Lean view →</button>`,
+          + `<p style="color:var(--muted);font-size:11.5px;margin:2px 0 7px">Annotate writes the sentence, its Lean realization and the verdict back to the census, each journaled separately.</p>`
+          + `<div>${row.clauses.map(c=>clauseCard(c,row.slug)).join('')}</div>`
+        : `<p class="empty" style="padding:0">${row.hasReview
+             ? 'This row carries a semantic review but no clause-level correspondence.'
+             : 'No semantic review is recorded for this row, so there is no clause-level correspondence to read or annotate — only the row\u2019s own verdicts above.'}</p>`)
+    + `<div class="edit" style="margin-top:10px" data-slug="${e(row.slug)}" data-ptr="${e(row.notePointer||'')}">`
+    + `<button class="noteedit">Annotate the row note</button>`
+    + `<span class="saved" hidden></span></div>`
+    + `<div class="rownote" hidden><textarea rows="6" style="width:100%;font:12px var(--mono);`
+    + `background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px">`
+    + `${e(row.note||'')}</textarea>`
+    + `<div style="margin-top:6px;display:flex;gap:7px"><button class="notesave">Save note</button>`
+    + `<button class="notecancel">Cancel</button></div></div>`
+    + `<button data-align="${e(row.slug)}" data-row="${e(row.id)}" style="margin-top:10px">Open the full source ↔ Lean view →</button>`,
     true)).join('');
 }
 
@@ -829,6 +915,7 @@ async function showAudit(name){
   showPane(h);
   wireChips();
   wireClauseEditing(pane);
+  wireRowNote(pane);
   wireVocabulary(pane);
   pane.querySelectorAll('a.name[data-n]').forEach(a=>a.onclick=()=>go('audit/'+encodeURIComponent(a.dataset.n)));
   pane.querySelectorAll('a.name[data-v]').forEach(a=>a.onclick=()=>{
@@ -879,7 +966,6 @@ async function loadCatalog(refresh){
              data-t="${e((d.title+' '+d.path).toLowerCase())}">${e(d.short||d.title)}<small>${e(d.path)}</small></a>`;
   }
   nav.innerHTML=h;
-  const prefetched=new Set();
   const prefetch=a=>{
     const r=a.dataset.route||'';
     if(!r.startsWith('view/')||prefetched.has(r)) return;
@@ -964,6 +1050,7 @@ addEventListener('keydown', ev=>{
 addEventListener('message', ev=>{
   const m=ev.data||{};
   if(m.aiq==='declaration') go('decl/'+encodeURIComponent(m.name));
+  else if(m.aiq==='audit') go('audit/'+encodeURIComponent(m.name));
   else if(m.aiq==='focus-search'){ qIn.focus(); qIn.select(); }
 });
 

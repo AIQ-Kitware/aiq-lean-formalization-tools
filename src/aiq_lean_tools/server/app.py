@@ -25,6 +25,7 @@ an index files it.
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -110,6 +111,7 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
     ready.declare("literature", "Reading literature source documents",
                   "rendered source passages on the alignment view")
     ready.declare("headlines", "Indexing the headline results", "the landing page")
+    ready.declare("alignment", "Building the source-to-Lean views", "the lane view, on first click")
 
     # The workspace view rebuilds from every ledger in the repository, which
     # takes half a minute; it was doing that on each request. Cached against the
@@ -534,6 +536,23 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
         ready.run("headlines", lambda: headlines.entries(("headline",)),
                   describe=lambda rows: f"{len(rows)} headline result(s)")
 
+        def build_alignments() -> int:
+            # Six seconds per census, and it is the view a reviewer reaches for
+            # from every headline card. Paying it here costs a longer warm that
+            # the readiness strip explains, instead of a six-second click.
+            built = 0
+            for doc in catalog.documents():
+                if doc.view != "census":
+                    continue
+                try:
+                    alignment.payload(doc.path)
+                    built += 1
+                except Exception:
+                    pass
+            return built
+
+        ready.run("alignment", build_alignments, describe=lambda n: f"{n} source-to-Lean view(s)")
+
     @app.on_event("startup")
     async def _watch() -> None:
         app.state.watch_task = asyncio.create_task(_watch_files(app, catalog, decls=decls))
@@ -586,67 +605,16 @@ def _rows_of(payload: Any) -> list[dict[str, Any]]:
 #: Injected into every served viewer page. The viewers are self-contained
 #: documents that know nothing about the shell around them, and rewriting seven
 #: of them to add navigation would fork each from its static twin. Instead the
-#: shell reaches in: declaration names become clickable, and a click is posted
-#: up to the parent frame, which owns routing.
-_BRIDGE = r"""
-<script>
-(function(){
-  if (window.top === window.self) return;   // opened directly: stay static
-  const NAME = /^[A-Za-z_][A-Za-z0-9_'\u2080-\u2089!?]*(\.[A-Za-z0-9_'\u2080-\u2089!?]+)+$/;
-  const link = el => {
-    const t = (el.textContent || '').trim();
-    if (!NAME.test(t) || t.length > 200 || el.dataset.xr) return;
-    el.dataset.xr = '1';
-    el.style.cursor = 'pointer';
-    el.style.textDecoration = 'underline dotted';
-    el.style.textUnderlineOffset = '2px';
-    el.title = 'Show every ledger that names ' + t;
-    el.addEventListener('click', ev => {
-      ev.preventDefault(); ev.stopPropagation();
-      parent.postMessage({aiq: 'declaration', name: t}, '*');
-    });
-  };
-  const scan = () => document.querySelectorAll('code, .decl h3 code, td code').forEach(link);
-  scan();
-  new MutationObserver(scan).observe(document.body, {childList: true, subtree: true});
-  document.addEventListener('keydown', ev => {
-    if (ev.key === '/' && !/input|textarea/i.test((ev.target.tagName || ''))) {
-      ev.preventDefault(); parent.postMessage({aiq: 'focus-search'}, '*');
-    }
-  });
-  // The shell asks for a row by its census id. Viewers anchor rows
-  // differently -- an exact id, a prefixed anchor, or nothing at all -- so try
-  // the cheap selectors first and fall back to finding the text.
-  addEventListener('message', ev => {
-    const m = ev.data || {};
-    if (m.aiq === 'theme') {
-      if (m.value === 'system') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', m.value);
-      return;
-    }
-    if (m.aiq !== 'scroll-to' || !m.id) return;
-    const esc = (window.CSS && CSS.escape) ? CSS.escape(m.id) : m.id.replace(/[^\w-]/g, '\\$&');
-    let el = document.getElementById(m.id)
-          || document.querySelector('[id$="-' + esc + '"]')
-          || document.querySelector('[data-id="' + esc + '"]');
-    if (!el) {
-      for (const c of document.querySelectorAll('code, td, h2, h3')) {
-        if ((c.textContent || '').trim() === m.id) { el = c; break; }
-      }
-    }
-    if (!el) return;
-    const box = el.closest('section, tr, .row, .decl, article') || el;
-    box.scrollIntoView({behavior: 'smooth', block: 'center'});
-    const prev = box.style.outline;
-    box.style.outline = '2px solid #2f6f4f';
-    box.style.outlineOffset = '3px';
-    setTimeout(() => { box.style.outline = prev; }, 2200);
-  });
+#: shell reaches in: declaration names become clickable, identifiers in a Lean
+#: block answer for themselves, and a click is posted up to the parent frame,
+#: which owns routing. It lives in ``assets/bridge.js`` because it is a
+#: program -- it is syntax-checked and read like one, not maintained as a string
+#: literal in the middle of a route table.
 
-  parent.postMessage({aiq: 'ready', title: document.title}, '*');
-})();
-</script>
-"""
+
+@functools.lru_cache(maxsize=1)
+def _bridge() -> str:
+    return "<script>\n" + read_asset("bridge.js") + "\n</script>"
 
 
 def _with_bridge(page: str, theme: str | None = None) -> str:
@@ -660,7 +628,7 @@ def _with_bridge(page: str, theme: str | None = None) -> str:
     if theme in ("dark", "light") and "<html" in page:
         i = page.find("<html")
         page = page[:i] + f'<html data-theme="{theme}"' + page[page.find(">", i):]
-    return page + _BRIDGE
+    return page + _bridge()
 
 
 async def _watch_files(app, catalog: Catalog, interval: float = 1.0, *,

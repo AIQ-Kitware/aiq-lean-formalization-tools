@@ -37,6 +37,7 @@ where = ["src"]
 aiq_lean_tools = [
     "assets/*.html",
     "assets/*.css",
+    "assets/*.js",
     "assets/vendor/katex/*",
     "assets/vendor/katex/fonts/*",
     "schemas/*.json",
