@@ -116,11 +116,17 @@ def test_row_fields_are_carried_across(repo):
     assert row["supporting"] == ["Demo.helper"]
 
 
-def test_open_clauses_are_anything_not_settled(repo):
+def test_open_clauses_are_the_ones_a_reviewer_graded_as_unsettled(repo):
     row = _service(repo).entries()[0]
     assert row["clauseCount"] == 3
-    # `scope_companion` and a clause with no status are both open work.
-    assert row["clauseOpen"] == 2
+    # `scope_companion` is a stated verdict that is not settled. A clause with no
+    # status is not a third settled one and not an open one either: it is
+    # ungraded, and it is counted separately. The distinction earns its keep on
+    # the reviews kept beside a census, which grade by `relation` and write no
+    # `status` at all -- reading that silence as "not established" would report
+    # forty-three reviewed rows as failing their own review.
+    assert row["clauseOpen"] == 1
+    assert row["clauseUnstated"] == 1
 
 
 def test_canonical_declarations_carry_the_lean_statement(repo):

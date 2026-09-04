@@ -524,6 +524,64 @@ def test_a_row_reports_its_presentation_form_beside_the_canonical(tmp_path):
         assert rows[0]["presentation"][0]["why"].startswith("States the bound")
 
 
+def _as_companion(root):
+    """Move the census's embedded review into a standalone document beside it."""
+    census = root / "dev" / "paper-full-source-census.json"
+    data = json.loads(census.read_text(encoding="utf-8"))
+    review = data["items"][0].pop("semantic_review")
+    census.write_text(json.dumps(data), encoding="utf-8")
+    (root / "dev" / "paper-result-semantic-review.json").write_text(json.dumps({
+        "schema_version": 1,
+        "review_kind": "paper-result-source-to-lean-semantic-comparison",
+        "companion_census": "dev/paper-full-source-census.json",
+        "rows": [{
+            "id": "T-1", "title": "The estimate", "importance": "headline",
+            "source_anchor": "Theorem 1",
+            "source_claim": "The estimate holds under a gap.",
+            "verdict": "REPAIR source mismatch",
+            "literal_source_covered": False,
+            "source_locator": {"file": "prose/paper.tex", "lines": [3, 3]},
+            "lean_declarations": ["Paper.main"],
+            "clauses": [{"source_clause": "the estimate",
+                         "lean_clause": "Paper.main states it",
+                         "relation": "exact", "note": ""}],
+            "review": "Reads the printed bound directly.",
+            "notes": "Nothing outstanding.",
+        }],
+    }), encoding="utf-8")
+
+
+def test_a_review_kept_beside_the_census_still_answers_for_its_row(tmp_path):
+    root, client = _served(tmp_path)
+    _as_companion(root)
+    with client:
+        row = [x for x in client.get("/api/headlines").json()["entries"] if x["id"] == "T-1"][0]
+        assert row["claim"] == "The estimate holds under a gap.", "the review is found beside the row"
+        assert row["hasReview"] is True
+        assert [c["name"] for c in row["canonical"]] == ["Paper.main"]
+        # A companion review grades by `relation` and writes no `status`. That is
+        # ungraded, not unestablished.
+        assert row["clauseCount"] == 1 and row["clauseOpen"] == 0 and row["clauseUnstated"] == 1
+
+        ctx = client.get("/api/context/Paper.main").json()["rows"][0]
+        assert ctx["fromCompanionReview"] is True
+        assert ctx["annotate"] == {"view": "review", "slug": "paper-result-semantic-review"}
+        # The pointer must address the document that holds the field. Writing
+        # /items/0/semantic_review/... would create a review in a row that has none.
+        assert ctx["clauses"][0]["pointers"]["status"] == "/rows/0/clauses/0/relation"
+        assert ctx["notePointer"] == "/rows/0/notes"
+        wrote = client.post("/api/annotate", json={
+            "view": "review", "slug": "paper-result-semantic-review",
+            "pointer": ctx["clauses"][0]["pointers"]["status"],
+            "value": "lean_weaker_hypothesis", "author": "test"})
+        assert wrote.status_code == 200, wrote.text
+        again = client.get("/api/context/Paper.main").json()["rows"][0]
+        assert again["clauses"][0]["status"] == "" and again["clauses"][0]["relation"] == "lean_weaker_hypothesis"
+        # And the census is untouched by a write aimed at the review.
+        census = json.loads((root / "dev" / "paper-full-source-census.json").read_text())
+        assert "semantic_review" not in census["items"][0]
+
+
 def test_source_context_names_the_printed_result_and_addresses_its_clauses(tmp_path):
     root, client = _served(tmp_path)
     with client:

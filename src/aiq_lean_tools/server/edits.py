@@ -44,6 +44,10 @@ WRITABLE = (
     r"/items/\d+/semantic_review/clause_map/\d+/lean_realization",
     r"/items/\d+/semantic_review/clause_map/\d+/source_clause",
     r"/rows/\d+/(notes|note|status)",
+    # A review kept beside its census grades clauses by `relation` and has no
+    # `status`; these are the same three reviewer claims as the embedded form.
+    r"/rows/\d+/clauses/\d+/(relation|status|note)",
+    r"/rows/\d+/clauses/\d+/(lean_clause|source_clause)",
     r"/results/\d+/(notes|note)",
 )
 

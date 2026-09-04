@@ -707,10 +707,10 @@ const CLAUSE_STATUS = ['claimed_exact','claimed_generalized','claimed_weaker','o
    verdict on that correspondence -- and each is written and journaled on its
    own, so a reviewer who only changes the verdict leaves no trace on the
    prose. */
-function clauseCard(c, slug){
+function clauseCard(c, target){
   const P = c.pointers || {};
   const opts = CLAUSE_STATUS.concat(c.status && !CLAUSE_STATUS.includes(c.status) ? [c.status] : []);
-  return `<div class="clause" data-slug="${e(slug)}" data-p='${e(JSON.stringify(P))}'>
+  return `<div class="clause" data-slug="${e(target.slug)}" data-view="${e(target.view)}" data-p='${e(JSON.stringify(P))}'>
     <p class="src" data-f="sourceClause">${e(c.sourceClause||'')}</p>
     <div class="arrow">↓ realized in Lean
       ${c.relation?`<span class="chip">${e(c.relation)}</span>`:''}
@@ -755,7 +755,7 @@ function wireClauseEditing(scope){
     const done=[], failed=[];
     for(const [field, value, before] of edits){
       if(value===before) continue;
-      const ok=await annotate(box.dataset.slug, pointers[field], value, 'clause '+field);
+      const ok=await annotate(box.dataset.view, box.dataset.slug, pointers[field], value, 'clause '+field);
       (ok===true?done:failed).push(ok===true?field:`${field}: ${ok}`);
     }
     btn.disabled=false;
@@ -779,7 +779,7 @@ function wireRowNote(scope){
   scope.querySelectorAll('.notesave').forEach(btn=>btn.onclick=async ()=>{
     const sec=btn.closest('.sec'), bar=sec.querySelector('.edit'), note=sec.querySelector('.saved');
     btn.disabled=true;
-    const ok=await annotate(bar.dataset.slug, bar.dataset.ptr,
+    const ok=await annotate(bar.dataset.view, bar.dataset.slug, bar.dataset.ptr,
                             sec.querySelector('.rownote textarea').value, 'row note');
     btn.disabled=false;
     note.textContent = ok===true ? 'written and journaled' : ok;
@@ -790,11 +790,11 @@ function wireRowNote(scope){
 }
 
 /* One write, through the gated writer. Returns true, or the refusal to show. */
-async function annotate(slug, pointer, value, why){
+async function annotate(view, slug, pointer, value, why){
   if(!pointer) return 'this field is not addressable';
   try{
     const r=await fetch('/api/annotate',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({view:'census', slug, pointer, value, author:'browser',
+      body:JSON.stringify({view, slug, pointer, value, author:'browser',
                            note:why+', audit page'})});
     const d=await r.json();
     if(!r.ok||d.ok===false) return d.error||('refused ('+r.status+')');
@@ -850,18 +850,21 @@ function contextSection(ctx){
     `Source context — ${row.paper}, ${row.title || row.id}`,
     `<div class="sub" style="color:var(--muted);font-size:11.5px;margin-bottom:8px">`
     + `<code>${e(row.id)}</code> · ${e(row.sourceAnchor||'')} · this declaration is `
-    + `<b>${e(row.role)}</b> for the row ${tag(row.status)}${tag(row.verification)}</div>`
+    + `<b>${e(row.role)}</b> for the row ${tag(row.status)}${tag(row.verification)}`
+    + (row.fromCompanionReview ? ` \u00b7 <span class="chip" title="the review is kept in its own document beside the census">reviewed in ${e((row.annotate||{}).slug||'a companion review')}</span>` : '')
+    + '</div>'
     + (row.claim?`<p style="margin:0 0 10px">${e(row.claim)}</p>`:'')
     + spellingHtml(row, ctx.name)
     + sourceStatementHtml(row.sourceStatement)
     + (row.clauses&&row.clauses.length
         ? `<b style="font-size:11.5px">Clause by clause — printed prose against the Lean that answers it</b>`
           + `<p style="color:var(--muted);font-size:11.5px;margin:2px 0 7px">Annotate writes the sentence, its Lean realization and the verdict back to the census, each journaled separately.</p>`
-          + `<div>${row.clauses.map(c=>clauseCard(c,row.slug)).join('')}</div>`
+          + `<div>${row.clauses.map(c=>clauseCard(c,row.annotate||{view:'census',slug:row.slug})).join('')}</div>`
         : `<p class="empty" style="padding:0">${row.hasReview
              ? 'This row carries a semantic review but no clause-level correspondence.'
              : 'No semantic review is recorded for this row, so there is no clause-level correspondence to read or annotate — only the row\u2019s own verdicts above.'}</p>`)
-    + `<div class="edit" style="margin-top:10px" data-slug="${e(row.slug)}" data-ptr="${e(row.notePointer||'')}">`
+    + `<div class="edit" style="margin-top:10px" data-slug="${e((row.annotate||{}).slug||row.slug)}" `
+    + `data-view="${e((row.annotate||{}).view||'census')}" data-ptr="${e(row.notePointer||'')}">`
     + `<button class="noteedit">Annotate the row note</button>`
     + `<span class="saved" hidden></span></div>`
     + `<div class="rownote" hidden><textarea rows="6" style="width:100%;font:12px var(--mono);`

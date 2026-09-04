@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from .census import CensusDocument, load_census
+from .companion import companion_reviews
 from .common import Path, md_escape, unique_in_order
 from .correspondence import cited_declarations, display_fragments, edges_of, relation_legend
 from .source_model import SourceFragment, SourceLibrary, SourceLocator
@@ -920,6 +921,14 @@ def alignment_payload(
             "sources": sources,
             "sourcePinSummary": source_pin_summary,
             "sourceInterpretation": review.get("source_interpretation"),
+            # A standalone review states a verdict on the whole row -- "REPAIR
+            # source mismatch", and whether the printed statement is covered
+            # literally. It is the most pointed thing on the row and an embedded
+            # review has no field for it, so it is carried rather than dropped.
+            "verdict": review.get("verdict"),
+            "reviewerNote": review.get("reviewer_note"),
+            "literalSourceCovered": review.get("literal_source_covered"),
+            "fromCompanionReview": bool(review.get("companion")),
             "nonlocalRationale": review.get("nonlocal_rationale"),
             "edges": [edge.as_json() for edge in edges_of(review)],
             "id": str(row.get("id")),
@@ -1108,6 +1117,10 @@ def collect_alignment_entries(
     wanted = set(rows)
     entries: list[AlignmentEntry] = []
     for census in censuses:
+        # Half this repository's papers keep the review in its own document
+        # beside the census rather than inside the row. Looking only for the
+        # embedded field rendered forty-three reviewed results as unreviewed.
+        companion = companion_reviews(census.path, census.root)
         for row in census.items:
             rank = IMPORTANCE_ORDER.get(str(row.get("importance", "technical")), 3)
             if wanted:
@@ -1117,7 +1130,7 @@ def collect_alignment_entries(
                 continue
             review = row.get("semantic_review")
             if not isinstance(review, dict):
-                review = _fallback_review(row)
+                review = companion.get(str(row.get("id") or "")) or _fallback_review(row)
             entries.append(AlignmentEntry(census, row, review))
     return entries
 

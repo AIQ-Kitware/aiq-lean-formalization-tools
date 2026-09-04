@@ -567,6 +567,8 @@ function rowShell(row){
     row.sourcePinSummary ? `<span class="badge ${(SRCPIN[row.sourcePinSummary]||[''])[0]}" title="source pin">source: ${e(row.sourcePinSummary)}</span>` : '',
     row.pinSummary ? `<span class="badge ${PINCLS[row.pinSummary]||''}" title="statement pin">statement: ${e(row.pinSummary)}</span>` : '',
     row.sourceInterpretation === 'nonlocal' ? '<span class="badge warn">nonlocal reading</span>' : '',
+    row.verdict ? `<span class="badge${/repair|mismatch|gap|weaker/i.test(row.verdict) ? ' warn' : ''}" title="the reviewer's verdict on this row">${e(row.verdict)}</span>` : '',
+    row.literalSourceCovered === false ? '<span class="badge warn" title="the printed statement is not covered literally">not literal</span>' : '',
   ].filter(Boolean).join(' ');
   return `<section class="row closed" id="${e(row.anchor)}" data-id="${e(row.id)}">`
     + `<h2>${e(row.title)} ${badges}</h2>`

@@ -29,11 +29,13 @@ emptiest answer.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
 from ..lean_source import declaration_statement_text
 from ..alignment import fronts_verified
+from ..companion import REVIEW_GLOB, companion_reviews
 from ..semantic_surface import normalize_presentation
 
 #: Clause verdicts that report the clause as realized in Lean. Everything else
@@ -62,11 +64,41 @@ class HeadlineService:
         self.declarations = declarations
         self._raw: dict[Path, tuple[tuple[int, int], list[tuple[int, dict[str, Any]]]]] = {}
         self._built: dict[tuple[str, ...] | None, tuple[tuple, list[dict[str, Any]]]] = {}
+        self._companions: dict[Path, tuple[tuple, dict[str, dict[str, Any]]]] = {}
 
     # -- inputs ------------------------------------------------------------
 
     def _censuses(self) -> list[Any]:
         return [doc for doc in self.catalog.documents() if doc.view == "census"]
+
+    def _companion(self, path: Path) -> dict[str, dict[str, Any]]:
+        """Reviews kept in a document beside the census, cached on its stat.
+
+        Half the papers here keep the review out of the row; reading only the
+        embedded field reported forty-three reviewed results as unreviewed.
+
+        Stamped on the review documents beside the census, not on the census: an
+        annotation is written to the document that holds the field, and a cache
+        keyed on the census would keep serving the value that was just replaced.
+        """
+        stamp = self._companion_stamp(path)
+        hit = self._companions.get(path)
+        if hit is not None and hit[0] == stamp:
+            return hit[1]
+        reviews = companion_reviews(path, self.root)
+        self._companions[path] = (stamp, reviews)
+        return reviews
+
+    def _companion_stamp(self, path: Path) -> tuple:
+        """Stat of every review document that could answer for this census."""
+        out = []
+        for candidate in sorted(Path(path).parent.glob(REVIEW_GLOB)):
+            try:
+                st = candidate.stat()
+                out.append((candidate.name, st.st_mtime_ns, st.st_size))
+            except OSError:
+                out.append((candidate.name, 0, 0))
+        return tuple(out)
 
     def _items(self, path: Path) -> list[tuple[int, dict[str, Any]]]:
         """Raw census rows with their position in the file, cached on its stat.
@@ -124,16 +156,20 @@ class HeadlineService:
         """A stat stamp of every census read, for a cache key or an ETag.
 
         Stat only: this is computed per request, so it must not reparse
-        anything, and it must move exactly when a census file does.
+        anything, and it must move exactly when a census -- or a review document
+        beside it -- changes on disk.
         """
         out = []
         for doc in self._censuses():
             try:
                 st = doc.path.stat()
-                out.append((doc.slug, st.st_mtime_ns, st.st_size))
+                stamp = (doc.slug, st.st_mtime_ns, st.st_size)
             except OSError:
-                out.append((doc.slug, 0, 0))
-        return tuple(sorted(out))
+                stamp = (doc.slug, 0, 0)
+            # The review beside the census is half the row's content on four of
+            # these papers, so an edit to it has to move the revision too.
+            out.append(stamp + (self._companion_stamp(doc.path),))
+        return tuple(sorted(out, key=repr))
 
     def _stamp(self) -> tuple:
         """Every input the built index is made of, at the revision it is made from."""
@@ -182,10 +218,11 @@ class HeadlineService:
         for doc in self._censuses():
             if only_slug is not None and doc.slug != only_slug:
                 continue
+            companion = self._companion(doc.path)
             for _, item in self._items(doc.path):
                 if importance is not None and item.get("importance") not in importance:
                     continue
-                out.append(self._entry(doc, item, index, statements))
+                out.append(self._entry(doc, item, index, statements, companion))
         return out
 
     def _entry(
@@ -194,9 +231,12 @@ class HeadlineService:
         item: dict[str, Any],
         index: Any,
         statements: dict[str, Any],
+        companion: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        companion = companion or {}
         review = item.get("semantic_review")
-        review = review if isinstance(review, dict) else {}
+        if not isinstance(review, dict):
+            review = companion.get(str(item.get("id") or "")) or {}
         clauses = [c for c in review.get("clause_map") or [] if isinstance(c, dict)]
         # Most censuses carry no semantic review at all, so the row's own
         # declaration list is the only statement of what answers it.
@@ -229,7 +269,14 @@ class HeadlineService:
             "nextAction": item.get("next_action") or "",
             "hasReview": bool(review),
             "clauseCount": len(clauses),
-            "clauseOpen": sum(1 for c in clauses if c.get("status") not in SETTLED_CLAUSE_STATUSES),
+            # Only a stated verdict counts. A review kept beside the census
+            # grades its clauses by `relation` and writes no `status` at all, and
+            # reading that silence as "not established" would report every one of
+            # those rows as failing its own review.
+            "clauseOpen": sum(1 for c in clauses
+                              if c.get("status")
+                              and c["status"] not in SETTLED_CLAUSE_STATUSES),
+            "clauseUnstated": sum(1 for c in clauses if not c.get("status")),
             # The legible restatement a paper prints, where the row records one.
             # A reader wants to see that before the API-canonical spelling.
             "presentation": presentation,
@@ -252,17 +299,36 @@ class HeadlineService:
         """
         out: list[dict[str, Any]] = []
         for doc in self._censuses():
+            companion = self._companion(doc.path)
             for pos, item in self._items(doc.path):
                 review = item.get("semantic_review")
-                review = review if isinstance(review, dict) else {}
+                if not isinstance(review, dict):
+                    review = companion.get(str(item.get("id") or "")) or {}
                 forms = normalize_presentation(review)
                 role = _role_of(name, item, review, forms)
                 if role is None:
                     continue
+                # A review kept beside the census is annotated in the document
+                # that holds it. Pointing at `/items/N/semantic_review/...` in the
+                # census would write a review into a row that has none.
+                origin = review.get("companion_document")
+                if origin:
+                    target = {"view": "review", "slug": _slug(origin),
+                              "base": f"/rows/{review.get('companion_row', 0)}"}
+                    fields = {"status": "/relation", "leanRealization": "/lean_clause",
+                              "sourceClause": "/source_clause"}
+                    note_pointer = f"{target['base']}/notes"
+                else:
+                    target = {"view": "census", "slug": doc.slug, "base": f"/items/{pos}/semantic_review"}
+                    fields = {"status": "/status", "leanRealization": "/lean_realization",
+                              "sourceClause": "/source_clause"}
+                    note_pointer = f"/items/{pos}/notes"
                 clauses = []
                 for i, clause in enumerate(review.get("clause_map") or []):
                     if not isinstance(clause, dict):
                         continue
+                    stem = (f"{target['base']}/clauses/{i}" if origin
+                            else f"{target['base']}/clause_map/{i}")
                     clauses.append({
                         "index": i,
                         "sourceClause": clause.get("source_clause") or "",
@@ -274,13 +340,7 @@ class HeadlineService:
                         # Each writable field addressed separately: the verdict,
                         # the sentence, and the Lean it is said to become are
                         # three different claims and are journaled as three.
-                        "pointers": {
-                            "status": f"/items/{pos}/semantic_review/clause_map/{i}/status",
-                            "leanRealization":
-                                f"/items/{pos}/semantic_review/clause_map/{i}/lean_realization",
-                            "sourceClause":
-                                f"/items/{pos}/semantic_review/clause_map/{i}/source_clause",
-                        },
+                        "pointers": {k: stem + v for k, v in fields.items()},
                     })
                 out.append({
                     "paper": doc.title,
@@ -299,8 +359,10 @@ class HeadlineService:
                     "presentation": forms,
                     "clauses": clauses,
                     "hasReview": bool(review),
-                    "notePointer": f"/items/{pos}/notes",
+                    "annotate": {"view": target["view"], "slug": target["slug"]},
+                    "notePointer": note_pointer,
                     "note": item.get("notes") or "",
+                    "fromCompanionReview": bool(origin),
                 })
         # A curated row is the one a reviewer wants first; a row that merely
         # lists the name among dozens is context.
@@ -374,6 +436,11 @@ _CENSUS_SUFFIXES = (
     "-result-semantic-review", "-semantic-review",
     "-formalization-result-inventory", "-result-inventory",
 )
+
+
+def _slug(filename: str) -> str:
+    """The catalog's slug for a ledger file: its stem, lowercased and hyphenated."""
+    return re.sub(r"[^a-z0-9]+", "-", Path(filename).stem.lower()).strip("-")[:100]
 
 
 def short_paper_name(slug: str) -> str:
