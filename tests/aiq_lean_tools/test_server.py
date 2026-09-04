@@ -176,8 +176,35 @@ def test_statement_text_keeps_the_docstring_and_drops_the_proof(tmp_path):
     assert text is not None
     assert "A docstring that belongs" in text, "the docstring is the prose under review"
     assert "theorem alpha (n : Nat) : n = n" in text
-    assert ":=" not in text and "rfl" not in text, "the proof body is not shown"
+    assert "rfl" not in text, "the proof body is not shown"
+    assert text.rstrip().endswith(":= by <proof-omitted>"), \
+        "the elision keeps the delimiter the author wrote, so it still reads as Lean"
     assert "theorem beta" not in text
+
+
+def test_statement_text_elides_a_term_proof_without_inventing_a_tactic(tmp_path):
+    from aiq_lean_tools.lean_source import declaration_statement_text
+
+    path = tmp_path / "Term.lean"
+    path.write_text("theorem t (n : Nat) : n = n := rfl\n", encoding="utf-8")
+    text = declaration_statement_text(path, 1)
+    assert text == "theorem t (n : Nat) : n = n := <proof-omitted>"
+
+
+def test_statement_text_sees_past_an_attribute_line(tmp_path):
+    """The scanner records the attribute line, so the keyword is one line down."""
+    from aiq_lean_tools.lean_source import declaration_statement_text
+
+    path = tmp_path / "Attr.lean"
+    path.write_text(
+        "@[simp]\ntheorem a (n : Nat) : n = n := by\n  rfl\n\n"
+        "@[simp] theorem b (n : Nat) : n = n := by\n  rfl\n",
+        encoding="utf-8",
+    )
+    for line in (1, 5):
+        text = declaration_statement_text(path, line)
+        assert text is not None and "rfl" not in text, text
+        assert text.rstrip().endswith(":= by <proof-omitted>"), text
 
 
 def test_statement_text_keeps_a_definition_body(tmp_path):

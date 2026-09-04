@@ -671,12 +671,20 @@ class SourceDeclarationText:
         return "\n".join(parts).rstrip()
 
 
-def _source_header(lines: list[str], start: int) -> str:
-    """Extract a declaration header and stop before its top-level body."""
+def _split_declaration_header(lines: list[str], start: int) -> tuple[str, str, str]:
+    """Split a declaration into its header, the token opening its body, and the body.
+
+    Returns ``(header, delimiter, body)``.  The delimiter is ``":="``,
+    ``"where"``, or ``""`` when no top-level body opener was found within the
+    scanned lines.  The body is returned only far enough to see how it starts --
+    ``by`` or a term -- which is what a caller replacing it with a placeholder
+    needs to know.
+    """
     out: list[str] = []
     paren = bracket = brace = 0
-    for line in lines[start:]:
+    for n, line in enumerate(lines[start:], start):
         cut: int | None = None
+        delimiter = ""
         i = 0
         while i < len(line):
             ch = line[i]
@@ -694,21 +702,27 @@ def _source_header(lines: list[str], start: int) -> str:
                 brace = max(0, brace - 1)
             if paren == bracket == brace == 0:
                 if line.startswith(":=", i):
-                    cut = i
+                    cut, delimiter = i, ":="
                     break
                 if line.startswith("where", i) and (i == 0 or line[i - 1].isspace()):
                     after = i + len("where")
                     if after == len(line) or line[after].isspace():
-                        cut = i
+                        cut, delimiter = i, "where"
                         break
             i += 1
         if cut is not None:
             prefix = line[:cut].rstrip()
             if prefix:
                 out.append(prefix)
-            break
+            body = "\n".join([line[cut + len(delimiter):]] + lines[n + 1 : n + 4])
+            return "\n".join(out).rstrip(), delimiter, body.strip()
         out.append(line.rstrip())
-    return "\n".join(out).rstrip()
+    return "\n".join(out).rstrip(), "", ""
+
+
+def _source_header(lines: list[str], start: int) -> str:
+    """Extract a declaration header and stop before its top-level body."""
+    return _split_declaration_header(lines, start)[0]
 
 
 def _variable_blocks_before(lines: list[str], decl_line: int) -> list[str]:
@@ -822,17 +836,72 @@ _DECL_MODIFIERS = ("private", "protected", "noncomputable", "nonrec", "partial",
 #: Declaration keywords whose body is a *proof*, and so is not shown.
 _PROOF_KEYWORDS = ("theorem", "lemma", "example")
 
+#: Every declaration keyword, so an unrecognized prefix is not mistaken for one.
+_DECL_KEYWORDS = _PROOF_KEYWORDS + (
+    "def", "abbrev", "instance", "structure", "class", "inductive", "alias",
+    "axiom", "opaque", "irreducible_def",
+)
 
-def _has_proof_body(decl_line: str) -> bool:
+
+def _strip_declaration_prefix(decl_line: str) -> str:
+    """Drop attributes, an ``omit ... in`` prefix, and modifiers from a declaration line.
+
+    Attributes are routinely written on the declaration's own line
+    (``@[simp] theorem ...``), so a check that reads the first word without
+    stripping them misclassifies every such declaration.
+    """
+    text = decl_line.strip()
+    while True:
+        if text.startswith("@["):
+            depth, i = 0, 0
+            while i < len(text):
+                if text[i] == "[":
+                    depth += 1
+                elif text[i] == "]":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                i += 1
+            text = text[i + 1:].lstrip()
+            continue
+        if re.match(r"^omit\b", text) and " in " in text:
+            text = text.split(" in ", 1)[1].lstrip()
+            continue
+        word = text.split(" ", 1)[0]
+        if word in _DECL_MODIFIERS:
+            text = text[len(word):].lstrip()
+            continue
+        return text
+
+
+def _declaration_keyword(lines: list[str], decl: int, lookahead: int = 4) -> str:
+    """The keyword introducing the declaration recorded at ``decl``, or ``""``.
+
+    The scanner records the first line of a declaration, which is often an
+    attribute line: ``@[simp]`` on its own line above the ``theorem``.  So the
+    keyword is looked for on the next few lines too, and only a keyword this
+    recognizes is accepted -- an unparsed prefix reads as "unknown" rather than
+    as whatever word happened to come first.
+    """
+    for line in lines[decl : decl + lookahead]:
+        words = _strip_declaration_prefix(line).split()
+        if words and words[0] in _DECL_KEYWORDS:
+            return words[0]
+    return ""
+
+
+def _has_proof_body(lines: list[str], decl: int) -> bool:
     """Whether this declaration's body proves something rather than defines it.
 
     A ``def``'s body *is* its meaning, and a reviewer reading a statement's
     vocabulary needs it; a proof body only says how, never what.
     """
-    words = decl_line.strip().split()
-    while words and words[0] in _DECL_MODIFIERS:
-        words.pop(0)
-    return bool(words) and words[0] in _PROOF_KEYWORDS
+    return _declaration_keyword(lines, decl) in _PROOF_KEYWORDS
+
+
+#: Stands in for the elided proof.  Angle brackets are the usual metavariable
+#: notation, so nobody reads this as Lean that was actually written.
+PROOF_PLACEHOLDER = "<proof-omitted>"
 
 
 def declaration_statement_text(path: Path, line: int, limit: int = 500) -> str | None:
@@ -841,9 +910,13 @@ def declaration_statement_text(path: Path, line: int, limit: int = 500) -> str |
     This is what a reviewer judging a source-to-Lean correspondence reads: the
     prose the author wrote about the declaration, and the statement it is
     attached to.  How a theorem is *proved* is a separate question, answered by
-    the dependency and axiom evidence, so a proof body is omitted -- it is
+    the dependency and axiom evidence, so a proof body is elided -- it is
     usually far longer than the statement and pushes the thing under review off
     the screen.  A definition keeps its body, which is its meaning.
+
+    The elision keeps the delimiter the author wrote, so the result still reads
+    as Lean: a tactic proof ends ``:= by <proof-omitted>`` and a term proof ends
+    ``:= <proof-omitted>``.
     """
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -852,12 +925,18 @@ def declaration_statement_text(path: Path, line: int, limit: int = 500) -> str |
     decl = max(0, line - 1)
     if decl >= len(lines):
         return None
-    if not _has_proof_body(lines[decl]):
+    if not _has_proof_body(lines, decl):
         return full_declaration_text(path, line, limit)
+    header, delimiter, body = _split_declaration_header(lines, decl)
     start = _declaration_block_start(lines, decl)
-    out = lines[start:decl] + _source_header(lines, decl).splitlines()
+    out = lines[start:decl] + header.splitlines()
     while out and not out[-1].strip():
         out.pop()
+    if not out:
+        return None
+    if delimiter:
+        opener = "by " if re.match(r"^by\b", body) else ""
+        out[-1] = f"{out[-1]} {delimiter} {opener}{PROOF_PLACEHOLDER}".rstrip()
     return "\n".join(out).rstrip() or None
 
 
