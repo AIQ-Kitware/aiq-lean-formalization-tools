@@ -196,6 +196,40 @@ def validate_pins(
 # Sidecar access
 
 
+def _default_target_libraries(project: LeanProject) -> set[str]:
+    """Libraries the ordinary build claims, by their Lake default targets.
+
+    Empty for a Lean lakefile, where the targets cannot be read safely; the
+    caller then keeps every candidate, which is the older behaviour.
+    """
+    out: set[str] = set()
+    for target in project.default_targets():
+        library = project.library_for_module(target)
+        if library:
+            out.add(library)
+    return out
+
+
+def _prefer_ordinary(
+    project: LeanProject, modules: Sequence[str], ordinary: set[str]
+) -> list[str]:
+    """Drop mirror modules for a seed the ordinary build surface also declares.
+
+    A conformance library restates library statements on purpose, under the same
+    fully qualified names. Importing both modules aborts with "environment
+    already contains", and the older guard only caught it while that library was
+    unbuilt -- so `lake build Challenge` silently took the statement sidecar, and
+    with it a pin gate, out of service.
+
+    A library outside the default targets never wins this contest, and a seed
+    that lives *only* there still places, so nothing becomes unreachable.
+    """
+    if not ordinary or len(modules) < 2:
+        return list(modules)
+    inside = [m for m in modules if project.library_for_module(m) in ordinary]
+    return inside or list(modules)
+
+
 def _seed_modules(project: LeanProject, seeds: Sequence[str]) -> tuple[list[str], list[str]]:
     """Modules to import for ``seeds``, and the seeds the source scan could not place.
 
@@ -208,10 +242,11 @@ def _seed_modules(project: LeanProject, seeds: Sequence[str]) -> tuple[list[str]
     """
     modules: list[str] = []
     unplaced: list[str] = []
+    ordinary = _default_target_libraries(project)
     for seed in seeds:
         found = project.candidate_declaration_modules(seed)
         if found:
-            modules.extend(found)
+            modules.extend(_prefer_ordinary(project, found, ordinary))
         else:
             unplaced.append(seed)
     modules = list(dict.fromkeys(modules))
