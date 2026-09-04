@@ -453,7 +453,7 @@ def _declaration_payload(
 ) -> dict[str, Any]:
     from leanq.statement import closure_edges, closure_summary
 
-    from .lean_source import full_declaration_text
+    from .lean_source import declaration_statement_text
 
     out: dict[str, Any] = {"name": name, "pinStatus": "n/a"}
     rows = packet.source_declarations.get(name, [])
@@ -463,13 +463,13 @@ def _declaration_payload(
             rel = row.declaration.path.relative_to(packet.root)
         except ValueError:
             rel = row.declaration.path
-        # The header answers "what does this say"; the body answers "how".  A
-        # reviewer judging a correspondence needs both on the same screen.
+        # A reviewer judging a correspondence reads what the declaration says,
+        # not how it is proved: docstring and statement, never the proof body.
         out["source"] = {
             "path": rel.as_posix(),
             "line": row.declaration.line,
             "text": row.render(),
-            "full": full_declaration_text(row.declaration.path, row.declaration.line),
+            "statement": declaration_statement_text(row.declaration.path, row.declaration.line),
             "module": getattr(row.declaration, "module", ""),
         }
     record = packet.statements.get(name)

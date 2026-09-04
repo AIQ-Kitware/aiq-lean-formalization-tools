@@ -426,8 +426,8 @@ async function showAudit(name){
       notReady('statements','The elaborated signature')
       || `<div class="empty" style="padding:6px 0">${e(d.elaboratedHint||'Not elaborated.')}</div>`);
 
-  if(src) h+=sec('Source as written — statement and proof',
-      `<pre class="lean">${leanHl(src.full || src.header || '')}</pre>`, true);
+  if(src) h+=sec('Source as written — docstring and statement',
+      `<pre class="lean">${leanHl(src.statement || src.header || '')}</pre>`, true);
   else h+=sec('Source as written', notReady('sources','The source snippet')
       || '<div class="empty" style="padding:6px 0">No source location found for this name.</div>', true);
 

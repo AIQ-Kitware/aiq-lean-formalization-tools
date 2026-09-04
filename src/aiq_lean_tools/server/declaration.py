@@ -7,7 +7,8 @@ proof rests on -- in four different places.
 
 This assembles that in one answer:
 
-* the **source as written**, statement and proof body, from the Lean file;
+* the **source as written** -- the docstring and the statement, without the
+  proof body -- from the Lean file;
 * the **elaborated signature**, docstring and type hashes, read from whatever
   ``leanq`` statement sidecars already exist -- no Lean is invoked, so a
   declaration nobody has elaborated yet says so instead of blocking;
@@ -29,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..lean_source import full_declaration_text
+from ..lean_source import declaration_statement_text
 
 #: Where statement sidecars are written by `leanq`/`aiq-lean alignment`.
 SIDECAR_DIR = ".leanq"
@@ -251,7 +252,7 @@ class DeclarationService:
 
     # -- the answer --------------------------------------------------------
 
-    def detail(self, name: str, *, with_proof: bool = True) -> dict[str, Any]:
+    def detail(self, name: str) -> dict[str, Any]:
         out: dict[str, Any] = {"name": name}
 
         # Source as written.
@@ -273,7 +274,7 @@ class DeclarationService:
                 "line": decl.line,
                 "module": getattr(decl, "module", ""),
                 "header": text.render(),
-                "full": full_declaration_text(decl.path, decl.line) if with_proof else None,
+                "statement": declaration_statement_text(decl.path, decl.line),
             }
             out["alternates"] = [
                 {

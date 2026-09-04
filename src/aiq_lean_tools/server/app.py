@@ -308,9 +308,9 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
         return JSONResponse({"rows": _rows_of(payload)})
 
     @app.get("/api/declaration/{name:path}")
-    def api_declaration(name: str, proof: bool = True) -> JSONResponse:
+    def api_declaration(name: str) -> JSONResponse:
         """Source, elaboration, closure, proof dependencies and every ledger row."""
-        detail = decls.detail(name, with_proof=proof)
+        detail = decls.detail(name)
         detail["occurrences"] = refresh_xref().occurrences(name)
         if not detail.get("source") and not detail.get("elaborated") and not detail["occurrences"]:
             raise HTTPException(404, f"nothing known about {name}")
@@ -323,7 +323,7 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
     @app.get("/api/graph/{name:path}")
     def api_graph(name: str, depth: int = 1) -> JSONResponse:
         """Immediate proof dependencies, for the dependency view."""
-        detail = decls.detail(name, with_proof=True)
+        detail = decls.detail(name)
         return JSONResponse(
             {
                 "name": name,

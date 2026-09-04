@@ -792,25 +792,13 @@ _DECL_STARTS = (
 )
 
 
-def full_declaration_text(path: Path, line: int, limit: int = 500) -> str | None:
-    """The whole declaration, statement and proof, as written.
+def _declaration_block_start(lines: list[str], decl: int) -> int:
+    """The first line of the declaration's own block: docstring and attributes.
 
-    ``SourceDeclarationText.render`` deliberately stops before the proof body --
-    it answers "what does this say". Auditing a proof needs the body too.
-
-    The declaration's own line is never treated as a terminator: scanning
-    forward from the docstring instead of from the declaration made every
-    theorem end at its own first line, returning the docstring alone.
+    Walks back over attributes, ``omit ... in``, modifiers, and a docstring
+    block, so a caller can present the prose that belongs to the declaration
+    together with it.
     """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return None
-    decl = max(0, line - 1)
-    if decl >= len(lines):
-        return None
-
-    # Walk back over attributes, `omit ... in`, and a docstring block.
     start = decl
     while start > 0:
         prev = lines[start - 1].rstrip()
@@ -825,7 +813,74 @@ def full_declaration_text(path: Path, line: int, limit: int = 500) -> str | None
             start -= 1
         else:
             break
+    return start
 
+
+#: Modifiers that may precede the declaration keyword on its own line.
+_DECL_MODIFIERS = ("private", "protected", "noncomputable", "nonrec", "partial", "unsafe", "scoped", "local")
+
+#: Declaration keywords whose body is a *proof*, and so is not shown.
+_PROOF_KEYWORDS = ("theorem", "lemma", "example")
+
+
+def _has_proof_body(decl_line: str) -> bool:
+    """Whether this declaration's body proves something rather than defines it.
+
+    A ``def``'s body *is* its meaning, and a reviewer reading a statement's
+    vocabulary needs it; a proof body only says how, never what.
+    """
+    words = decl_line.strip().split()
+    while words and words[0] in _DECL_MODIFIERS:
+        words.pop(0)
+    return bool(words) and words[0] in _PROOF_KEYWORDS
+
+
+def declaration_statement_text(path: Path, line: int, limit: int = 500) -> str | None:
+    """The declaration as written, docstring included, without a proof body.
+
+    This is what a reviewer judging a source-to-Lean correspondence reads: the
+    prose the author wrote about the declaration, and the statement it is
+    attached to.  How a theorem is *proved* is a separate question, answered by
+    the dependency and axiom evidence, so a proof body is omitted -- it is
+    usually far longer than the statement and pushes the thing under review off
+    the screen.  A definition keeps its body, which is its meaning.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return None
+    decl = max(0, line - 1)
+    if decl >= len(lines):
+        return None
+    if not _has_proof_body(lines[decl]):
+        return full_declaration_text(path, line, limit)
+    start = _declaration_block_start(lines, decl)
+    out = lines[start:decl] + _source_header(lines, decl).splitlines()
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out).rstrip() or None
+
+
+def full_declaration_text(path: Path, line: int, limit: int = 500) -> str | None:
+    """The whole declaration, statement and proof, as written.
+
+    ``SourceDeclarationText.render`` deliberately stops before the proof body --
+    it answers "what does this say" -- and so does
+    :func:`declaration_statement_text`.  Auditing a proof needs the body too.
+
+    The declaration's own line is never treated as a terminator: scanning
+    forward from the docstring instead of from the declaration made every
+    theorem end at its own first line, returning the docstring alone.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return None
+    decl = max(0, line - 1)
+    if decl >= len(lines):
+        return None
+
+    start = _declaration_block_start(lines, decl)
     out = lines[start : decl + 1]
     for text in lines[decl + 1 : decl + limit]:
         if text and not text[0].isspace() and any(text.startswith(t) for t in _DECL_STARTS):

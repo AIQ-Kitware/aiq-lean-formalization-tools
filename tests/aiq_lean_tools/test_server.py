@@ -167,6 +167,37 @@ def test_full_declaration_includes_docstring_and_proof(tmp_path):
     assert "theorem beta" not in text, "must stop at the next declaration"
 
 
+def test_statement_text_keeps_the_docstring_and_drops_the_proof(tmp_path):
+    from aiq_lean_tools.lean_source import declaration_statement_text
+
+    path = tmp_path / "Demo.lean"
+    path.write_text(LEAN, encoding="utf-8")
+    text = declaration_statement_text(path, 6)
+    assert text is not None
+    assert "A docstring that belongs" in text, "the docstring is the prose under review"
+    assert "theorem alpha (n : Nat) : n = n" in text
+    assert ":=" not in text and "rfl" not in text, "the proof body is not shown"
+    assert "theorem beta" not in text
+
+
+def test_statement_text_keeps_a_definition_body(tmp_path):
+    """A `def`'s body is its meaning, not a proof, so it stays."""
+    from aiq_lean_tools.lean_source import declaration_statement_text
+
+    path = tmp_path / "Defs.lean"
+    path.write_text(
+        "/-- The gap. -/\ndef gap (a b : Nat) : Nat :=\n  a + b\n", encoding="utf-8"
+    )
+    text = declaration_statement_text(path, 2)
+    assert text is not None and "a + b" in text and "The gap." in text
+
+
+def test_statement_text_handles_a_missing_file(tmp_path):
+    from aiq_lean_tools.lean_source import declaration_statement_text
+
+    assert declaration_statement_text(tmp_path / "nope.lean", 3) is None
+
+
 def test_full_declaration_handles_a_missing_file(tmp_path):
     from aiq_lean_tools.lean_source import full_declaration_text as _full_declaration
 
@@ -464,12 +495,12 @@ def test_statement_revision_changes_when_a_type_changes_but_the_count_does_not(t
     svc = DeclarationService(tmp_path)
     _sidecar(tmp_path, "Paper.main", "a = b", "h1")
     first = svc.statement_revision()
-    assert svc.detail("Paper.main", with_proof=False)["elaborated"]["type"] == "a = b"
+    assert svc.detail("Paper.main")["elaborated"]["type"] == "a = b"
 
     _sidecar(tmp_path, "Paper.main", "a = c", "h2")
     assert len(svc.statements()) == 1, "the count is unchanged, which is the point"
     assert svc.statement_revision() != first
-    assert svc.detail("Paper.main", with_proof=False)["elaborated"]["type"] == "a = c"
+    assert svc.detail("Paper.main")["elaborated"]["type"] == "a = c"
 
 
 def test_graph_revision_changes_when_edges_change_but_nodes_do_not(tmp_path):
@@ -526,12 +557,14 @@ def test_a_served_page_follows_an_edited_lean_source(tmp_path):
     lean.write_text("theorem Paper.main : True := trivial\n", encoding="utf-8")
     with TestClient(create_app(root)) as client:
         first = client.get("/view/alignment/paper-full-source-census")
-        assert b"trivial" in first.content
-        lean.write_text("theorem Paper.main : True := by exact trivial\n", encoding="utf-8")
+        assert b"Paper.main : True" in first.content
+        # The statement is what the page shows, so an edit to it is what the
+        # page has to follow.
+        lean.write_text("theorem Paper.main : 1 = 1 := rfl\n", encoding="utf-8")
         # What the background watcher does on its slow cadence: recompute the
         # source revision without waiting out the staleness TTL.
         client.app.state.declarations.rescan_sources()
         second = client.get("/view/alignment/paper-full-source-census",
                             headers={"if-none-match": first.headers["etag"]})
         assert second.status_code == 200, "the tag survived an edit to the Lean source"
-        assert b"by exact trivial" in second.content
+        assert b"Paper.main : 1 = 1" in second.content

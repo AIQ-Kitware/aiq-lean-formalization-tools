@@ -376,7 +376,7 @@ function declPanel(d){
   if (d.source)
     add('source','Source',
       `<div class="meta"><code>${e(d.source.path)}:${d.source.line}</code></div>`
-      + `<pre>${leanHl(d.source.full || d.source.text || '')}</pre>`);
+      + `<pre>${leanHl(d.source.statement || d.source.text || '')}</pre>`);
   if (d.signature)
     add('elab','Elaborated',
       `<pre>${leanHl(d.signature)}</pre>`
@@ -455,7 +455,7 @@ function leanLane(row){
 /* ---- rows -------------------------------------------------------------- */
 /* A lane header toggles that lane to the full width of the row: three columns
    is right for comparing, one column is right for reading a long elaborated
-   signature or a whole proof body. */
+   signature or a long statement. */
 function lane(index, title, badge, body){
   return `<div class="lane"><h3 data-lane="${index}" title="Widen this lane">`
        + `<span>${e(title)}</span><span>${badge} <span class="wide">\u2194</span></span></h3>`
