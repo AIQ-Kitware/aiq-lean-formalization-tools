@@ -755,7 +755,7 @@ def _variable_blocks_before(lines: list[str], decl_line: int) -> list[str]:
 def binder_names(block: str) -> set[str]:
     """Names a declaration's own binder groups introduce.
 
-    A binder is not vocabulary: ``A\u2080`` in ``(A\u2080 : E \u2192L[\ud835\udd5c] E)`` names a local
+    A binder is not vocabulary: ``A₀`` in ``(A₀ : E →L[𝕜] E)`` names a local
     hypothesis, and looking it up in a global index finds an unrelated
     projection with the same short name.
     """
