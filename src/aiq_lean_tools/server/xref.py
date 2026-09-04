@@ -27,6 +27,7 @@ NAME_FIELDS = ("lean_declarations", "declaration", "theorem_names", "declaration
 NAMED_OBJECT_FIELDS = (
     "canonical_declarations",
     "supporting_declarations",
+    "presentation_declarations",
     "context_declarations",
     "canonical",
     "supporting",
@@ -76,6 +77,14 @@ def _walk(node: Any, row: tuple[str, str] | None, field: str = "") -> Iterator[t
                             if _is_name(item.get(sub)):
                                 yield item[sub], key, here
                                 break
+                        # A presentation form names the canonical statement it
+                        # fronts, which is a mention of that name as much as of
+                        # its own.
+                        fronts = item.get("fronts")
+                        if isinstance(fronts, list):
+                            for front in fronts:
+                                if _is_name(front):
+                                    yield front, key, here
                     elif _is_name(item):
                         yield item, key, here
             else:

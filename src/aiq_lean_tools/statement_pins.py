@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from .common import Finding, Path
+from .semantic_surface import normalize_presentation
 
 try:  # leanq ships in the same distribution; keep the import failure explicit
     from leanq.statement import (
@@ -77,8 +78,10 @@ CLAUSE_BRIDGE_FIELDS = ("correspondence_declarations", "transport_declarations")
 def claimed_pin_declarations(review: Mapping[str, Any]) -> tuple[str, ...]:
     """The declarations an embedded review claims, in claim order.
 
-    The canonical declarations first, then every declaration a clause of the
-    review names as bridging evidence (``correspondence_declarations`` and
+    The canonical declarations first, then the presentation declarations -- the
+    restatements a reviewer accepted as reading like the printed theorem, which
+    drift exactly as a canonical one does -- then every declaration a clause of
+    the review names as bridging evidence (``correspondence_declarations`` and
     ``transport_declarations``).  A clause that says "this other theorem carries
     the correspondence" is making a claim about that theorem's type, and a review
     whose bridge silently changed shape has been accepted over a chain that no
@@ -96,6 +99,8 @@ def claimed_pin_declarations(review: Mapping[str, Any]) -> tuple[str, ...]:
 
     for name in review.get("canonical_declarations") or review.get("declarations") or []:
         add(name)
+    for entry in normalize_presentation(review):
+        add(entry["name"])
     for clause in review.get("clause_map") or []:
         if not isinstance(clause, Mapping):
             continue

@@ -214,7 +214,9 @@ def _describe(
         name=resolved,
         query=query,
         kind=_text(record, "kind") or (row.kind if row is not None else ""),
-        module=_text(record, "module") or (row.module if row is not None else ""),
+        # The source scan was read from disk; a statement sidecar is a snapshot
+        # and can name a module that has since been renamed away.
+        module=(row.module if row is not None else "") or _text(record, "module"),
         # The elaborated docstring and the written one are the same prose; the
         # written one is the only source when nothing has been elaborated yet.
         docstring=_clip(_text(record, "docstring") or prose, DOCSTRING_LIMIT),

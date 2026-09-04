@@ -33,6 +33,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..lean_source import declaration_statement_text
+from ..alignment import fronts_verified
+from ..semantic_surface import normalize_presentation
 
 #: Clause verdicts that report the clause as realized in Lean. Everything else
 #: -- ``scope_companion``, a gap, an empty status -- is open work, and the
@@ -98,6 +100,14 @@ class HeadlineService:
         # there is no Lean tree; an entry without a file location is still useful.
         try:
             return self.declarations.source_index()
+        except Exception:
+            return None
+
+    def _graph(self) -> Any:
+        # Absent until a `leanq graph-index` has been built, and that is a normal
+        # state: `fronts_verified` answers "unknown" rather than guessing.
+        try:
+            return self.declarations.graph()
         except Exception:
             return None
 
@@ -191,6 +201,12 @@ class HeadlineService:
         # Most censuses carry no semantic review at all, so the row's own
         # declaration list is the only statement of what answers it.
         canonical = review.get("canonical_declarations") or item.get("lean_declarations") or []
+        graph = self._graph()
+        presentation = [
+            {**form, **self._declaration(form["name"], index, statements),
+             "frontsVerified": fronts_verified(graph, form["name"], form["fronts"])}
+            for form in normalize_presentation(review)
+        ]
         return {
             "paper": doc.title,
             # A census titles itself with the paper's full citation, which is
@@ -214,6 +230,9 @@ class HeadlineService:
             "hasReview": bool(review),
             "clauseCount": len(clauses),
             "clauseOpen": sum(1 for c in clauses if c.get("status") not in SETTLED_CLAUSE_STATUSES),
+            # The legible restatement a paper prints, where the row records one.
+            # A reader wants to see that before the API-canonical spelling.
+            "presentation": presentation,
             "canonicalTotal": len(_names(canonical)),
             "canonical": [
                 self._declaration(name, index, statements)
@@ -236,7 +255,8 @@ class HeadlineService:
             for pos, item in self._items(doc.path):
                 review = item.get("semantic_review")
                 review = review if isinstance(review, dict) else {}
-                role = _role_of(name, item, review)
+                forms = normalize_presentation(review)
+                role = _role_of(name, item, review, forms)
                 if role is None:
                     continue
                 clauses = []
@@ -275,6 +295,8 @@ class HeadlineService:
                     "verification": item.get("verification") or "",
                     "sourceAnchor": item.get("source_anchor") or "",
                     "sourceStatement": review.get("source_statement") or None,
+                    "canonical": _names(review.get("canonical_declarations") or []),
+                    "presentation": forms,
                     "clauses": clauses,
                     "hasReview": bool(review),
                     "notePointer": f"/items/{pos}/notes",
@@ -305,10 +327,13 @@ class HeadlineService:
             statement = declaration_statement_text(decl.path, decl.line) or ""
         return {
             "name": name,
-            # The elaborated record is the better answer where it exists; the
-            # source scan knows these two for a declaration nobody has built.
+            # The elaborated record is the better answer for the kind. It is the
+            # worse one for the module: a sidecar is a snapshot, and this tree
+            # has 107 records still naming `SineTheta.PaperSurface`, a module
+            # renamed to `Presentation` with no rebuild since. The source scan
+            # was read from disk just now.
             "kind": getattr(record, "kind", "") or (decl.kind if decl is not None else ""),
-            "module": getattr(record, "module", "") or (decl.module if decl is not None else ""),
+            "module": (decl.module if decl is not None else "") or getattr(record, "module", ""),
             "docstring": (getattr(record, "docstring", "") or "")[:DOCSTRING_CHARS],
             "path": path,
             "line": line,
@@ -317,14 +342,19 @@ class HeadlineService:
 
 
 #: Strongest claim first: a row that names this declaration as its canonical
-#: realization says more about it than one that lists it among its evidence.
-_ROLE_ORDER = ("canonical", "supporting", "context", "listed")
+#: realization says more about it than one that lists it among its evidence. A
+#: presentation form ranks just under it -- it is what the paper prints, but the
+#: canonical is what the row is answered by.
+_ROLE_ORDER = ("canonical", "presentation", "supporting", "context", "listed")
 
 
-def _role_of(name: str, item: dict[str, Any], review: dict[str, Any]) -> str | None:
+def _role_of(name: str, item: dict[str, Any], review: dict[str, Any],
+             forms: list[dict[str, Any]]) -> str | None:
     """How a census row names this declaration, or ``None`` if it does not."""
     if name in _names(review.get("canonical_declarations") or []):
         return "canonical"
+    if any(form.get("name") == name for form in forms):
+        return "presentation"
     if name in _names(review.get("supporting_declarations") or []):
         return "supporting"
     for entry in review.get("context_declarations") or []:

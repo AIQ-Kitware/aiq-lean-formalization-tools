@@ -484,6 +484,46 @@ def test_headlines_index_is_served_across_every_census(tmp_path):
         assert client.get("/api/headlines", headers={"if-none-match": tag}).status_code == 304
 
 
+def _with_presentation(root):
+    """Give the census's one row a presentation form fronting its canonical."""
+    path = root / "dev" / "paper-full-source-census.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    review = data["items"][0]["semantic_review"]
+    review["presentation_declarations"] = [{
+        "name": "Paper.readable",
+        "fronts": ["Paper.main"],
+        "relation": "notation",
+        "devices": ["local notation"],
+        "why": "States the bound in the source's own notation.",
+    }]
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_a_row_reports_its_presentation_form_beside_the_canonical(tmp_path):
+    root, client = _served(tmp_path)
+    _with_presentation(root)
+    (root / "Paper" / "Main.lean").write_text(
+        (root / "Paper" / "Main.lean").read_text(encoding="utf-8")
+        + "\n/-- The readable restatement. -/\ntheorem Paper.readable : True := trivial\n",
+        encoding="utf-8",
+    )
+    with client:
+        row = [x for x in client.get("/api/headlines").json()["entries"] if x["id"] == "T-1"][0]
+        assert [c["name"] for c in row["canonical"]] == ["Paper.main"]
+        form = row["presentation"][0]
+        assert form["name"] == "Paper.readable" and form["relation"] == "notation"
+        assert form["fronts"] == ["Paper.main"] and form["devices"] == ["local notation"]
+        assert "theorem Paper.readable" in form["statement"], "the card shows the readable one"
+        # No dependency graph in this repository, so the claim is unchecked --
+        # and must say so rather than read as confirmed.
+        assert form["frontsVerified"]["Paper.main"]["state"] == "unknown"
+
+        rows = client.get("/api/context/Paper.readable").json()["rows"]
+        assert rows[0]["role"] == "presentation"
+        assert rows[0]["canonical"] == ["Paper.main"]
+        assert rows[0]["presentation"][0]["why"].startswith("States the bound")
+
+
 def test_source_context_names_the_printed_result_and_addresses_its_clauses(tmp_path):
     root, client = _served(tmp_path)
     with client:

@@ -90,6 +90,9 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 
 .note{border-left:3px solid var(--warn);background:var(--panel2);padding:7px 10px;border-radius:0 6px 6px 0;margin:0 0 10px;font-size:13px}
 .note.info{border-left-color:var(--accent)}
+.note .why{margin:6px 0 0;color:var(--muted)}
+.note ul{margin:6px 0 0;padding-left:18px}
+.note ul code{cursor:pointer}
 
 .decl{border:1px solid var(--line);border-radius:7px;margin:0 0 11px;background:var(--bg);overflow:hidden}
 .decl.hit{outline:2px solid var(--accent);outline-offset:2px}
@@ -429,9 +432,52 @@ function declPanel(d){
     + panels.map(([n,b],i) => `<div class="tabpanel" data-tab="${n}"${i?' hidden':''}>${b}</div>`).join('')
     + '</div>';
 }
+/* A presentation form is a second Lean spelling of the same result, restated so
+   the signature reads like the printed theorem. It is shown first because it is
+   the statement the paper's reader recognises. */
+const RELWORD = {
+  equivalent: 'the same theorem, restated for legibility',
+  specialization: 'states strictly less than the declaration it fronts',
+  notation: 'the same statement, differing only by notation or a reducible abbreviation',
+  unstated: 'the census does not say how it relates to the declaration it fronts',
+};
+/* Fronting is a claim about what a statement presents, not about how it is
+   proved, so a shared proof core is an ordinary outcome and only a total
+   absence of either relation is a finding. */
+function frontLine(name, v){
+  const state = (v && v.state) || 'unknown';
+  const at = v && v.depth != null ? ` at depth ${v.depth}` : '';
+  const code = `<code class="jump" data-n="${e(name)}">${e(name)}</code>`;
+  if (state === 'delegates')
+    return `<li>fronts ${code} — its proof reaches that declaration${at}.</li>`;
+  if (state === 'shared-core')
+    return `<li>fronts ${code} — neither proof reaches the other; both reach `
+         + `<code class="jump" data-n="${e(v.via)}">${e(v.via)}</code>${at ? `, ${at.trim()} from here` : ''}.</li>`;
+  if (state === 'independent')
+    return `<li>fronts ${code} <span class="badge warn">independent</span> — the dependency `
+         + `graph shows neither a path between them nor a shared proof core.</li>`;
+  return `<li>fronts ${code} <span class="badge">unverified</span> — no dependency graph `
+       + `was loaded, or one of the two names is not in it.</li>`;
+}
+function presentationNote(d){
+  const rel = d.relation || 'unstated';
+  let h = `<div class="note info"><b>Presentation form</b> — ${e(RELWORD[rel] || rel)}.`;
+  if ((d.devices || []).length) h += ` Devices: ${d.devices.map(e).join('; ')}.`;
+  if (d.why) h += `<p class="why">${inlineTex(d.why)}</p>`;
+  const v = d.frontsVerified || {};
+  if ((d.fronts || []).length)
+    h += '<ul>' + d.fronts.map(n => frontLine(n, v[n])).join('') + '</ul>';
+  return h + '</div>';
+}
 function leanLane(row){
-  let h = row.canonical.length ? row.canonical.map(declPanel).join('')
-                               : '<p class="empty">No canonical declaration is registered.</p>';
+  const presentation = row.presentation || [];
+  let h = '';
+  if (presentation.length)
+    h += `<div class="kindhead">Presentation form (${presentation.length})</div>`
+       + presentation.map(d => presentationNote(d) + declPanel(d)).join('')
+       + `<div class="kindhead">The API-canonical statement it fronts (${row.canonical.length})</div>`;
+  h += row.canonical.length ? row.canonical.map(declPanel).join('')
+                            : '<p class="empty">No canonical declaration is registered.</p>';
   if ((row.evidence || []).length)
     h += `<div class="kindhead">Cited by the correspondence (${row.evidence.length})</div>`
        + row.evidence.map(declPanel).join('');

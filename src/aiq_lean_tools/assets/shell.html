@@ -128,6 +128,10 @@ pre.lean .id.known{cursor:pointer}
   display:inline-block;margin:0 0 4px;text-decoration:underline dotted;text-underline-offset:3px}
 .tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;font-weight:600;
   background:var(--line-soft);color:var(--muted);white-space:nowrap}
+.form{border-left:3px solid var(--accent);padding-left:11px;margin:0 0 4px}
+.formhead{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.form .why{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
+.k2{color:var(--muted);font-size:11px}
 .tag.ok{background:var(--accent-soft);color:var(--accent)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
 
@@ -297,12 +301,53 @@ function tag(value, label){
   return `<span class="tag ${cls}" title="${e(label||'')}">${e(String(value).replace(/_/g,' '))}</span>`;
 }
 
+/* A theorem often has two Lean spellings: the API-canonical one the library
+   exports, and a presentation form restated so the signature reads like the
+   printed theorem -- an explicit `sinTheta₀` argument pinned by a defining
+   hypothesis, or a local notation. The paper prints the second. So does this,
+   with the first one underneath and the relationship between them stated. */
+/* What the dependency graph says about a `fronts` claim. Fronting is curatorial
+   -- what a statement presents -- so a shared proof core is an ordinary answer,
+   and only a genuine absence of both relations is a finding. */
+const FRONTS_SAYS = {
+  delegates:  ['ok',  'its proof reaches this statement'],
+  'shared-core':['ok','proved from a shared core'],
+  independent:['warn','the graph shows no relation to this statement'],
+  unknown:    ['',    'not checkable against the saved graph'],
+};
+function frontsBadge(v){
+  if(!v) return '';
+  const [cls, says] = FRONTS_SAYS[v.state] || ['', v.state];
+  const detail = v.via ? `${says}, ${v.via}` : says;
+  return ` <span class="tag ${cls}" title="${e(detail)}">${e(v.state)}</span>`
+       + (v.via ? ` <span class="k2">via <code class="declname" data-n="${e(v.via)}">${e(v.via)}</code></span>` : '');
+}
+
+const RELATION_SAYS = {
+  equivalent:   'states the same theorem, restated for legibility',
+  specialization:'states strictly less than the canonical theorem',
+  notation:     'the same statement, in source-facing notation',
+  unstated:     'relationship to the canonical statement not recorded',
+};
+
 function headlineCard(x){
   const decls=x.canonical||[];
+  const forms=x.presentation||[];
   const stmt = d => `<div><span class="declname" data-n="${e(d.name)}">${e(d.name)}</span>`
     + (d.statement
         ? `<pre class="lean" data-module="${e(d.module||'')}">${leanHl(d.statement)}</pre>`
         : `<div class="empty" style="padding:2px 0">not located in the Lean sources</div>`)
+    + '</div>';
+  const form = f => `<div class="form">`
+    + `<div class="formhead"><span class="tag">presentation form</span>`
+    + `<span class="k2">${e(RELATION_SAYS[f.relation] || f.relation || '')}`
+    + (f.devices&&f.devices.length ? ' · ' + f.devices.map(e).join(', ') : '') + '</span></div>'
+    + stmt(f)
+    + (f.why ? `<p class="why">${e(f.why)}</p>` : '')
+    + (f.fronts&&f.fronts.length
+        ? `<div class="k2">fronts ${f.fronts.map(n=>`<code class="declname" data-n="${e(n)}">${e(n)}</code>`
+            + frontsBadge((f.frontsVerified||{})[n])).join('; ')}</div>`
+        : '')
     + '</div>';
   const rest = decls.slice(1);
   return `<div class="card" data-slug="${e(x.slug)}" data-row="${e(x.id)}">
@@ -313,11 +358,18 @@ function headlineCard(x){
       ${x.clauseCount?` · ${x.clauseCount} clause${x.clauseCount===1?'':'s'}`:''}
       ${x.clauseOpen?` · <b style="color:var(--warn)">${x.clauseOpen} not established</b>`:''}
       ${x.hasReview?'':' · <span class="tag warn" title="no curated prose-to-Lean correspondence exists for this row">no semantic review</span>'}
+      ${(x.presentation||[]).length?' · <span class="tag ok" title="a restatement whose signature reads like the printed theorem">presentation form</span>':''}
       ${x.canonicalTotal?` · ${x.canonicalTotal} canonical declaration${x.canonicalTotal===1?'':'s'}`:''}
       ${x.canonicalTotal>decls.length?` <span class="chip">showing ${decls.length}</span>`:''}</div>
     ${(x.claim||x.summary)?`<p class="claim">${e(x.claim||x.summary)}</p>`:''}
-    <div class="decls">${decls.length?stmt(decls[0]):'<div class="empty" style="padding:2px 0">No canonical declaration is recorded for this row.</div>'}
-      ${rest.length?`<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">${rest.length} further canonical statement${rest.length===1?'':'s'}</summary>${rest.map(stmt).join('')}</details>`:''}</div>
+    <div class="decls">
+      ${forms.length ? forms.map(form).join('') : ''}
+      ${forms.length
+        ? (decls.length
+            ? `<details style="margin-top:9px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">the API-canonical statement${decls.length===1?'':'s'} it presents — ${decls.length} declaration${decls.length===1?'':'s'}</summary>${decls.map(stmt).join('')}</details>`
+            : '')
+        : (decls.length?stmt(decls[0]):'<div class="empty" style="padding:2px 0">No canonical declaration is recorded for this row.</div>')}
+      ${!forms.length&&rest.length?`<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">${rest.length} further canonical statement${rest.length===1?'':'s'}</summary>${rest.map(stmt).join('')}</details>`:''}</div>
     <div class="acts">
       ${decls.length?`<button data-a="audit" data-n="${e(decls[0].name)}">Audit the statement →</button>`:''}
       <button data-a="align">Source \u2194 Lean →</button>
@@ -762,6 +814,35 @@ function sourceStatementHtml(st){
        + part('conclusions','Conclusions') + part('conclusion','Conclusion');
 }
 
+/* Which of the row's two Lean spellings is on screen, and what the other one
+   is. A reviewer who arrives at the presentation form must not mistake it for
+   the theorem to cite, and one who arrives at the canonical should be told the
+   legible restatement exists. */
+function spellingHtml(row, name){
+  const forms=row.presentation||[];
+  if(!forms.length) return '';
+  const mine=forms.find(f=>f.name===name);
+  const link=n=>`<a class="name" data-n="${e(n)}">${e(n)}</a>`;
+  if(mine)
+    return `<div class="note" style="border:1px solid var(--line);border-left:3px solid var(--accent);`
+      + `border-radius:8px;padding:9px 11px;margin:0 0 11px">`
+      + `<b>This is the presentation form</b> — ${e(RELATION_SAYS[mine.relation]||mine.relation||'')}`
+      + (mine.devices&&mine.devices.length?` · ${mine.devices.map(e).join(', ')}`:'') + '.'
+      + (mine.why?`<div style="margin-top:6px;color:var(--muted)">${e(mine.why)}</div>`:'')
+      + (mine.fronts&&mine.fronts.length
+          ? `<div style="margin-top:6px">Cite instead: ${mine.fronts.map(n=>link(n)
+              + frontsBadge((mine.frontsVerified||{})[n])).join('; ')}</div>`
+          : '')
+      + '</div>';
+  if((row.canonical||[]).includes(name))
+    return `<div class="note" style="border:1px solid var(--line);border-radius:8px;`
+      + `padding:9px 11px;margin:0 0 11px;color:var(--muted)">`
+      + `<b style="color:var(--ink)">This is the API-canonical statement.</b> `
+      + `The row also records a presentation form, restated so the signature reads like the `
+      + `printed theorem: ${forms.map(f=>link(f.name)).join(', ')}.</div>`;
+  return '';
+}
+
 function contextSection(ctx){
   if(!ctx || !ctx.rows || !ctx.rows.length)
     return sec('Source context', '<div class="empty" style="padding:6px 0">No census row registers this declaration, so there is no printed result it answers for.</div>');
@@ -771,6 +852,7 @@ function contextSection(ctx){
     + `<code>${e(row.id)}</code> · ${e(row.sourceAnchor||'')} · this declaration is `
     + `<b>${e(row.role)}</b> for the row ${tag(row.status)}${tag(row.verification)}</div>`
     + (row.claim?`<p style="margin:0 0 10px">${e(row.claim)}</p>`:'')
+    + spellingHtml(row, ctx.name)
     + sourceStatementHtml(row.sourceStatement)
     + (row.clauses&&row.clauses.length
         ? `<b style="font-size:11.5px">Clause by clause — printed prose against the Lean that answers it</b>`
@@ -867,6 +949,12 @@ async function showAudit(name){
   if(el) h+=sec('Elaborated signature — what the compiler sees',
       `<pre class="lean" data-module="${e(mod)}">${leanHl(el.signature||el.type||'')}</pre>`
     + (el.docstring?`<div style="white-space:pre-wrap;font-size:12.5px;margin:8px 0">${e(el.docstring)}</div>`:'')
+    + (el.moduleStale
+        ? `<div class="stale"><b>This elaborated record predates a rename.</b> It names the module `
+          + `<code>${e(el.module)}</code>, which the Lean sources no longer have, so every field `
+          + `below is a snapshot of a declaration that has since moved. Rebuild the statement `
+          + `sidecar with <code>aiq-lean alignment html &lt;census&gt; --statements</code>.</div>`
+        : '')
     + `<dl class="kv"><dt>kind</dt><dd>${e(el.kind||'—')}</dd>`
     + `<dt>module</dt><dd>${e(el.module||'—')}</dd>`
     + `<dt>library</dt><dd>${e(el.library||'—')}</dd>`

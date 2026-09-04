@@ -45,9 +45,34 @@ def _supporting(review: Mapping[str, Any], row: Mapping[str, Any]) -> list[str]:
     values = review.get("supporting_declarations")
     if values is None:
         all_decls = list(row.get("lean_declarations", []) or [])
-        canonical = set(_canonical(review, row))
-        values = [x for x in all_decls if x not in canonical]
+        # A presentation form is registered in `lean_declarations` like any other
+        # declaration, and it gets its own panel; listing it again as a bare
+        # supporting name says the row has a declaration it has not shown.
+        named = set(_canonical(review, row)) | {p["name"] for p in _presentation(review)}
+        values = [x for x in all_decls if x not in named]
     return [str(x) for x in values or []]
+
+
+def _presentation(review: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Declarations restated so the signature reads like the printed theorem.
+
+    A bare string is legal and means name-only, and every field but the name may
+    be missing: the census is curated by hand, and a half-filled entry must still
+    show the declaration rather than take the page down.
+    """
+    out: list[dict[str, Any]] = []
+    for value in review.get("presentation_declarations", []) or []:
+        item: Mapping[str, Any] = {"name": value} if isinstance(value, str) else value
+        if not isinstance(item, Mapping) or not item.get("name"):
+            continue
+        out.append({
+            "name": str(item["name"]),
+            "fronts": [str(x) for x in item.get("fronts") or []],
+            "relation": str(item.get("relation") or "unstated"),
+            "devices": [str(x) for x in item.get("devices") or []],
+            "why": str(item.get("why") or ""),
+        })
+    return out
 
 
 def _context(review: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -58,6 +83,18 @@ def _context(review: Mapping[str, Any]) -> list[dict[str, Any]]:
         elif isinstance(value, Mapping) and value.get("name"):
             out.append(dict(value))
     return out
+
+
+def _fronting_sentence(item: Mapping[str, Any]) -> str:
+    """One line saying what a presentation declaration fronts, and by what device."""
+    fronts = [str(x) for x in item.get("fronts") or []]
+    relation = str(item.get("relation") or "unstated")
+    devices = [str(x) for x in item.get("devices") or []]
+    head = (
+        "Fronts " + ", ".join(f"`{n}`" for n in fronts) + f" ({relation})."
+        if fronts else f"Presentation form; what it fronts is {relation}."
+    )
+    return head + (" Devices: " + "; ".join(devices) + "." if devices else "")
 
 
 @dataclass
@@ -81,6 +118,10 @@ class AlignmentEntry:
     @property
     def supporting(self) -> list[str]:
         return _supporting(self.review, self.row)
+
+    @property
+    def presentation(self) -> list[dict[str, Any]]:
+        return _presentation(self.review)
 
     @property
     def context(self) -> list[dict[str, Any]]:
@@ -262,6 +303,7 @@ class AlignmentPacket:
         canonical: Sequence[str],
         supporting: Sequence[str],
         context: Sequence[Mapping[str, Any]],
+        presentation: Sequence[Mapping[str, Any]] = (),
         next_action: object | None = None,
     ) -> list[str]:
         out: list[str] = []
@@ -289,6 +331,20 @@ class AlignmentPacket:
                 values = source.get(key, [])
                 if values:
                     out += [f"**{key.capitalize()}**", *[f"- {x}" for x in values], ""]
+
+        # The presentation form comes first because it is the statement the
+        # paper's reader recognises; the canonical one is then introduced as
+        # what it fronts, rather than as a competing spelling.
+        if presentation:
+            out += ["### Presentation Lean declarations", ""]
+            for item in presentation:
+                name = str(item["name"])
+                out += [f"#### `{name}`", "", _fronting_sentence(item), ""]
+                if item.get("why"):
+                    out += [str(item["why"]), ""]
+                out += self._render_source_declaration(name)
+                if self.statements:
+                    out += self._render_statement(name, review, context)
 
         if canonical:
             out += ["### Canonical Lean declarations", ""]
@@ -398,6 +454,7 @@ class AlignmentPacket:
                     canonical=entry.canonical,
                     supporting=entry.supporting,
                     context=entry.context,
+                    presentation=entry.presentation,
                     next_action=entry.row.get("next_action"),
                 )
 
@@ -607,6 +664,119 @@ def resolve_graph_name(table: Mapping[str, Any], name: str) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+#: How far the fronting search walks the dependency graph.  A saved index holds
+#: tens of thousands of declarations and a headline theorem reaches thousands of
+#: them, so an exhaustive pair of walks per fronted name is not worth its cost.
+#: Both relations this looks for -- the presentation form delegating to the
+#: declaration it fronts, and the two sharing a proof core -- sit within a couple
+#: of edges.  The cap is a search budget and never evidence: a walk that hits it
+#: without a verdict reports "unknown", because it has not shown the two unrelated.
+FRONTS_SEARCH_DEPTH = 4
+
+
+def _reachable(
+    table: Mapping[str, Any], start: str, depth: int
+) -> tuple[dict[str, int], bool]:
+    """Project declarations reachable from ``start``, by fewest edges, and whether
+    the walk stopped at the cap rather than exhausting what ``start`` reaches."""
+    seen = {start: 0}
+    frontier = [start]
+    for level in range(1, depth + 1):
+        nxt: list[str] = []
+        for node in frontier:
+            decl = table.get(node)
+            if decl is None:
+                continue
+            for dep in decl.deps:
+                if dep not in seen and dep in table:
+                    seen[dep] = level
+                    nxt.append(dep)
+        frontier = nxt
+        if not frontier:
+            return seen, False
+    return seen, bool(frontier)
+
+
+def _is_proof_core(table: Mapping[str, Any], name: str) -> bool:
+    """Whether ``name`` could be the proved machinery two statements share.
+
+    Two specializations of one theorem also share every structure they take as a
+    hypothesis, and each such structure contributes its field projections one
+    edge away.  Those are shared *vocabulary*: naming one as the common core
+    would bury the shared engine, which sits deeper, under an accessor.
+    """
+    decl = table.get(name)
+    if decl is None or decl.kind != "theorem" or decl.internal:
+        return False
+    parent = table.get(name.rsplit(".", 1)[0])
+    return parent is None or parent.kind not in {"inductive", "structure"}
+
+
+def fronts_verified(
+    graph: Mapping[str, Any] | None, name: str, fronts: Sequence[str]
+) -> dict[str, dict[str, Any]]:
+    """How each ``fronts`` claim of a presentation declaration stands in the graph.
+
+    Fronting is a curatorial claim about what a statement *presents*, not about
+    how it is proved: the Davis--Kahan presentation form delegates to the
+    symmetric-norming engine and never mentions the row's canonical statement,
+    which is a different specialization of the same core.  Reporting that as a
+    failed dependency check would make the ordinary case look like a defect, so
+    a shared proof core is a verdict of its own -- and only a genuine absence of
+    both relations is the finding worth showing.
+    """
+    if graph is None:
+        return {front: {"state": "unknown"} for front in fronts}
+    table = graph["table"]
+    resolved = resolve_graph_name(table, name)
+    from_decl, decl_capped = (
+        ({}, False) if resolved is None else _reachable(table, resolved, FRONTS_SEARCH_DEPTH)
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for front in fronts:
+        target = resolve_graph_name(table, front)
+        if resolved is None or target is None:
+            out[front] = {"state": "unknown"}
+            continue
+        if target in from_decl and target != resolved:
+            out[front] = {"state": "delegates", "depth": from_decl[target]}
+            continue
+        from_front, front_capped = _reachable(table, target, FRONTS_SEARCH_DEPTH)
+        shared = [n for n in from_decl if n in from_front and _is_proof_core(table, n)]
+        if shared:
+            via = min(shared, key=lambda n: (from_decl[n] + from_front[n], from_decl[n], n))
+            out[front] = {"state": "shared-core", "via": via, "depth": from_decl[via]}
+        elif decl_capped or front_capped:
+            out[front] = {"state": "unknown"}
+        else:
+            out[front] = {"state": "independent"}
+    return out
+
+
+def _presentation_payload(
+    packet: AlignmentPacket,
+    item: Mapping[str, Any],
+    review: Mapping[str, Any],
+    context: Sequence[Mapping[str, Any]],
+    graph: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """A presentation form, shown with the same panels as a canonical statement.
+
+    It is the spelling the paper's reader recognises, so it is worth the same
+    evidence -- source text, elaborated signature, closure, dependencies -- and
+    not a footnote naming the declaration it fronts.
+    """
+    name = str(item["name"])
+    fronts = [str(x) for x in item.get("fronts") or []]
+    return _declaration_payload(packet, name, review, context, graph) | {
+        "fronts": fronts,
+        "relation": str(item.get("relation") or "unstated"),
+        "devices": [str(x) for x in item.get("devices") or []],
+        "why": str(item.get("why") or ""),
+        "frontsVerified": fronts_verified(graph, name, fronts),
+    }
+
+
 def _proof_payload(graph: Mapping[str, Any], name: str) -> dict[str, Any] | None:
     """Project-local proof dependencies of ``name`` from a saved leanq graph index."""
     from leanq.graph import target_dependency_graph
@@ -685,8 +855,12 @@ def alignment_payload(
         # gets a full panel rather than a bare name in a sentence -- the theorem
         # said to carry a representation change, and equally a supporting
         # declaration a clause names as its realization.
-        canonical_names = set(entry.canonical)
-        cited = [n for n in cited_declarations(review) if n not in canonical_names]
+        presentation = [
+            _presentation_payload(packet, item, review, entry.context, graph)
+            for item in entry.presentation
+        ]
+        shown = set(entry.canonical) | {p["name"] for p in presentation}
+        cited = [n for n in cited_declarations(review) if n not in shown]
         evidence = [
             _declaration_payload(packet, name, review, entry.context, graph)
             for name in cited
@@ -706,7 +880,7 @@ def alignment_payload(
                     ],
                 })
         reached: set[str] = set()
-        for decl in [*canonical, *evidence]:
+        for decl in [*presentation, *canonical, *evidence]:
             if decl.get("closure"):
                 reached.update(decl["closure"]["summary"]["reached"])
                 reached.add(decl["name"])
@@ -764,6 +938,7 @@ def alignment_payload(
             "note": review.get("note"),
             "uncurated": bool(review.get("uncurated")),
             "nextAction": row.get("next_action"),
+            "presentation": presentation,
             "canonical": canonical,
             "supporting": supporting,
             "context": context_rows,
@@ -962,6 +1137,7 @@ def _probe_queries(
 ) -> list[tuple[str, str]]:
     queries: list[tuple[str, str]] = []
     for entry in entries:
+        queries.extend(("check", item["name"]) for item in entry.presentation)
         queries.extend(("check", name) for name in entry.canonical)
         queries.extend(("check", name) for name in entry.supporting)
         queries.extend(("print", str(item["name"])) for item in entry.context)
@@ -979,6 +1155,7 @@ def _source_declaration_map(
 ) -> dict[str, list[SourceDeclarationText]]:
     names: list[str] = []
     for entry in entries:
+        names.extend(item["name"] for item in entry.presentation)
         names.extend(entry.canonical)
         names.extend(entry.supporting)
         names.extend(cited_declarations(entry.review))
@@ -1044,6 +1221,7 @@ def build_alignment_packet(
     if statement_map is None and (statements or sidecar is not None):
         seeds: list[str] = []
         for entry in entries:
+            seeds.extend(item["name"] for item in entry.presentation)
             seeds.extend(entry.canonical)
             seeds.extend(entry.supporting)
             seeds.extend(str(item["name"]) for item in entry.context)

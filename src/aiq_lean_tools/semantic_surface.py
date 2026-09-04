@@ -23,6 +23,17 @@ IMPORTANCE_ORDER = {
     "technical": 3,
 }
 
+#: What a presentation declaration claims about the canonical statement it
+#: fronts.  Closed, because the point of the field is that a reader can tell at a
+#: glance whether the legible restatement is the same theorem; a reviewer with
+#: something else to say has ``why`` for it.
+PRESENTATION_RELATIONS = {
+    "equivalent": "The same theorem, restated so the signature reads like the printed one.",
+    "specialization": "States strictly less than the canonical declaration it fronts.",
+    "notation": "The identical statement, differing only by notation or a reducible abbreviation.",
+    "unstated": "Nothing is claimed; the entry records only the name.",
+}
+
 
 def _nonempty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
@@ -127,6 +138,107 @@ def _validate_declaration_list(
     return [str(item) for item in value if _nonempty_string(item)]
 
 
+def _normalized_presentation_entry(entry: object) -> dict[str, Any] | None:
+    """One presentation entry in object form, or ``None`` when it names nothing."""
+    if _nonempty_string(entry):
+        name = str(entry).strip()
+        fronts: list[str] = []
+        relation: Any = "unstated"
+        devices: list[str] = []
+        why = ""
+    elif isinstance(entry, Mapping) and _nonempty_string(entry.get("name")):
+        name = str(entry["name"]).strip()
+        raw_fronts = entry.get("fronts")
+        fronts = [str(x).strip() for x in raw_fronts if _nonempty_string(x)] if isinstance(raw_fronts, list) else []
+        relation = entry.get("relation") if _nonempty_string(entry.get("relation")) else "unstated"
+        raw_devices = entry.get("devices")
+        devices = [str(x).strip() for x in raw_devices if _nonempty_string(x)] if isinstance(raw_devices, list) else []
+        why = str(entry.get("why") or "").strip()
+    else:
+        return None
+    return {"name": name, "fronts": fronts, "relation": relation, "devices": devices, "why": why}
+
+
+def normalize_presentation(review: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The review's ``presentation_declarations``, in normalized object form.
+
+    A presentation declaration is a thin restatement of a canonical theorem whose
+    signature reads like the printed result -- the paper's operator named as an
+    explicit argument with a defining hypothesis, or local notation standing for
+    it -- so that the ledger records the statement a reader is shown rather than
+    only the one the library exports.  Each entry becomes
+    ``{"name", "fronts", "relation", "devices", "why"}``.
+
+    A bare string is legal shorthand for a name with nothing claimed about it and
+    expands with ``relation`` ``unstated``.  An unrecognized ``relation`` is
+    returned as written: the reviewer's word is what a reader must see, and
+    :func:`validate_embedded_review` reports it.  Entries naming nothing are
+    dropped here and reported there.
+
+    The review is not modified.
+    """
+    entries = review.get("presentation_declarations") if isinstance(review, Mapping) else None
+    if not isinstance(entries, list):
+        return []
+    normalized = (_normalized_presentation_entry(entry) for entry in entries)
+    return [entry for entry in normalized if entry is not None]
+
+
+def _validate_presentation(
+    value: object,
+    *,
+    location: str,
+    registered: set[str],
+    findings: list[Finding],
+) -> list[str]:
+    if not isinstance(value, list):
+        _finding(findings, "semantic-presentation", "presentation_declarations must be a list", location)
+        return []
+    names: list[str] = []
+    for index, entry in enumerate(value):
+        loc = f"{location}[{index}]"
+        normalized = _normalized_presentation_entry(entry)
+        if normalized is None:
+            _finding(
+                findings,
+                "semantic-presentation",
+                "presentation declaration must be a name or an object carrying a non-empty name",
+                loc,
+            )
+            continue
+        names.append(normalized["name"])
+        relation = normalized["relation"]
+        if relation not in PRESENTATION_RELATIONS:
+            _finding(
+                findings,
+                "semantic-presentation-relation",
+                f"unknown presentation relation {relation!r}; expected one of {sorted(PRESENTATION_RELATIONS)}",
+                loc,
+            )
+        if relation != "unstated" and not normalized["why"]:
+            _finding(
+                findings,
+                "semantic-presentation-why",
+                "a presentation declaration claiming a relation must say what the restatement buys and costs",
+                loc,
+            )
+        for front in normalized["fronts"]:
+            if front not in registered:
+                # Not an error: the fronted theorem may live upstream and resolve
+                # perfectly well.  But a row that shows a front for a statement it
+                # does not otherwise register leaves the fronted theorem unreviewed.
+                findings.append(
+                    Finding(
+                        "warning",
+                        "semantic-presentation-fronts",
+                        f"presentation form fronts {front}, which this row registers "
+                        "neither as canonical nor as supporting",
+                        loc,
+                    )
+                )
+    return names
+
+
 def validate_embedded_review(
     review: object,
     *,
@@ -185,9 +297,15 @@ def validate_embedded_review(
         findings=findings,
         require_nonempty=False,
     )
+    presentation = _validate_presentation(
+        review.get("presentation_declarations", []),
+        location=f"{row_location}.presentation_declarations",
+        registered={*canonical, *supporting},
+        findings=findings,
+    )
     if not allow_external_declarations:
         registered = set(census_declarations)
-        missing = [name for name in [*canonical, *supporting] if name not in registered]
+        missing = [name for name in [*canonical, *supporting, *presentation] if name not in registered]
         if missing:
             _finding(
                 findings,
@@ -210,18 +328,22 @@ def validate_embedded_review(
     # The structured half: which source fragment each clause came from, what
     # relation it claims, and whether a row reading its passage as
     # self-contained quietly cites a condition inherited from elsewhere.
+    # A presentation form is registered like any other declaration, so a clause
+    # may realize itself through one and a pin may protect it.
     findings.extend(
         validate_correspondence(
             review,
             location=row_location,
-            declarations=[*canonical, *supporting],
+            declarations=[*canonical, *supporting, *presentation],
             check_status=False,
         )
     )
     from .statement_pins import validate_pins
 
     findings.extend(
-        validate_pins(review, claimed=[*canonical, *supporting], location=row_location)
+        validate_pins(
+            review, claimed=[*canonical, *supporting, *presentation], location=row_location
+        )
     )
     findings.extend(validate_source_pins(review, location=row_location))
 

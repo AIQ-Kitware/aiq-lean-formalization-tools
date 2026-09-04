@@ -288,7 +288,20 @@ class DeclarationService:
         # Elaborated statement.
         record = self.statements().get(name)
         if record is not None:
+            index = None
+            try:
+                index = self.source_index()
+            except Exception:
+                pass
+            # A statement sidecar is a snapshot. When it names a module the
+            # source scan no longer has, the record predates a rename and every
+            # field on it is suspect -- which is exactly the drift this browser
+            # exists to expose, so it is said rather than silently displayed.
+            stale_module = bool(
+                record.module and index is not None and record.module not in index.modules
+            )
             out["elaborated"] = {
+                "moduleStale": stale_module,
                 "signature": record.signature or record.type,
                 "type": record.type,
                 "kind": record.kind,
