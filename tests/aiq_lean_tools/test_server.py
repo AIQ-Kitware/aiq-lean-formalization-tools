@@ -443,6 +443,89 @@ def _alignment_repo(tmp_path):
     return tmp_path
 
 
+def _served(tmp_path):
+    """The app over a minimal repository with one Lean file behind the census."""
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from aiq_lean_tools.server.app import create_app
+
+    root = _alignment_repo(tmp_path)
+    (root / "Paper").mkdir()
+    (root / "Paper" / "Main.lean").write_text(
+        "namespace Paper\n\n"
+        "/-- A normalized gauge. -/\n"
+        "structure Gauge where\n  value : Nat\n\n"
+        "/-- The estimate. -/\n"
+        "theorem main (g : Gauge) (\u039b\u2081 : Nat) : Gauge.value g = Gauge.value g := by\n  rfl\n\n"
+        "end Paper\n",
+        encoding="utf-8",
+    )
+    return root, TestClient(create_app(root))
+
+
+def test_headlines_index_is_served_across_every_census(tmp_path):
+    root, client = _served(tmp_path)
+    with client:
+        r = client.get("/api/headlines")
+        assert r.status_code == 200
+        rows = r.json()["entries"]
+        assert [x["id"] for x in rows] == ["T-1"]
+        row = rows[0]
+        assert row["paperShort"] == "paper", "the citation is not a usable heading"
+        assert row["clauseCount"] == 1 and row["clauseOpen"] == 0
+        assert row["canonical"][0]["name"] == "Paper.main"
+        assert "theorem main" in row["canonical"][0]["statement"]
+        assert "rfl" not in row["canonical"][0]["statement"], "a card shows the statement"
+        # The tag must move when a census does, or a stale landing page survives
+        # an edit to the ledger it is made of.
+        tag = r.headers["etag"]
+        assert client.get("/api/headlines", headers={"if-none-match": tag}).status_code == 304
+
+
+def test_source_context_names_the_printed_result_and_addresses_its_clauses(tmp_path):
+    root, client = _served(tmp_path)
+    with client:
+        rows = client.get("/api/context/Paper.main").json()["rows"]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["role"] == "canonical" and row["id"] == "T-1"
+        assert row["sourceStatement"]["hypotheses"] == ["gap"]
+        clause = row["clauses"][0]
+        assert clause["sourceClause"] == "the estimate"
+        # The pointer is what an annotation writes through; a wrong index writes
+        # to a different row than the one on screen.
+        assert clause["pointer"] == "/items/0/semantic_review/clause_map/0/status"
+        wrote = client.post("/api/annotate", json={
+            "view": "census", "slug": "paper-full-source-census",
+            "pointer": clause["pointer"], "value": "open", "author": "test"})
+        assert wrote.status_code == 200, wrote.text
+        assert client.get("/api/context/Paper.main").json()["rows"][0]["clauses"][0]["status"] == "open"
+
+
+def test_a_statement_reports_the_vocabulary_it_is_written_in(tmp_path):
+    root, client = _served(tmp_path)
+    with client:
+        d = client.get("/api/vocabulary/Paper.main").json()
+        names = [x["name"] for x in d["symbols"]]
+        assert "Paper.Gauge" in names, "the structure the statement quantifies over"
+        assert "Paper.main" not in names, "a statement is not its own vocabulary"
+        assert not any(x["short"] in {"g", "\u039b\u2081"} for x in d["symbols"]), \
+            "a binder is local, not vocabulary"
+        assert d["symbols"][names.index("Paper.Gauge")]["group"] == "project"
+
+
+def test_one_identifier_resolves_the_way_lean_reads_it(tmp_path):
+    root, client = _served(tmp_path)
+    with client:
+        d = client.get("/api/symbol", params={"name": "Gauge", "module": "Paper.Main"}).json()
+        assert d["name"] == "Paper.Gauge"
+        assert "A normalized gauge" in d["docstring"]
+        assert d["path"] == "Paper/Main.lean"
+        assert client.get("/api/symbol", params={"name": "NotAThing"}).status_code == 404
+
+
 def test_alignment_is_served_beside_the_census_it_reads(tmp_path):
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")

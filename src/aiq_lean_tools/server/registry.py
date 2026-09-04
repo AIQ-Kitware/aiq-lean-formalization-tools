@@ -16,7 +16,10 @@ A file whose marker matches but whose loader rejects it is simply not in the
 catalog, and neither is one no marker matches.
 
 Payloads are cached on ``(path, mtime, size)``. Editing a file on disk therefore
-invalidates its payload with no cache-busting protocol.
+invalidates its payload with no cache-busting protocol.  Discovery loads each
+file through its view's loader -- that is what proves the classification -- and
+keeps the result, so the first request for a payload is served from what
+discovery already built rather than loading the same file a second time.
 """
 
 from __future__ import annotations
@@ -46,7 +49,9 @@ class ViewSpec:
     name: str
     label: str
     asset: str
-    load: Callable[[Path, Path], Any]
+    #: ``(path, root)`` -- the foundations loader also accepts an optional
+    #: prebuilt Lean source index as a third argument.
+    load: Callable[..., Any]
     #: The top-level key that identifies this schema. Checked before the loader
     #: runs, because several loaders are permissive enough to accept a
     #: neighbouring schema and the first one offered would otherwise win.
@@ -82,9 +87,9 @@ def _view_specs() -> list[ViewSpec]:
     from .. import literature as _literature
     from .. import semantic_review as _review
 
-    def load_foundations(path: Path, root: Path):
+    def load_foundations(path: Path, root: Path, index: Any = None):
         fmap = _foundations.FoundationMap.load(path)
-        return _foundations.check_foundation_map(fmap, root=root, lean_probe=False)
+        return _foundations.check_foundation_map(fmap, root=root, index=index, lean_probe=False)
 
     return [
         ViewSpec("census", "Census", "census_viewer.html",
@@ -94,7 +99,7 @@ def _view_specs() -> list[ViewSpec]:
         ViewSpec("coverage", "Coverage", "coverage_viewer.html",
                  lambda p, r: _coverage.load_coverage_bundle(p, root=r), marker="results"),
         ViewSpec("foundations", "Foundations", "foundation_viewer.html",
-                 load_foundations, marker="nodes"),
+                 load_foundations, marker="nodes"),  # takes an optional source index
         ViewSpec("literature", "Literature", "literature_viewer.html",
                  lambda p, r: _literature.load_literature(p, root=r), marker="works"),
     ]
@@ -104,9 +109,20 @@ def _view_specs() -> list[ViewSpec]:
 class Catalog:
     root: Path
     specs: list[ViewSpec] = field(default_factory=_view_specs)
+    #: An already-built Lean source index, when the caller holds one.  The
+    #: foundation loader otherwise scans the whole Lean tree for itself, which
+    #: costs twenty seconds and duplicates a scan the server has already paid
+    #: for.  Injected rather than imported so the catalog keeps knowing nothing
+    #: about the server that owns it.
+    source_index: Callable[[], Any] | None = None
     _docs: dict[tuple[str, str], Document] = field(default_factory=dict)
     _payloads: dict[tuple[str, str], tuple[tuple[int, int], Any, str]] = field(default_factory=dict)
     _scanned: bool = False
+
+    def _load(self, spec: ViewSpec, path: Path) -> Any:
+        if spec.name == "foundations" and self.source_index is not None:
+            return spec.load(path, self.root, self.source_index())
+        return spec.load(path, self.root)
 
     # -- discovery ---------------------------------------------------------
 
@@ -134,12 +150,20 @@ class Catalog:
                 if not spec.claims(data):
                     continue
                 try:
-                    doc = spec.load(path, self.root)
+                    loaded = self._load(spec, path)
                 except Exception:
                     continue  # right shape, but the loader rejected it
-                title = _title_of(doc, path)
+                title = _title_of(loaded, path)
                 d = Document(spec.name, _slug(path.stem), path, title)
                 self._docs[(spec.name, d.slug)] = d
+                # Discovery already paid for the load, so keep what it built.
+                try:
+                    st = path.stat()
+                    self._payloads[(spec.name, d.slug)] = (
+                        (st.st_mtime_ns, st.st_size), loaded.payload(), title
+                    )
+                except Exception:
+                    pass
                 break
         self._scanned = True
         return list(self._docs.values())
@@ -168,7 +192,7 @@ class Catalog:
         hit = self._payloads.get((view, slug))
         if hit and hit[0] == stamp:
             return hit[1], hit[2]
-        loaded = spec.load(doc.path, self.root)
+        loaded = self._load(spec, doc.path)
         payload = loaded.payload()
         title = _title_of(loaded, doc.path)
         self._payloads[(view, slug)] = (stamp, payload, title)

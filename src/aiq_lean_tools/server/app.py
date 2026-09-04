@@ -9,6 +9,17 @@ The static pages do not go away, and this is deliberately not a second
 implementation of them. ``/view/{view}/{slug}`` renders exactly what
 ``aiq-lean <view> html -o`` writes, through the same ``viewer_html`` call, so a
 served page and a written file cannot disagree.
+
+What the server adds on top of them is the reviewer's own path through the
+evidence, and it is four endpoints wide. ``/api/headlines`` is the landing page:
+the results every paper is judged on, prose beside Lean, across every census at
+once. ``/api/context`` answers, for one declaration, which printed result it
+answers for and clause by clause which sentence of it does what -- and hands
+back the JSON pointer that addresses each clause, so the same panel that shows
+the correspondence can record a verdict on it. ``/api/vocabulary`` answers "what
+is this statement written in", and ``/api/symbol`` answers it for a single
+identifier under the cursor, resolved the way Lean read it rather than the way
+an index files it.
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ from typing import Any
 from ..viewer import read_asset, viewer_html
 from .alignment import AlignmentService
 from .edits import EditRefused, apply_edit, read_journal
+from .headlines import HeadlineService, short_paper_name
 from .registry import Catalog
 from .warmup import Readiness
 from .declaration import DeclarationService
@@ -64,18 +76,23 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
     _require_fastapi()
 
     root = Path(root).expanduser().resolve()
-    catalog = Catalog(root)
     app = FastAPI(title=title)
     app.state.root = root
-    app.state.catalog = catalog
     app.state.sockets: set[Any] = set()
     xref = Xref()
     app.state.xref = xref
     decls = DeclarationService(root)
     app.state.declarations = decls
+    # One Lean source scan for the whole process. The foundation ledger's loader
+    # builds its own otherwise, and discovery and the first payload request each
+    # ran it: three scans of a 13,000-declaration tree, twenty-two seconds each.
+    catalog = Catalog(root, source_index=decls.source_index)
+    app.state.catalog = catalog
     alignment = AlignmentService(root, decls, private=private_sources,
                                  include_private=include_private)
     app.state.alignment = alignment
+    headlines = HeadlineService(root, catalog, decls)
+    app.state.headlines = headlines
 
     # Pages are large -- the workspace view is 1.6 MB of JSON in a script tag --
     # and highly compressible.
@@ -83,15 +100,16 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
 
     ready = Readiness()
     app.state.readiness = ready
+    ready.declare("sources", "Scanning Lean sources", "source snippets and the ledger list")
     ready.declare("catalog", "Finding ledgers", "the ledger list")
     ready.declare("payloads", "Reading ledgers", "ledger views and text search")
     ready.declare("xref", "Cross-referencing declarations", "declaration links and shared declarations")
-    ready.declare("sources", "Scanning Lean sources", "source snippets on the audit page")
     ready.declare("statements", "Loading elaborated statements", "elaborated signatures and closures")
     ready.declare("graph", "Loading the dependency graph", "proof dependencies and axioms")
     ready.declare("workspace", "Building the workspace summary", "the workspace view")
     ready.declare("literature", "Reading literature source documents",
                   "rendered source passages on the alignment view")
+    ready.declare("headlines", "Indexing the headline results", "the landing page")
 
     # The workspace view rebuilds from every ledger in the repository, which
     # takes half a minute; it was doing that on each request. Cached against the
@@ -147,16 +165,20 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
     def api_catalog(refresh: bool = False) -> JSONResponse:
         if refresh:
             catalog.scan(force=True)
-        docs = [d.as_json(root) for d in catalog.documents()]
+        # A census titles itself with the paper's full citation. That is right
+        # on the page about that paper and unreadable in a 274px sidebar, so
+        # each document also carries the short name of its file.
+        docs = [{**d.as_json(root), "short": short_paper_name(d.slug)}
+                for d in catalog.documents()]
         views = [{"name": s.name, "label": s.label} for s in catalog.specs]
         views.append({"name": "workspace", "label": "Workspace"})
-        views.append({"name": "alignment", "label": "Alignment"})
+        views.append({"name": "alignment", "label": "Source \u2194 Lean"})
         # Every census can be read as an alignment surface, so the sidebar can
         # offer one beside each. This used to advertise an "Alignment" view with
         # no documents behind it and no route to serve one.
         docs = docs + [
             {"view": "alignment", "slug": d["slug"], "path": d["path"],
-             "title": d["title"]}
+             "title": d["title"], "short": d["short"]}
             for d in docs if d["view"] == "census"
         ]
         return JSONResponse(
@@ -316,6 +338,85 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
             raise HTTPException(404, f"nothing known about {name}")
         return JSONResponse(detail)
 
+    @app.get("/api/headlines")
+    def api_headlines(request: Request, importance: str = "headline") -> Any:
+        """The results every paper is judged on, across every census."""
+        wanted = tuple(x.strip() for x in importance.split(",") if x.strip())
+        etag = '"' + hashlib.sha256(
+            repr((headlines.revision(), wanted, decls.source_revision())).encode()
+        ).hexdigest()[:24] + '"'
+        if request.headers.get("if-none-match") == etag:
+            from fastapi.responses import Response
+
+            return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+        return JSONResponse({"entries": headlines.entries(wanted), "importance": list(wanted)},
+                            headers={"ETag": etag, "Cache-Control": "no-cache"})
+
+    @app.get("/api/context/{name:path}")
+    def api_context(name: str) -> JSONResponse:
+        """Which printed results this declaration answers for, clause by clause."""
+        return JSONResponse({"name": name, "rows": headlines.context(name)})
+
+    @app.get("/api/symbol")
+    def api_symbol(name: str, module: str | None = None) -> JSONResponse:
+        """What one identifier in a statement is, resolved as Lean would read it."""
+        from .symbols import resolve_symbol
+
+        symbol = resolve_symbol(
+            name=name, source_index=decls.source_index(), statements=decls.statements(),
+            root=root, module=module,
+        )
+        if symbol is None:
+            raise HTTPException(404, f"{name} does not resolve")
+        return JSONResponse(symbol.as_json())
+
+    @app.get("/api/vocabulary/{name:path}")
+    def api_vocabulary(name: str) -> JSONResponse:
+        """Every name a statement is written in, resolved and grouped.
+
+        This is the question "what is a `SymmetricNormingFunction`?" asked of a
+        whole statement at once, and it is answered from the source index alone
+        -- no elaboration required, so it works on a tree nobody has built.
+        """
+        from ..lean_source import binder_names
+        from .symbols import resolve_symbol, statement_identifiers
+
+        detail = decls.detail(name)
+        source = (detail.get("source") or {}).get("statement") or ""
+        elaborated = detail.get("elaborated") or {}
+        module = elaborated.get("module") or (detail.get("source") or {}).get("module") or ""
+        index, statements = decls.source_index(), decls.statements()
+        # The statement's own binders share short names with unrelated global
+        # projections -- `A₀` is a hypothesis here and a field of some structure
+        # elsewhere -- and reporting the projection as this statement's
+        # vocabulary is worse than reporting nothing.
+        local = binder_names(source) | {name.rsplit(".", 1)[-1]}
+        seen: set[str] = set()
+        symbols: list[dict[str, Any]] = []
+        unresolved = 0
+        for token in statement_identifiers(source):
+            if token in local:
+                continue
+            symbol = resolve_symbol(name=token, source_index=index, statements=statements,
+                                    root=root, module=module)
+            if symbol is None:
+                unresolved += 1
+                continue
+            if symbol.name in seen or symbol.name == name:
+                continue
+            seen.add(symbol.name)
+            symbols.append({
+                **symbol.as_json(),
+                "short": token,
+                # Decided by the module, not by whether a source location was
+                # found: a structure the scan filed under a different qualified
+                # name is still this project's to explain, and reporting it as
+                # foreign is the more misleading of the two errors.
+                "group": "project" if symbol.module in index.modules else "boundary",
+            })
+        return JSONResponse({"name": name, "module": module, "symbols": symbols,
+                             "unresolved": unresolved})
+
     @app.get("/api/graph/status")
     def api_graph_status() -> JSONResponse:
         return JSONResponse(decls.graph_status())
@@ -411,10 +512,13 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
                     pass
             return n
 
+        # Sources first: the catalog's foundation ledger is checked against this
+        # index, so scanning here is the difference between one scan and two.
+        ready.run("sources", decls.source_index,
+                  describe=lambda idx: f"{len(idx.by_name)} declaration(s) indexed")
         ready.run("catalog", catalog.documents, describe=lambda d: f"{len(d)} ledger(s)")
         ready.run("payloads", read_all, describe=lambda n: f"{n} ledger(s) read")
         ready.run("xref", refresh_xref, describe=lambda x: f"{x.stats()['declarations']} declarations")
-        ready.run("sources", decls.source_index, describe=lambda _: "Lean sources indexed")
         ready.run("statements", decls.statements, describe=lambda m: f"{len(m)} elaborated statement(s)")
         ready.run("workspace", lambda: workspace_payload(False),
                   describe=lambda r: f"{len(r[0].get('census_rows', []))} census document(s)")
@@ -424,6 +528,11 @@ def create_app(root: Path, *, title: str = "Formalization workspace",
                   describe=lambda g: (f"{g['declarations']} declarations"
                                       + (" (stale)" if g.get("stale") else "")) if g and g.get("present")
                                      else "no saved graph")
+        # Last, deliberately: the index is cached against the source and
+        # statement revisions, and building it before those have settled means
+        # rebuilding it for the first person who opens the page.
+        ready.run("headlines", lambda: headlines.entries(("headline",)),
+                  describe=lambda rows: f"{len(rows)} headline result(s)")
 
     @app.on_event("startup")
     async def _watch() -> None:

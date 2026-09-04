@@ -752,23 +752,33 @@ def _variable_blocks_before(lines: list[str], decl_line: int) -> list[str]:
     return blocks
 
 
-def _binder_names(block: str) -> set[str]:
+def binder_names(block: str) -> set[str]:
+    """Names a declaration's own binder groups introduce.
+
+    A binder is not vocabulary: ``A\u2080`` in ``(A\u2080 : E \u2192L[\ud835\udd5c] E)`` names a local
+    hypothesis, and looking it up in a global index finds an unrelated
+    projection with the same short name.
+    """
     names: set[str] = set()
     for group in re.findall(r"[\{\(]\s*([^:}\)]+?)\s*:(?!=)", block):
         for name in group.split():
-            if re.match(r"^[A-Za-z_𝕜ℝℂ][\w₀-₉𝕜ℝℂ]*$", name):
+            # Any letter may start a Lean name. Spelling the class out as ASCII
+            # plus a few favourites rejected every binder named with a Greek
+            # capital: `Λ₁` was read as vocabulary and looked up globally,
+            # while `hΛ₁` beside it was not.
+            if re.match(r"^[^\W\d][\w₀-₉'!?]*$", name):
                 names.add(name)
     return names
 
 
 def _ambient_variables(lines: list[str], decl_line: int, declaration: str) -> str:
     used = set(re.findall(r"\b[A-Za-z_][A-Za-z_0-9₀-₉]*\b|[𝕜ℝℂ]", declaration))
-    explicitly_bound = _binder_names(declaration)
+    explicitly_bound = binder_names(declaration)
     missing = used - explicitly_bound
     chosen: list[str] = []
     covered: set[str] = set()
     for block in reversed(_variable_blocks_before(lines, decl_line)):
-        names = _binder_names(block)
+        names = binder_names(block)
         relevant = (names & missing) - covered
         if relevant:
             chosen.append(block)
@@ -804,6 +814,26 @@ _DECL_STARTS = (
     "protected theorem ", "protected def ", "@[", "namespace ", "end ", "section ",
     "variable ", "open ", "import ", "/-- ",
 )
+
+
+@functools.lru_cache(maxsize=96)
+def _cached_lines(path: Path, stamp: tuple[int, int]) -> tuple[str, ...]:
+    """A Lean file's lines, keyed on its stat so an edit invalidates them.
+
+    Reading one declaration means reading its whole file, and a page that shows
+    two hundred declarations was reading the same handful of large files two
+    hundred times -- fifteen seconds of it.
+    """
+    del stamp  # part of the key, not the work
+    return tuple(path.read_text(encoding="utf-8", errors="replace").splitlines())
+
+
+def _file_lines(path: Path) -> list[str]:
+    try:
+        st = path.stat()
+    except OSError:
+        return []
+    return list(_cached_lines(path, (st.st_mtime_ns, st.st_size)))
 
 
 def _declaration_block_start(lines: list[str], decl: int) -> int:
@@ -918,12 +948,9 @@ def declaration_statement_text(path: Path, line: int, limit: int = 500) -> str |
     as Lean: a tactic proof ends ``:= by <proof-omitted>`` and a term proof ends
     ``:= <proof-omitted>``.
     """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return None
+    lines = _file_lines(path)
     decl = max(0, line - 1)
-    if decl >= len(lines):
+    if not lines or decl >= len(lines):
         return None
     if not _has_proof_body(lines, decl):
         return full_declaration_text(path, line, limit)
@@ -951,12 +978,9 @@ def full_declaration_text(path: Path, line: int, limit: int = 500) -> str | None
     forward from the docstring instead of from the declaration made every
     theorem end at its own first line, returning the docstring alone.
     """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except Exception:
-        return None
+    lines = _file_lines(path)
     decl = max(0, line - 1)
-    if decl >= len(lines):
+    if not lines or decl >= len(lines):
         return None
 
     start = _declaration_block_start(lines, decl)

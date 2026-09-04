@@ -101,6 +101,71 @@ pre.lean .t{color:#2b6cb0}
 :root[data-theme="dark"] pre.lean{--k:#c792ea; --s:#e2b467; --n:#74c495; --t:#79b8ff;}
 pre.lean{--k:#8250b5; --s:#a05a2c; --n:#2f6f4f; --t:#2b6cb0}
 pre.lean .k{color:var(--k)} pre.lean .s{color:var(--s)} pre.lean .n{color:var(--n)} pre.lean .t{color:var(--t)}
+pre.lean .id{border-radius:3px;padding:0 1px;margin:0 -1px}
+pre.lean .id:hover{background:var(--sel);cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
+pre.lean .id.known{cursor:pointer}
+
+/* the headline landing page */
+.home{max-width:1240px}
+.home .lede{color:var(--muted);margin:0 0 4px}
+.home .toolbar{display:flex;gap:8px;align-items:center;margin:12px 0 18px;flex-wrap:wrap}
+.paper{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:650;
+  margin:22px 0 9px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.paper:first-of-type{margin-top:4px}
+.paper .cite{display:block;text-transform:none;letter-spacing:0;font-weight:400;font-size:11.5px;
+  margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);
+  padding:13px 15px 12px;margin:0 0 13px}
+.card .top{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin-bottom:2px}
+.card .rid{font:600 11px var(--mono);color:var(--muted);background:var(--line-soft);
+  border-radius:5px;padding:1px 6px}
+.card h4{margin:0;font-size:14.5px;font-weight:640;letter-spacing:-.01em}
+.card .claim{margin:8px 0 0;line-height:1.6}
+.card .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px;align-items:center}
+.card .acts .sp{flex:1}
+.card .decls{margin-top:10px}
+.card .declname{font:600 11.5px var(--mono);color:var(--accent);cursor:pointer;
+  display:inline-block;margin:0 0 4px;text-decoration:underline dotted;text-underline-offset:3px}
+.tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;font-weight:600;
+  background:var(--line-soft);color:var(--muted);white-space:nowrap}
+.tag.ok{background:var(--accent-soft);color:var(--accent)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+
+/* prose <-> Lean, on the audit page */
+.clause{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin:0 0 8px;background:var(--bg)}
+.clause .src{margin:0}
+.clause .arrow{color:var(--muted);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  margin:7px 0 4px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.clause .lean{margin:0;color:var(--ink)}
+.clause .ex{margin:7px 0 0;color:var(--muted);font-size:12px;border-left:2px solid var(--line);padding-left:8px}
+.clause .edit{margin-top:8px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.clause .edit select{max-width:220px}
+.clause .saved{color:var(--accent);font-size:11px}
+
+/* what the statement is stated in */
+.vocab{display:grid;grid-template-columns:1fr;gap:5px}
+.vrow{border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
+.vrow>summary{padding:6px 10px;cursor:pointer;display:flex;gap:9px;align-items:baseline;
+  list-style:none;font-size:12.5px}
+.vrow>summary::-webkit-details-marker{display:none}
+.vrow>summary:hover{background:var(--line-soft)}
+.vrow>summary code{font-weight:600;color:var(--accent)}
+.vrow>summary .m{color:var(--muted);font-size:11px;margin-left:auto;font-family:var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%}
+.vrow .body{padding:2px 10px 10px;border-top:1px solid var(--line-soft)}
+
+/* hover card: what an identifier in a statement actually is */
+#hov{position:fixed;z-index:40;max-width:min(560px,46vw);background:var(--panel);border:1px solid var(--line);
+  border-radius:11px;box-shadow:var(--shadow);padding:10px 12px;font-size:12.5px;display:none}
+#hov.on{display:block}
+#hov h4{margin:0 0 3px;font:600 12.5px var(--mono);word-break:break-all;line-height:1.35}
+#hov .kindline{color:var(--muted);font-size:11px;margin-bottom:7px}
+#hov .doc{margin:0 0 8px;max-height:9em;overflow:hidden;color:var(--ink)}
+#hov pre{background:var(--line-soft);border:1px solid var(--line);border-radius:7px;margin:0 0 8px;
+  padding:7px 9px;font:11.5px/1.6 var(--mono);max-height:15em;overflow:auto;white-space:pre-wrap}
+#hov .foot{color:var(--muted);font-size:11px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#hov .foot b{color:var(--accent);font-weight:600}
+
 .stale{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:8px 11px;font-size:12px;margin:0 0 10px}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:12.5px;margin:6px 0}
 .kv dt{color:var(--muted)}
@@ -159,6 +224,7 @@ pre.lean .k{color:var(--k)} pre.lean .s{color:var(--s)} pre.lean .n{color:var(--
   </section>
   <aside id="side"></aside>
 </main>
+<div id="hov"></div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -186,9 +252,10 @@ function go(hash, push=true){ if(push && location.hash!==('#'+hash)) location.ha
 
 function route(){
   const h = decodeURIComponent(location.hash.replace(/^#/,''));
-  if(!h){ const a=nav.querySelector('a'); if(a) go(a.dataset.route); return; }
+  if(!h){ go('home'); return; }
   const [kind,...rest]=h.split('/');
-  if(kind==='view'){ showView(rest[0], rest.slice(1).join('/')); }
+  if(kind==='home'){ showHome(); }
+  else if(kind==='view'){ showView(rest[0], rest.slice(1).join('/')); }
   else if(kind==='decl'){ showDeclaration(rest.join('/')); }
   else if(kind==='audit'){ showAudit(rest.join('/')); }
   else if(kind==='deps'){ showDeps(rest.join('/')); }
@@ -214,6 +281,82 @@ function showFrame(url, label){
   frame.src = want;
 }
 function pushTheme(){ try{ frame.contentWindow.postMessage({aiq:'theme', value: theme==='system'?systemTheme():theme}, '*'); }catch(_){} }
+
+/* ---- the headline landing page --------------------------------------- */
+/* A reviewer arriving at this server wants the results the papers are judged
+   on, with the Lean beside the prose, not a ledger index to navigate first.
+   Everything deeper -- the clause map, the elaboration, the vocabulary -- is
+   one click from a card rather than several from a sidebar. */
+let homeShowMajor=false;
+
+const TERMINAL=new Set(['compiled_exact','proved_in_build','accepted','established','exact']);
+function tag(value, label){
+  if(!value) return '';
+  const cls = TERMINAL.has(value) ? 'ok' : 'warn';
+  return `<span class="tag ${cls}" title="${e(label||'')}">${e(String(value).replace(/_/g,' '))}</span>`;
+}
+
+function headlineCard(x){
+  const decls=x.canonical||[];
+  const stmt = d => `<div><span class="declname" data-n="${e(d.name)}">${e(d.name)}</span>`
+    + (d.statement
+        ? `<pre class="lean" data-module="${e(d.module||'')}">${leanHl(d.statement)}</pre>`
+        : `<div class="empty" style="padding:2px 0">not located in the Lean sources</div>`)
+    + '</div>';
+  const rest = decls.slice(1);
+  return `<div class="card" data-slug="${e(x.slug)}" data-row="${e(x.id)}">
+    <div class="top"><span class="rid">${e(x.id)}</span><h4>${e(x.title||x.id)}</h4>
+      <span class="sp"></span>${tag(x.status,'implementation status')}${tag(x.verification,'what the build certifies')}${tag(x.certification,'hostile semantic review')}</div>
+    <div class="sub" style="color:var(--muted);font-size:11.5px">
+      ${e(x.sourceAnchor||('Section '+(x.section||'?')))}
+      ${x.clauseCount?` · ${x.clauseCount} clause${x.clauseCount===1?'':'s'}`:''}
+      ${x.clauseOpen?` · <b style="color:var(--warn)">${x.clauseOpen} not established</b>`:''}
+      ${x.canonicalTotal?` · ${x.canonicalTotal} canonical declaration${x.canonicalTotal===1?'':'s'}`:''}
+      ${x.canonicalTotal>decls.length?` <span class="chip">showing ${decls.length}</span>`:''}</div>
+    ${(x.claim||x.summary)?`<p class="claim">${e(x.claim||x.summary)}</p>`:''}
+    <div class="decls">${decls.length?stmt(decls[0]):'<div class="empty" style="padding:2px 0">No canonical declaration is recorded for this row.</div>'}
+      ${rest.length?`<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:12px">${rest.length} further canonical statement${rest.length===1?'':'s'}</summary>${rest.map(stmt).join('')}</details>`:''}</div>
+    <div class="acts">
+      ${decls.length?`<button data-a="audit" data-n="${e(decls[0].name)}">Audit the statement →</button>`:''}
+      <button data-a="align">Source \u2194 Lean →</button>
+      <button data-a="census">Census row →</button>
+    </div></div>`;
+}
+
+async function showHome(){
+  markNav('home');
+  crumb.innerHTML='<b>Headline theorems</b><span class="chip">what each paper is judged on</span>';
+  showPane('<div class="home"><div class="loading"><span class="spinner"></span> Reading every census…</div>'
+    + '<div class="skel" style="width:55%"></div><div class="skel" style="width:85%"></div>'
+    + '<div class="skel" style="width:70%"></div></div>');
+  let r;
+  try{ r = await api('/api/headlines?importance=' + (homeShowMajor?'headline,major':'headline')); }
+  catch(_){ return showPane('<div class="empty">The headline index is not available.</div>'); }
+  const rows=r.entries||[];
+  if(!rows.length && !stageReady('headlines'))
+    return showPane('<div class="home">'+notReady('headlines','The headline index')+'</div>');
+  const papers=[...new Set(rows.map(x=>x.slug))];
+  let h='<div class="home">'
+   + `<p class="lede">${rows.length} result${rows.length===1?'':'s'} across ${papers.length} paper${papers.length===1?'':'s'}, each with the prose claim beside the Lean statement that answers it. Hover any name in a statement to see what it is; click it to audit it.</p>`
+   + `<div class="toolbar"><button id="majorBtn" class="${homeShowMajor?'on':''}">Include major results</button>`
+   + `<span class="chip">${rows.filter(x=>x.clauseOpen).length} row(s) with a clause not established</span></div>`;
+  for(const slug of papers){
+    const mine=rows.filter(x=>x.slug===slug);
+    h += `<div class="paper">${e(mine[0].paperShort||slug)}`
+       + `<span class="cite" title="${e(mine[0].paper)}">${e(mine[0].paper)}</span></div>`
+       + mine.map(headlineCard).join('');
+  }
+  showPane(h + '</div>');
+  const majorBtn=$('#majorBtn');
+  if(majorBtn) majorBtn.onclick=()=>{ homeShowMajor=!homeShowMajor; showHome(); };
+  pane.querySelectorAll('.declname').forEach(d=>d.onclick=()=>go('audit/'+encodeURIComponent(d.dataset.n)));
+  pane.querySelectorAll('.card .acts button').forEach(b=>b.onclick=()=>{
+    const card=b.closest('.card'), slug=card.dataset.slug, row=card.dataset.row;
+    if(b.dataset.a==='audit') return go('audit/'+encodeURIComponent(b.dataset.n));
+    go(`view/${b.dataset.a==='align'?'alignment':'census'}/${slug}`);
+    setTimeout(()=>{ try{ frame.contentWindow.postMessage({aiq:'scroll-to', id:row},'*'); }catch(_){} }, 700);
+  });
+}
 
 /* ---- views ----------------------------------------------------------- */
 async function showView(view, slug){
@@ -351,9 +494,13 @@ function frameLoading(on, text){
 frame.addEventListener('load', ()=>frameLoading(false));
 
 /* ---- Lean highlighting ------------------------------------------------ */
-/* Small on purpose: keywords, comments, strings and sorts. Enough to read a
-   proof at a glance, and no CDN or grammar file to keep in step with Lean. */
-const LEAN_WORDS = [
+/* Small on purpose: keywords, comments, strings, sorts, and identifiers.
+   No CDN or grammar file to keep in step with Lean.
+
+   Identifiers are marked up because they are the point: every name in a
+   statement is something a reviewer may not know, and marking them is what
+   lets the hover card and the vocabulary panel work off the same text. */
+const LEAN_KEYWORDS = new Set([
  'theorem','lemma','def','abbrev','instance','structure','class','inductive','where','example',
  'by','fun','let','have','show','from','calc','match','with','do','if','then','else','at','in',
  'variable','universe','namespace','end','section','open','import','export','attribute','deriving',
@@ -361,27 +508,119 @@ const LEAN_WORDS = [
  'exact','apply','intro','intros','refine','simp','simpa','rw','rwa','constructor','cases','rcases',
  'obtain','use','induction','ring','linarith','nlinarith','positivity','norm_num','field_simp',
  'unfold','change','convert','congr','ext','funext','subst','specialize','gcongr','bound','trans',
- 'this','sorry','admit','all_goals','any_goals','first','try','repeat','focus','conv','push_cast'
-];
-/* One pass, two alternatives: chained replaces re-scanned inserted markup, and
-   `class` is a Lean keyword, so `<span class="t">` came out broken. */
-const LEAN_TOKEN = new RegExp('\\b(Prop|Type|Sort)\\b|\\b(' + LEAN_WORDS.join('|') + ')\\b', 'g');
+ 'this','admit','all_goals','any_goals','first','try','repeat','focus','conv','push_cast'
+]);
+const LEAN_SORTS = new Set(['Prop','Type','Sort']);
+/* Letters, digits, primes, bangs, questions and the subscripts Lean names use
+   (category No, so \p{N} does not cover them). Dotted names are one token: the
+   reviewer means `Submodule.HasOrthogonalProjection`, not two words. */
+const LEAN_ID = /[\p{L}_][\p{L}\p{N}_'!?\u2080-\u2089]*(?:\.[\p{L}_][\p{L}\p{N}_'!?\u2080-\u2089]*)*/gu;
+
+/* Tokenized before escaping, never after: `&amp;` contains four letters, and a
+   pass over escaped text marked them up as an identifier named `amp`. */
+function leanCode(text){
+  let out='', last=0;
+  for(const m of text.matchAll(LEAN_ID)){
+    out += e(text.slice(last, m.index));
+    const w = m[0];
+    if(LEAN_SORTS.has(w)) out += `<span class="t">${e(w)}</span>`;
+    else if(LEAN_KEYWORDS.has(w)) out += `<span class="k">${e(w)}</span>`;
+    else if(w.length > 1) out += `<span class="id" data-n="${e(w)}">${e(w)}</span>`;
+    else out += e(w);
+    last = m.index + w.length;
+  }
+  return out + e(text.slice(last));
+}
 
 function leanHl(src){
   const out=[]; let i=0;
-  const push=(cls,txt)=>out.push(cls?`<span class="${cls}">${e(txt)}</span>`:e(txt));
+  src = String(src ?? '');
   while(i<src.length){
-    if(src.startsWith('/-',i)){ const j=src.indexOf('-/',i+2); const end=j<0?src.length:j+2; push('c',src.slice(i,end)); i=end; continue; }
-    if(src.startsWith('--',i)){ const j=src.indexOf('\n',i); const end=j<0?src.length:j; push('c',src.slice(i,end)); i=end; continue; }
-    if(src[i]==='"'){ let j=i+1; while(j<src.length&&!(src[j]==='"'&&src[j-1]!=='\\')) j++; push('s',src.slice(i,j+1)); i=j+1; continue; }
+    if(src.startsWith('/-',i)){ const j=src.indexOf('-/',i+2); const end=j<0?src.length:j+2;
+      out.push(`<span class="c">${e(src.slice(i,end))}</span>`); i=end; continue; }
+    if(src.startsWith('--',i)){ const j=src.indexOf('\n',i); const end=j<0?src.length:j;
+      out.push(`<span class="c">${e(src.slice(i,end))}</span>`); i=end; continue; }
+    if(src[i]==='"'){ let j=i+1; while(j<src.length&&!(src[j]==='"'&&src[j-1]!=='\\')) j++;
+      out.push(`<span class="s">${e(src.slice(i,j+1))}</span>`); i=j+1; continue; }
     let j=i; while(j<src.length && !src.startsWith('/-',j) && !src.startsWith('--',j) && src[j]!=='"') j++;
-    const chunk=src.slice(i,j);
-    out.push(e(chunk).replace(LEAN_TOKEN,
-      (m,t,k) => t ? `<span class="t">${t}</span>` : `<span class="k">${k}</span>`));
+    out.push(leanCode(src.slice(i,j)));
     i=j;
   }
   return out.join('');
 }
+
+/* ---- what is this identifier? ---------------------------------------- */
+/* Every name in a rendered statement is a question a reviewer may have, and
+   leaving the page to answer it loses the statement. The card answers in
+   place; a click commits to the full audit. Resolution is the server's job --
+   source text writes names the way Lean resolves them, relative to open
+   namespaces, and only the index knows the qualified spelling. */
+const hov=$('#hov');
+const symbolCache=new Map();
+let hovTimer=null, hovFor=null;
+
+function symbolKey(name, module){ return name + '\u0000' + (module||''); }
+
+async function symbolOf(name, module){
+  const key=symbolKey(name, module);
+  if(symbolCache.has(key)) return symbolCache.get(key);
+  const p = fetch('/api/symbol?name='+encodeURIComponent(name)
+                  + (module?'&module='+encodeURIComponent(module):''))
+    .then(r=>r.ok?r.json():null).then(d=>(d && d.name)?d:null).catch(()=>null);
+  symbolCache.set(key, p);
+  return p;
+}
+
+function placeHover(el){
+  const r=el.getBoundingClientRect(), box=hov.getBoundingClientRect();
+  let left=Math.min(r.left, innerWidth-box.width-14);
+  let top=r.bottom+8;
+  if(top+box.height>innerHeight-8) top=Math.max(8, r.top-box.height-8);
+  hov.style.left=Math.max(8,left)+'px'; hov.style.top=top+'px';
+}
+
+function hideHover(){ clearTimeout(hovTimer); hovFor=null; hov.classList.remove('on'); }
+
+function showHover(el, sym){
+  hov.innerHTML=`<h4>${e(sym.name)}</h4>`
+    + `<div class="kindline">${e(sym.kind||'declaration')}${sym.module?' · '+e(sym.module):''}`
+    + `${sym.path?` · <code>${e(sym.path)}:${sym.line}</code>`:''}</div>`
+    + (sym.docstring?`<div class="doc">${e(sym.docstring)}</div>`:'')
+    + (sym.signature?`<pre>${leanHl(sym.signature)}</pre>`:'')
+    + `<div class="foot"><b>click to audit →</b>`
+    + (sym.candidates&&sym.candidates.length
+        ? `<span>also matches ${sym.candidates.map(e).join(', ')}</span>`:'')
+    + '</div>';
+  hov.classList.add('on');
+  placeHover(el);
+}
+
+function moduleOf(el){ const p=el.closest('[data-module]'); return p?p.dataset.module:''; }
+
+addEventListener('mouseover', ev=>{
+  const el=ev.target.closest && ev.target.closest('.id[data-n]');
+  if(!el){ if(!hov.contains(ev.target)) hideHover(); return; }
+  if(hovFor===el) return;
+  clearTimeout(hovTimer);
+  hovFor=el;
+  hovTimer=setTimeout(async ()=>{
+    const sym=await symbolOf(el.dataset.n, moduleOf(el));
+    if(hovFor!==el) return;
+    if(!sym){ hov.classList.remove('on'); return; }
+    el.classList.add('known'); el.dataset.q=sym.name;
+    showHover(el, sym);
+  }, 180);
+}, {passive:true});
+
+addEventListener('click', async ev=>{
+  const el=ev.target.closest && ev.target.closest('.id[data-n]');
+  if(!el) return;
+  const sym = el.dataset.q ? {name:el.dataset.q} : await symbolOf(el.dataset.n, moduleOf(el));
+  if(!sym) return;
+  hideHover();
+  go('audit/'+encodeURIComponent(sym.name));
+});
+addEventListener('scroll', hideHover, true);
 
 function sec(title, bodyHtml, open){
   return `<details class="sec"${open?' open':''}><summary>${e(title)}</summary><div class="body">${bodyHtml}</div></details>`;
@@ -395,53 +634,173 @@ function wireChips(){
 }
 
 /* ---- the theorem audit page ------------------------------------------ */
+/* Ordered the way a reviewer reads: what the paper claims, what the author
+   wrote, what the compiler made of it, what vocabulary that rests on, and only
+   then how it is proved. Each section is a question; none of them require
+   leaving the page to answer. */
+
+const CLAUSE_STATUS = ['claimed_exact','claimed_generalized','claimed_weaker','open','unreviewed'];
+
+function clauseCard(c, slug){
+  return `<div class="clause" data-slug="${e(slug)}" data-ptr="${e(c.pointer||'')}">
+    <p class="src">${e(c.sourceClause||'')}</p>
+    <div class="arrow">↓ realized in Lean
+      ${c.relation?`<span class="chip">${e(c.relation)}</span>`:''}
+      ${c.kind?`<span class="chip">${e(c.kind)}</span>`:''}
+      ${tag(c.status)}</div>
+    <p class="lean">${e(c.leanRealization||'')}</p>
+    ${c.sourceExcerpt?`<p class="ex">${e(c.sourceExcerpt)}</p>`:''}
+    ${c.pointer?`<div class="edit"><select class="cs">
+        ${CLAUSE_STATUS.concat(c.status&&!CLAUSE_STATUS.includes(c.status)?[c.status]:[])
+          .map(v=>`<option${v===c.status?' selected':''}>${e(v)}</option>`).join('')}
+      </select><button class="csave">Save status</button><span class="saved" hidden>written and journaled</span></div>`:''}
+  </div>`;
+}
+
+function wireClauseEditing(scope){
+  scope.querySelectorAll('.clause .csave').forEach(btn=>btn.onclick=async ()=>{
+    const box=btn.closest('.clause'), sel=box.querySelector('.cs'), note=box.querySelector('.saved');
+    btn.disabled=true;
+    try{
+      const r=await fetch('/api/annotate',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({view:'census', slug:box.dataset.slug, pointer:box.dataset.ptr,
+                             value:sel.value, author:'browser', note:'clause status, audit page'})});
+      const d=await r.json();
+      if(!r.ok||d.ok===false){ note.textContent=d.error||'refused'; note.style.color='var(--warn)'; }
+      else{ note.textContent = (d.warnings&&d.warnings.length)
+              ? 'written; ' + d.warnings.join('; ') : 'written and journaled';
+            note.style.color='var(--accent)'; }
+      note.hidden=false;
+    }catch(err){ note.textContent=String(err); note.style.color='var(--warn)'; note.hidden=false; }
+    btn.disabled=false;
+  });
+}
+
+function sourceStatementHtml(st){
+  if(!st) return '';
+  const part=(key,label)=>{
+    const v=st[key]; if(!v||!v.length) return '';
+    return `<b style="font-size:11.5px">${label}</b><ul style="margin:3px 0 9px;padding-left:20px">`
+      + (Array.isArray(v)?v:[v]).map(x=>`<li>${e(x)}</li>`).join('') + '</ul>';
+  };
+  return part('setup','Setup') + part('hypotheses','Hypotheses')
+       + part('conclusions','Conclusions') + part('conclusion','Conclusion');
+}
+
+function contextSection(ctx){
+  if(!ctx || !ctx.rows || !ctx.rows.length)
+    return sec('Source context', '<div class="empty" style="padding:6px 0">No census row registers this declaration, so there is no printed result it answers for.</div>');
+  return ctx.rows.map(row=>sec(
+    `Source context — ${row.paper}, ${row.title || row.id}`,
+    `<div class="sub" style="color:var(--muted);font-size:11.5px;margin-bottom:8px">`
+    + `<code>${e(row.id)}</code> · ${e(row.sourceAnchor||'')} · this declaration is `
+    + `<b>${e(row.role)}</b> for the row ${tag(row.status)}${tag(row.verification)}</div>`
+    + (row.claim?`<p style="margin:0 0 10px">${e(row.claim)}</p>`:'')
+    + sourceStatementHtml(row.sourceStatement)
+    + (row.clauses&&row.clauses.length
+        ? `<b style="font-size:11.5px">Clause by clause — printed prose against the Lean that answers it</b>`
+          + `<div style="margin-top:6px">${row.clauses.map(c=>clauseCard(c,row.slug)).join('')}</div>`
+        : '<p class="empty" style="padding:0">No clause-level correspondence is recorded for this row.</p>')
+    + `<button data-align="${e(row.slug)}" data-row="${e(row.id)}" style="margin-top:4px">Open the full source ↔ Lean view →</button>`,
+    true)).join('');
+}
+
+function vocabularySection(v){
+  if(!v || !v.symbols || !v.symbols.length)
+    return sec('Statement vocabulary',
+      '<div class="empty" style="padding:6px 0">No resolvable names were found in this statement.</div>');
+  const groups=[['project','Defined in this project'],['boundary','From Mathlib or Tau Ceti']];
+  let h=`<p style="color:var(--muted);font-size:12px;margin:4px 0 10px">Every name this statement is written in, resolved against the source index. Expand one to read its docstring and definition without leaving the page.</p>`;
+  for(const [key,label] of groups){
+    const list=v.symbols.filter(x=>x.group===key);
+    if(!list.length) continue;
+    h+=`<b style="font-size:11.5px">${label} (${list.length})</b><div class="vocab" style="margin:5px 0 12px">`
+     + list.map(x=>`<details class="vrow" data-n="${e(x.name)}">
+          <summary><code>${e(x.short||x.name)}</code>
+            <span style="color:var(--muted);font-size:11px">${e(x.kind||'')}</span>
+            <span class="m">${e(x.module||'')}</span></summary>
+          <div class="body"><div class="loading"><span class="spinner"></span> reading…</div></div>
+        </details>`).join('') + '</div>';
+  }
+  return sec(`Statement vocabulary — ${v.symbols.length} name(s)`, h, true);
+}
+
+function wireVocabulary(scope){
+  scope.querySelectorAll('.vrow').forEach(row=>row.addEventListener('toggle', async ()=>{
+    if(!row.open || row.dataset.done) return;
+    row.dataset.done='1';
+    const body=row.querySelector('.body');
+    const sym=await symbolOf(row.dataset.n, '');
+    if(!sym){ body.innerHTML='<div class="empty" style="padding:4px 0">Not resolvable.</div>'; return; }
+    body.innerHTML = (sym.docstring?`<div style="white-space:pre-wrap;margin:6px 0 8px">${e(sym.docstring)}</div>`:'')
+      + (sym.source||sym.signature
+          ? `<pre class="lean" data-module="${e(sym.module||'')}">${leanHl(sym.source||sym.signature)}</pre>`:'')
+      + `<div class="foot" style="color:var(--muted);font-size:11px;margin-top:6px">`
+      + (sym.path?`<code>${e(sym.path)}:${sym.line}</code> · `:'')
+      + `<a class="name" data-n="${e(sym.name)}">full audit of ${e(sym.name)} →</a></div>`;
+    body.querySelectorAll('a.name').forEach(a=>a.onclick=()=>go('audit/'+encodeURIComponent(a.dataset.n)));
+  }));
+}
+
 async function showAudit(name){
   markNav('');
   crumb.innerHTML=`<b>Audit</b><code style="color:var(--muted)">${e(name)}</code>`;
-  showPane('<div class="audit"><div class="loading"><span class="spinner"></span> Gathering source, elaboration and dependencies…</div>'
+  showPane('<div class="audit"><div class="loading"><span class="spinner"></span> Gathering source, elaboration, vocabulary and dependencies…</div>'
     + '<div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div>'
     + '<div class="skel" style="width:75%"></div><div class="skel" style="width:40%"></div></div>');
-  let d;
-  try{ d = await api('/api/declaration/'+encodeURIComponent(name)); }
+  // Four independent answers, asked at once: the slowest must not serialize
+  // behind the others.
+  let d, ctx=null, vocab=null;
+  try{
+    [d, ctx, vocab] = await Promise.all([
+      api('/api/declaration/'+encodeURIComponent(name)),
+      api('/api/context/'+encodeURIComponent(name)).catch(()=>null),
+      api('/api/vocabulary/'+encodeURIComponent(name)).catch(()=>null),
+    ]);
+  }
   catch(_){ return showPane(`<div class="empty">Nothing known about <code>${e(name)}</code>.</div>`); }
   if(d.detail) return showPane(`<div class="empty">${e(d.detail)}</div>`);
 
   const src=d.source, el=d.elaborated, gs=d.graphStatus||{};
+  const mod = (el&&el.module) || (src&&src.module) || '';
   let h='<div class="audit">';
   h+=`<h2>${e(d.name)}</h2><div class="where">`
    + (src?`<code>${e(src.path)}:${src.line}</code>`:'<em>no source location found</em>')
-   + (el&&el.kind?` · ${e(el.kind)}`:'') + (el&&el.module?` · <code>${e(el.module)}</code>`:'')
+   + (el&&el.kind?` · ${e(el.kind)}`:'') + (mod?` · <code>${e(mod)}</code>`:'')
    + `</div>`;
 
   if(gs.stale) h+=`<div class="stale"><b>The dependency graph is out of date.</b> ${e(gs.newerSource||'A source file')} is newer than the saved index, so proof dependencies below may name declarations that have since changed. Rebuild with <code>${e(gs.rebuild||'')}</code>.</div>`;
 
-  if(el&&el.docstring) h+=sec('Docstring', `<div style="white-space:pre-wrap;font-size:13px">${e(el.docstring)}</div>`, true);
+  h+=contextSection(ctx);
+
+  if(src) h+=sec('Source as written — docstring and statement',
+      `<pre class="lean" data-module="${e(mod)}">${leanHl(src.statement || src.header || '')}</pre>`, true);
+  else h+=sec('Source as written', notReady('sources','The source snippet')
+      || '<div class="empty" style="padding:6px 0">No source location found for this name.</div>', true);
 
   if(el) h+=sec('Elaborated signature — what the compiler sees',
-      `<pre class="lean">${leanHl(el.signature||el.type||'')}</pre>`
-    + `<dl class="kv"><dt>structural hash</dt><dd>${e(el.hashes.expr||'—')}</dd>`
-    + `<dt>printed-type hash</dt><dd>${e((el.hashes.text||'').slice(0,32)||'—')}</dd>`
-    + `<dt>is a Prop</dt><dd>${el.isProp===null?'—':el.isProp}</dd></dl>`, true);
+      `<pre class="lean" data-module="${e(mod)}">${leanHl(el.signature||el.type||'')}</pre>`
+    + (el.docstring?`<div style="white-space:pre-wrap;font-size:12.5px;margin:8px 0">${e(el.docstring)}</div>`:'')
+    + `<dl class="kv"><dt>kind</dt><dd>${e(el.kind||'—')}</dd>`
+    + `<dt>module</dt><dd>${e(el.module||'—')}</dd>`
+    + `<dt>library</dt><dd>${e(el.library||'—')}</dd>`
+    + `<dt>is a Prop</dt><dd>${el.isProp===null?'—':el.isProp}</dd>`
+    + `<dt>structural hash</dt><dd>${e(el.hashes.expr||'—')}</dd>`
+    + `<dt>printed-type hash</dt><dd>${e((el.hashes.text||'').slice(0,32)||'—')}</dd></dl>`, true);
   else h+=sec('Elaborated signature',
       notReady('statements','The elaborated signature')
       || `<div class="empty" style="padding:6px 0">${e(d.elaboratedHint||'Not elaborated.')}</div>`);
 
-  if(src) h+=sec('Source as written — docstring and statement',
-      `<pre class="lean">${leanHl(src.statement || src.header || '')}</pre>`, true);
-  else h+=sec('Source as written', notReady('sources','The source snippet')
-      || '<div class="empty" style="padding:6px 0">No source location found for this name.</div>', true);
+  h+=vocabularySection(vocab);
 
   if(d.closure){
     const c=d.closure;
-    h+=sec(`Statement closure — the vocabulary this theorem is stated in (${(c.unfolded||[]).length} unfolded, ${(c.leaves||[]).length} leaf)`,
-      `<p style="color:var(--muted);font-size:12px">What the <em>statement</em> depends on. This is what decides whether a theorem is phrased in the paper's vocabulary or in a private one.</p>`
+    h+=sec(`Statement closure — unfolded through the project (${(c.unfolded||[]).length} unfolded, ${(c.leaves||[]).length} leaf)`,
+      `<p style="color:var(--muted);font-size:12px">What the <em>statement</em> depends on once project definitions are unfolded. This is what decides whether a theorem is phrased in the paper's vocabulary or in a private one.</p>`
       + `<b style="font-size:12px">Boundary vocabulary</b>${chips(c.boundary)}`
       + `<b style="font-size:12px;display:block;margin-top:10px">Unfolded project constants</b>${chips(c.unfolded)}`
       + `<b style="font-size:12px;display:block;margin-top:10px">Leaves</b>${chips(c.leaves)}`);
   }
-
-  if(el && el.typeDeps && el.typeDeps.length)
-    h+=sec(`Type dependencies (${el.typeDeps.length})`, chips(el.typeDeps));
 
   const pr=d.proof;
   if(pr){
@@ -464,15 +823,21 @@ async function showAudit(name){
     occ.length?`<table><tr><th>ledger</th><th>view</th><th>row</th><th>field</th></tr>`
       + occ.map(o=>`<tr><td><a class="name" data-v="${e(o.view)}" data-s="${e(o.slug)}" data-r="${e(o.row)}">${e(o.document)}</a></td>
           <td>${e(o.view)}</td><td>${e(o.row)}</td><td><code>${e(o.field)}</code></td></tr>`).join('')+'</table>'
-    : '<span class="empty" style="padding:0">No ledger registers this declaration.</span>', true);
+    : '<span class="empty" style="padding:0">No ledger registers this declaration.</span>');
 
   h+='</div>';
   showPane(h);
   wireChips();
+  wireClauseEditing(pane);
+  wireVocabulary(pane);
   pane.querySelectorAll('a.name[data-n]').forEach(a=>a.onclick=()=>go('audit/'+encodeURIComponent(a.dataset.n)));
   pane.querySelectorAll('a.name[data-v]').forEach(a=>a.onclick=()=>{
     go(`view/${a.dataset.v}/${a.dataset.s}`);
     if(a.dataset.r) setTimeout(()=>frame.contentWindow.postMessage({aiq:'scroll-to',id:a.dataset.r},'*'),700);
+  });
+  pane.querySelectorAll('button[data-align]').forEach(b=>b.onclick=()=>{
+    go('view/alignment/'+b.dataset.align);
+    setTimeout(()=>{ try{ frame.contentWindow.postMessage({aiq:'scroll-to', id:b.dataset.row},'*'); }catch(_){} }, 700);
   });
 }
 
@@ -501,6 +866,7 @@ async function loadCatalog(refresh){
   for(const d of catalog.documents) (byView[d.view] ||= []).push(d);
   let h = '<input class="filter" id="navfilter" placeholder="Filter ledgers…" autocomplete="off">';
   h += '<h2>Overview</h2>'
+     + '<a data-route="home" data-t="headline theorems results">Headline theorems<small>what each paper is judged on</small></a>'
      + '<a data-route="view/workspace" data-t="workspace everything">Workspace<small>every ledger, one summary</small></a>'
      + '<a data-route="shared" data-t="shared declarations">Shared declarations<small>what the ledgers agree on</small></a>'
      + '<a data-route="deps" data-t="dependencies proof graph">Dependencies<small>proof structure and axioms</small></a>'
@@ -509,7 +875,8 @@ async function loadCatalog(refresh){
     const docs=byView[v.name]; if(!docs||!docs.length) continue;
     h += `<h2>${e(v.label)}</h2>`;
     for(const d of docs)
-      h += `<a data-route="view/${e(d.view)}/${e(d.slug)}" data-t="${e((d.title+' '+d.path).toLowerCase())}">${e(d.title)}<small>${e(d.path)}</small></a>`;
+      h += `<a data-route="view/${e(d.view)}/${e(d.slug)}" title="${e(d.title)}"
+             data-t="${e((d.title+' '+d.path).toLowerCase())}">${e(d.short||d.title)}<small>${e(d.path)}</small></a>`;
   }
   nav.innerHTML=h;
   const prefetched=new Set();
