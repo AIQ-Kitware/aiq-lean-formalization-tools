@@ -463,8 +463,8 @@ function sourceStatementBody(source){
       const doc = trimmed.slice(0, end + 2);
       const declaration = trimmed.slice(end + 2).trimStart();
       if (declaration)
-        return `<pre>${leanHl(declaration)}</pre>`
-             + `<details><summary>source docstring</summary><pre>${leanHl(doc)}</pre></details>`;
+        return `<details class="source-docstring" open><summary>source docstring</summary><pre>${leanHl(doc)}</pre></details>`
+             + `<pre>${leanHl(declaration)}</pre>`;
     }
   }
   return `<pre>${leanHl(raw)}</pre>`;
