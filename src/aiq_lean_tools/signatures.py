@@ -39,6 +39,13 @@ class SignaturePair:
     left_label: str = "left"
     right_label: str = "right"
     build_targets: tuple[str, ...] = ()
+    #: Declarations the right module is *expected* not to carry.  A challenge
+    #: comparator legitimately pins statements that the solution module does not
+    #: re-export -- an open placeholder, or a statement whose only home is the
+    #: challenge.  Without this the pre-flight reports each one as an error, which
+    #: is indistinguishable from a rename that orphaned it, and the config's own
+    #: declaration of intent is ignored.
+    expected_missing_right: tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any], *, index: int = 0) -> "SignaturePair":
@@ -66,6 +73,23 @@ class SignaturePair:
         target_tuple = tuple(str(x).strip() for x in targets if isinstance(x, str) and x.strip())
         if len(target_tuple) != len(targets):
             raise ValidationError(f"signature pair {index} build_targets must contain only non-empty strings")
+        # `expected_missing_solution_theorems` is the historical comparator spelling.
+        missing = data.get("expected_missing_right",
+                           data.get("expected_missing_solution_theorems", ()))
+        if isinstance(missing, str):
+            missing = [missing]
+        if not isinstance(missing, Sequence) or isinstance(missing, (str, bytes)):
+            raise ValidationError(
+                f"signature pair {index} expected_missing_right must be a list of strings")
+        missing_tuple = tuple(str(x).strip() for x in missing if isinstance(x, str) and x.strip())
+        if len(missing_tuple) != len(missing):
+            raise ValidationError(
+                f"signature pair {index} expected_missing_right must contain only non-empty strings")
+        unknown = [d for d in missing_tuple if d not in decls]
+        if unknown:
+            raise ValidationError(
+                f"signature pair {index} expected_missing_right names declarations that are not "
+                f"in the pair: {', '.join(sorted(unknown))}")
         return cls(
             name=str(data.get("name") or data.get("id") or f"pair-{index + 1}"),
             left_module=left.strip(),
@@ -74,6 +98,7 @@ class SignaturePair:
             left_label=str(data.get("left_label", "left")),
             right_label=str(data.get("right_label", "right")),
             build_targets=target_tuple,
+            expected_missing_right=missing_tuple,
         )
 
 
@@ -354,10 +379,18 @@ def compare_signatures(
                     f"could not obtain complete signature evidence from {pair.left_label} module {pair.left_module}",
                     declaration,
                 ))
-            if not right.resolved:
+            expected_missing = declaration in pair.expected_missing_right
+            if not right.resolved and not expected_missing:
                 row_findings.append(Finding(
                     "error", "signature-right-unresolved",
                     f"could not obtain complete signature evidence from {pair.right_label} module {pair.right_module}",
+                    declaration,
+                ))
+            if right.resolved and expected_missing:
+                row_findings.append(Finding(
+                    "error", "signature-unexpectedly-present",
+                    f"{pair.right_label} module {pair.right_module} carries this declaration, but the "
+                    "policy lists it under expected_missing_right; drop the entry or the declaration",
                     declaration,
                 ))
             if left.resolved and right.resolved:
@@ -373,7 +406,14 @@ def compare_signatures(
                         "fully explicit declaration types differ",
                         declaration,
                     ))
-            status = "PASS" if not row_findings else "ERROR" if not (left.resolved and right.resolved) else "FAIL"
+            if row_findings:
+                status = "ERROR" if not (left.resolved and right.resolved) else "FAIL"
+            elif expected_missing:
+                # Declared absent on the right and absent: nothing to compare, and
+                # saying PASS would claim a comparison that never ran.
+                status = "SKIP"
+            else:
+                status = "PASS"
             comparisons.append(SignatureComparison(
                 pair=pair.name,
                 declaration=declaration,

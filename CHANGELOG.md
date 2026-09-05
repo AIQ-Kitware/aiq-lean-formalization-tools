@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### The signature pre-flight reads the config's own expected-absence list
+
+A challenge comparator legitimately pins statements that the solution module
+does not re-export -- an open placeholder, or a statement whose only home is the
+challenge -- and declares them in `expected_missing_solution_theorems`.
+`compare_signatures` did not read that key. Every such declaration surfaced as
+`signature-right-unresolved`, which is exactly what a rename that orphaned a
+pinned name looks like, so the two could not be told apart and a config could
+never be green. On the DKPS Davis--Kahan config that was three of the eight
+reported failures.
+
+- `SignaturePair` gains `expected_missing_right`, parsed from either that name
+  or the historical `expected_missing_solution_theorems`. Listed declarations
+  that are absent on the right get the new status `SKIP` and no finding: nothing
+  was compared, so claiming `PASS` would assert a comparison that never ran.
+- The reverse case is now a finding of its own. If the right module *does* carry
+  a declaration listed as expected-missing, `signature-unexpectedly-present`
+  says the config is stale and is suppressing a comparison nobody is running.
+- A `expected_missing_right` entry naming a declaration the pair does not pin is
+  a validation error, so a typo cannot silently suppress nothing.
+
 ### The audit browser answers for what it is showing
 
 Review of the served browser found that a page could keep showing Lean evidence
