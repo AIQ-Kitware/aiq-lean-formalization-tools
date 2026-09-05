@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### `aiq-lean tamper run` checks that gates reject the defects they were written for
+
+A green gate suite is only evidence if its gates fail on bad input, and nothing
+in a green run separates a check that inspects a field from a check that stopped
+looking at it years ago. Both have shipped in the first consumer: a census row
+retargeted at the wrong declaration, and a hypothesis dropped from a source-exact
+facade, each with a checker that said nothing.
+
+The new group closes that from the other side. A repository declares mutations --
+one textual defect each, with the narrowest gate that must catch it -- and the
+engine applies one, runs that gate, and passes only when the gate *fails*.
+
+- Every distinct gate is first run on the unmutated tree. A gate that already
+  fails is reported as an error rather than credited with a detection, because
+  it would otherwise "detect" every mutation put to it.
+- A `find` string that does not occur exactly the declared number of times is an
+  error, not a pass: a stale mutation that silently rewrote nothing would
+  otherwise look like a working test.
+- The file is restored from the bytes read before the mutation, in a `finally`,
+  and the run reports `restored=False` if the tree is left modified. A dirty
+  tree is refused up front, since restoration could not then be verified.
+- Mutations are repository policy and live in the repository; only the engine
+  lives here.
+
 ### The signature pre-flight reads the config's own expected-absence list
 
 A challenge comparator legitimately pins statements that the solution module

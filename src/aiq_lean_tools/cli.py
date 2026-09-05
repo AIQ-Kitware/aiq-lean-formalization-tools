@@ -48,6 +48,7 @@ from .ratchet import evaluate_ratchets, load_ratchet_policy
 from .roadmap import compare_roadmap
 from .semantic_review import load_semantic_review
 from .signatures import SignaturePolicy, compare_signatures
+from .tamper import TamperConfig, render_report as render_tamper_report, run_tamper_suite
 from .staging import StagingPolicy, check_staging
 from .source_candidates import (
     dead_definition_candidates,
@@ -1434,6 +1435,36 @@ def cmd_manifest_summary(args) -> int:
 
 
 
+def cmd_tamper_run(args) -> int:
+    config = TamperConfig.load(args.config)
+    if args.list:
+        for mutation in config.mutations:
+            print(f"{mutation.name}: {mutation.description or mutation.path}")
+        return 0
+    report = run_tamper_suite(
+        config,
+        root=args.root or ".",
+        only=tuple(args.only),
+        timeout=args.timeout,
+        allow_dirty=args.allow_dirty,
+    )
+    if args.json:
+        _dump(
+            {
+                "ok": report.ok,
+                "restored": report.restored,
+                "baselines": [{"command": c, "exit": code} for c, code in report.baselines],
+                "results": [
+                    {"name": r.name, "status": r.status, "detail": r.detail, "seconds": round(r.seconds, 2)}
+                    for r in report.results
+                ],
+            }
+        )
+    else:
+        print(render_tamper_report(report))
+    return 0 if report.ok else 1
+
+
 def cmd_signatures_check(args) -> int:
     policy = SignaturePolicy.load(args.policy)
     report = compare_signatures(
@@ -1754,6 +1785,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--source-root"); s.add_argument("--target-root", required=True); s.add_argument("--cluster"); s.add_argument("--write", action="store_true"); s.add_argument("--json", action="store_true"); s.set_defaults(func=cmd_source_export)
     s = ss.add_parser("module-plan", help="validate an ordered module-topic partition and optional dependency-closed submission ladder")
     s.add_argument("policy"); s.add_argument("--root"); s.add_argument("--json", action="store_true"); s.add_argument("--render", action="store_true", help="render the report as Markdown"); s.add_argument("-o", "--out", help="write Markdown when --render is used"); s.add_argument("--check", action="store_true", help="verify the file at --out is current instead of writing it"); s.set_defaults(func=cmd_source_module_plan)
+
+    tamper = sub.add_parser("tamper", help="verify that gates reject the defects they were written for")
+    tam = tamper.add_subparsers(dest="tamper_command", required=True)
+    tm = tam.add_parser("run"); tm.add_argument("--config", required=True); tm.add_argument("--root"); tm.add_argument("--only", action="append", default=[]); tm.add_argument("--timeout", type=int, default=1800); tm.add_argument("--allow-dirty", action="store_true"); tm.add_argument("--list", action="store_true"); tm.add_argument("--json", action="store_true"); tm.set_defaults(func=cmd_tamper_run)
 
     signatures = sub.add_parser("signatures", help="compare exact Lean declaration interfaces across module pairs")
     sigs = signatures.add_subparsers(dest="signatures_command", required=True)
